@@ -7,6 +7,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 
+/** UBX checksum을 검증하고 RAWX/SFRBX payload를 공통 GNSS 모델로 변환한다. */
 public final class UbloxParser {
     private byte[] pending = new byte[0];
     public record UbxFrame(int messageClass, int messageId, byte[] payload) {}
@@ -21,7 +22,11 @@ public final class UbloxParser {
             if (payloadLength > 65535) { offset += 2; continue; }
             int frameLength = payloadLength + 8; if (pending.length - offset < frameLength) break;
             if (checksum(pending, offset + 2, payloadLength + 4, pending[offset + 6 + payloadLength], pending[offset + 7 + payloadLength]))
-                frames.add(new UbxFrame(pending[offset + 2] & 0xff, pending[offset + 3] & 0xff, Arrays.copyOfRange(pending, offset + 6, offset + 6 + payloadLength)));
+                frames.add(new UbxFrame(
+                        pending[offset + 2] & 0xff,
+                        pending[offset + 3] & 0xff,
+                        Arrays.copyOfRange(
+                                pending, offset + 6, offset + 6 + payloadLength)));
             offset += frameLength;
         }
         pending = Arrays.copyOfRange(pending, offset, pending.length); return frames;
@@ -41,8 +46,14 @@ public final class UbloxParser {
         for (int i = 0; i < count; i++) {
             if (in.remaining() < 32) throw new IllegalArgumentException("Truncated UBX-RXM-RAWX measurement");
             double pr = in.getDouble(), cp = in.getDouble(); float doppler = in.getFloat(); int gnss = Byte.toUnsignedInt(in.get());
-            int sv = Byte.toUnsignedInt(in.get()), sig = Byte.toUnsignedInt(in.get()), freq = Byte.toUnsignedInt(in.get()); int lock = Short.toUnsignedInt(in.getShort());
-            int cno = Byte.toUnsignedInt(in.get()), prStd = Byte.toUnsignedInt(in.get()), cpStd = Byte.toUnsignedInt(in.get()), doStd = Byte.toUnsignedInt(in.get());
+            int sv = Byte.toUnsignedInt(in.get());
+            int sig = Byte.toUnsignedInt(in.get());
+            int freq = Byte.toUnsignedInt(in.get());
+            int lock = Short.toUnsignedInt(in.getShort());
+            int cno = Byte.toUnsignedInt(in.get());
+            int prStd = Byte.toUnsignedInt(in.get());
+            int cpStd = Byte.toUnsignedInt(in.get());
+            int doStd = Byte.toUnsignedInt(in.get());
             int tracking = Byte.toUnsignedInt(in.get()); in.get();
             observations.add(new GrawCodec.Observation(pr, cp, doppler, gnss, sv, sig, freq, lock, cno, prStd, cpStd, doStd, tracking));
         }

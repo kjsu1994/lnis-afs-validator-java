@@ -7,6 +7,7 @@ import java.util.Map;
 import java.util.UUID;
 import static kr.co.lnis.common.model.LnisModels.*;
 
+/** 중앙 서버와 Windows Agent가 교환하는 WebSocket protocol 계약이다. */
 public final class AgentProtocol {
     public static final int PROTOCOL_VERSION = 1;
     private AgentProtocol() {}
@@ -46,4 +47,3 @@ public final class AgentProtocol {
     public record Progress(EventType type, int percent, String stage, String message, Map<String, Object> counters) {}
     public record BrowserEvent(long sequence, EventType type, Instant occurredAt, String agentId, AgentRole role, UUID sessionId, Object payload) {}
 }
-

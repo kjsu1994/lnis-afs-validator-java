@@ -6,6 +6,7 @@ import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
 import java.util.UUID;
 
+/** Sender와 Receiver 사이 UDP datagram의 header, payload 및 CRC를 처리한다. */
 public final class AfsPacketCodec {
     public static final int HEADER_LENGTH = 48;
     public static final int MAXIMUM_PAYLOAD_LENGTH = 1200;

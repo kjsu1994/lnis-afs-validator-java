@@ -9,6 +9,7 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.UUID;
 
+/** LNIS canonical GRAW 메시지의 binary wire 형식을 인코딩하고 검증한다. */
 public final class GrawCodec {
     private static final byte[] MAGIC = "LGRW".getBytes(StandardCharsets.US_ASCII);
     private static final int HEADER_LENGTH = 62;
@@ -17,7 +18,14 @@ public final class GrawCodec {
 
     public enum MessageType { OBSERVATION_EPOCH(1), NAVIGATION_UPDATE(2), RECEIVER_METADATA(3);
         final int wire; MessageType(int wire) { this.wire = wire; }
-        static MessageType fromWire(int value) { for (var x : values()) if (x.wire == value) return x; throw new IllegalArgumentException("Unknown GRAW message type"); }
+        static MessageType fromWire(int value) {
+            for (var type : values()) {
+                if (type.wire == value) {
+                    return type;
+                }
+            }
+            throw new IllegalArgumentException("Unknown GRAW message type");
+        }
     }
     public enum Constellation { GPS(0), SBAS(1), GALILEO(2), BEIDOU(3), IMES(4), QZSS(5), GLONASS(6), NAVIC(7), UNKNOWN(255);
         final int wire; Constellation(int wire) { this.wire = wire; }
@@ -68,7 +76,15 @@ public final class GrawCodec {
         long expected = Integer.toUnsignedLong(ByteBuffer.wrap(record, record.length - 4, 4).order(ByteOrder.BIG_ENDIAN).getInt());
         if (Hashing.crc32(record, 0, record.length - 4) != expected) throw new IllegalArgumentException("GRAW CRC32 mismatch");
         byte[] payload = new byte[length]; in.get(payload);
-        return new Envelope(testId, messageId, sequence, Instant.ofEpochSecond(Math.floorDiv(micros, 1_000_000), Math.floorMod(micros, 1_000_000) * 1000), decodePayload(type, payload));
+        Instant capturedAt = Instant.ofEpochSecond(
+                Math.floorDiv(micros, 1_000_000),
+                Math.floorMod(micros, 1_000_000) * 1000);
+        return new Envelope(
+                testId,
+                messageId,
+                sequence,
+                capturedAt,
+                decodePayload(type, payload));
     }
 
     public static List<byte[]> splitLengthPrefixed(byte[] data) {
@@ -98,7 +114,13 @@ public final class GrawCodec {
                         .put((byte) x.sfrbxVersion).putShort((short) x.words.size());
                 x.words.forEach(word -> out.putInt((int) (word & 0xffff_ffffL)));
             }
-            case ReceiverMetadata x -> { putText(out, x.receiverModel); putText(out, x.firmwareVersion); putText(out, x.portName); out.putInt(x.baudRate); putText(out, x.sessionName); }
+            case ReceiverMetadata metadata -> {
+                putText(out, metadata.receiverModel);
+                putText(out, metadata.firmwareVersion);
+                putText(out, metadata.portName);
+                out.putInt(metadata.baudRate);
+                putText(out, metadata.sessionName);
+            }
         }
         return Arrays.copyOf(out.array(), out.position());
     }
@@ -110,15 +132,26 @@ public final class GrawCodec {
             double tow = in.getDouble(); int week = Short.toUnsignedInt(in.getShort()); int leap = in.get(); int status = Byte.toUnsignedInt(in.get());
             int version = Byte.toUnsignedInt(in.get()); int count = Short.toUnsignedInt(in.getShort()); List<Observation> list = new ArrayList<>(count);
             for (int i = 0; i < count; i++) {
-                int gnss = Byte.toUnsignedInt(in.get()), sv = Byte.toUnsignedInt(in.get()), sig = Byte.toUnsignedInt(in.get()), freq = Byte.toUnsignedInt(in.get());
+                int gnss = Byte.toUnsignedInt(in.get());
+                int sv = Byte.toUnsignedInt(in.get());
+                int sig = Byte.toUnsignedInt(in.get());
+                int freq = Byte.toUnsignedInt(in.get());
                 list.add(new Observation(in.getDouble(), in.getDouble(), in.getFloat(), gnss, sv, sig, freq,
                         Short.toUnsignedInt(in.getShort()), Byte.toUnsignedInt(in.get()), Byte.toUnsignedInt(in.get()),
                         Byte.toUnsignedInt(in.get()), Byte.toUnsignedInt(in.get()), Byte.toUnsignedInt(in.get())));
             }
             result = new ObservationEpoch(tow, week, leap, status, version, list);
         } else if (type == MessageType.NAVIGATION_UPDATE) {
-            int gnss = Byte.toUnsignedInt(in.get()), sv = Byte.toUnsignedInt(in.get()), sig = Byte.toUnsignedInt(in.get()), freq = Byte.toUnsignedInt(in.get()), version = Byte.toUnsignedInt(in.get());
-            int count = Short.toUnsignedInt(in.getShort()); List<Long> words = new ArrayList<>(count); for (int i = 0; i < count; i++) words.add(Integer.toUnsignedLong(in.getInt()));
+            int gnss = Byte.toUnsignedInt(in.get());
+            int sv = Byte.toUnsignedInt(in.get());
+            int sig = Byte.toUnsignedInt(in.get());
+            int freq = Byte.toUnsignedInt(in.get());
+            int version = Byte.toUnsignedInt(in.get());
+            int count = Short.toUnsignedInt(in.getShort());
+            List<Long> words = new ArrayList<>(count);
+            for (int index = 0; index < count; index++) {
+                words.add(Integer.toUnsignedLong(in.getInt()));
+            }
             result = new NavigationUpdate(gnss, sv, sig, freq, version, words);
         } else result = new ReceiverMetadata(getText(in), getText(in), getText(in), in.getInt(), getText(in));
         if (in.hasRemaining()) throw new IllegalArgumentException("Trailing GRAW payload bytes");
@@ -133,5 +166,10 @@ public final class GrawCodec {
     }
     private static byte[] utf8(String value) { return (value == null ? "" : value).getBytes(StandardCharsets.UTF_8); }
     private static void putText(ByteBuffer out, String value) { byte[] bytes = utf8(value); out.putShort((short) bytes.length).put(bytes); }
-    private static String getText(ByteBuffer in) { int length = Short.toUnsignedInt(in.getShort()); byte[] bytes = new byte[length]; in.get(bytes); return new String(bytes, StandardCharsets.UTF_8); }
+    private static String getText(ByteBuffer in) {
+        int length = Short.toUnsignedInt(in.getShort());
+        byte[] bytes = new byte[length];
+        in.get(bytes);
+        return new String(bytes, StandardCharsets.UTF_8);
+    }
 }

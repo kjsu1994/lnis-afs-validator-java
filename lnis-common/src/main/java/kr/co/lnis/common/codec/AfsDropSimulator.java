@@ -1,5 +1,6 @@
 package kr.co.lnis.common.codec;
 
+/** 동일 seed에서 같은 datagram이 누락되도록 결정론적 Drop 여부를 계산한다. */
 public final class AfsDropSimulator {
     private AfsDropSimulator() {}
 
@@ -13,4 +14,3 @@ public final class AfsDropSimulator {
         return Integer.toUnsignedLong(value) / 4294967296.0 * 100.0 < ratePercent;
     }
 }
-

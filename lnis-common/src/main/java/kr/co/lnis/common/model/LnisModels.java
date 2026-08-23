@@ -6,6 +6,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
+/** 서버, Agent 및 산출물이 함께 사용하는 시험 도메인 모델 모음이다. */
 public final class LnisModels {
     private LnisModels() {}
 
@@ -145,4 +146,3 @@ public final class LnisModels {
         return value == null || value.isBlank() ? fallback : value;
     }
 }
-

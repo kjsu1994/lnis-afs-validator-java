@@ -69,14 +69,60 @@ Sender와 Receiver 사이의 실제 시험 프레임은 중앙 서버를 경유�
 | `dist/windows-agent` | Windows Agent 설치용 전체 배포본 |
 | `docker-compose.yml` | Redis, Spring Boot, Nginx 실행 정의 |
 
-백엔드는 유지보수를 위해 다음 계층으로 분리되어 있습니다.
+백엔드는 공통 계층 폴더에 모든 클래스를 모으는 방식이 아니라, 업무 기능을 먼저 나누고 각 기능 아래에 필요한 계층을 배치하는 **기능 우선(Vertical Slice)** 구조입니다.
 
-- `controller`: HTTP 요청/응답 및 경로 정의
-- `dto`: 외부 API 요청 모델과 유효성 검사
-- `entity`: Redis에 저장되는 Agent/Input/Session 모델
-- `service`: 입력 검증, 세션 제어, 산출물 생성 등 업무 로직
-- `repository`: Redis 키 및 TTL 처리
-- `mapper`: 저장 모델을 화면/API 모델로 변환
+```text
+kr.co.lnis.server
+├─ agent
+│  ├─ controller
+│  ├─ entity
+│  ├─ repository
+│  ├─ service
+│  └─ websocket
+├─ input
+│  ├─ controller
+│  ├─ dto
+│  ├─ entity
+│  ├─ repository
+│  └─ service
+├─ capture
+│  ├─ controller
+│  └─ dto
+├─ session
+│  ├─ controller
+│  ├─ dto
+│  ├─ entity
+│  ├─ mapper
+│  ├─ repository
+│  └─ service
+├─ artifact
+│  ├─ controller
+│  └─ service
+├─ realtime
+│  ├─ service
+│  └─ websocket
+├─ common
+│  └─ exception
+└─ config
+```
+
+예를 들어 입력 업로드 기능을 변경할 때는 `input` 하위의 Controller/DTO/Entity/Repository/Service만 함께 살펴보면 됩니다. 기능을 공유하는 코드만 `common` 또는 `config`에 두며, Sender와 Receiver 양쪽에 걸친 세션 로직을 역할별로 중복 구현하지 않습니다.
+
+Windows Agent 역시 역할과 기능을 기준으로 분리되어 있습니다.
+
+```text
+kr.co.lnis.agent
+├─ config       # Agent ID, 역할, 서버, token, DLL 경로
+├─ connection   # 중앙 서버 WebSocket 연결과 heartbeat
+├─ runtime      # 서버 명령 분배 및 Agent 상태
+├─ gnss         # COM 포트, u-blox, canonical GRAW 수집
+├─ codec        # JNA 네이티브 AFS 코덱
+└─ session
+   ├─ afs       # AFS frame 생성, 오류 주입, fragment 복원
+   └─ transport # Sender/Receiver UDP 시험
+```
+
+각 Java 클래스에는 책임을 설명하는 한글 주석을 두고, 복수의 처리문을 한 줄에 압축하지 않는 형식을 사용합니다.
 
 ## 3. 요구사항
 

@@ -4,6 +4,7 @@ import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.HexFormat;
 
+/** 시험 입력과 복원 결과의 CRC32 및 SHA-256 계산을 제공한다. */
 public final class Hashing {
     private Hashing() {}
 
@@ -25,4 +26,3 @@ public final class Hashing {
 
     public static String hex(byte[] value) { return HexFormat.of().withUpperCase().formatHex(value); }
 }
-
