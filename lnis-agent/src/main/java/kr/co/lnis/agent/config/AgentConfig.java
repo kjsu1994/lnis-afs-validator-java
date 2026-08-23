@@ -16,7 +16,7 @@ public record AgentConfig(
         Path nativeDirectory) {
     public static AgentConfig load(String[] args) {
         Properties file = new Properties();
-        Path path = Path.of(System.getProperty("lnis.agent.config", "conf/agent.properties"));
+        Path path = configPath();
         if (Files.isRegularFile(path)) {
             try (var in = Files.newInputStream(path)) {
                 file.load(in);
@@ -31,6 +31,19 @@ public record AgentConfig(
         Path nativeDir = Path.of(value("LNIS_NATIVE_DIR", "lnis.native.dir", file, "native"));
         return new AgentConfig(id, role, uri, token, nativeDir);
     }
+
+    /**
+     * 역할별 실행 스크립트가 공백이 포함된 절대 경로도 안전하게 전달할 수 있도록
+     * 환경 변수 설정 파일 경로를 시스템 속성보다 우선한다.
+     */
+    private static Path configPath() {
+        String configured = System.getenv("LNIS_AGENT_CONFIG");
+        if (configured == null || configured.isBlank()) {
+            configured = System.getProperty("lnis.agent.config", "conf/agent.properties");
+        }
+        return Path.of(configured.trim());
+    }
+
     private static String value(String env, String key, Properties file, String fallback) {
         String value = System.getenv(env);
         if (value == null || value.isBlank()) value = System.getProperty(key);

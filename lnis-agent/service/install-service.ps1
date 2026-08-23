@@ -7,6 +7,10 @@ param(
 )
 $ErrorActionPreference = 'Stop'
 $base = Split-Path -Parent $PSScriptRoot
+$bundledJava = Join-Path $base 'runtime\jdk-21\bin\java.exe'
+if (-not (Test-Path -LiteralPath $bundledJava)) {
+    throw "LNIS 전용 Java 21을 찾을 수 없습니다: $bundledJava"
+}
 $source = (Resolve-Path -LiteralPath $WinSwExe).Path
 $serviceExe = Join-Path $PSScriptRoot 'lnis-agent-service.exe'
 Copy-Item -LiteralPath $source -Destination $serviceExe -Force
@@ -23,4 +27,3 @@ if ($LASTEXITCODE -ne 0) { throw "WinSW install failed with exit code $LASTEXITC
 & $serviceExe start
 if ($LASTEXITCODE -ne 0) { throw "WinSW start failed with exit code $LASTEXITCODE" }
 Write-Output "LNIS $Role agent service installed as $AgentId."
-

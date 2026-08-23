@@ -298,7 +298,22 @@ bin\
 conf\
 lib\
 native\LnisAfsCodec.dll
+runtime\jdk-21\bin\java.exe
 service\
+start-sender-agent.bat
+start-receiver-agent.bat
+stop-local-agents.ps1
+```
+
+`runtime\jdk-21`은 Agent 전용 Windows Java 21 런타임입니다. 시스템에 설치된 Java 17을
+삭제하거나 `PATH`, 시스템 `JAVA_HOME`을 변경하지 않습니다. 두 역할별 실행 스크립트도
+배포본 안의 Java만 사용하므로 기존 Java 17 서버와 동시에 실행할 수 있습니다.
+
+런타임이 빠진 배포본을 다시 준비할 때는 다음 스크립트를 실행합니다. 스크립트는 공식
+Eclipse Adoptium API에서 Windows x64 Temurin 21 JRE를 내려받고 SHA-256을 검증합니다.
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\runtime\install-java21.ps1
 ```
 
 ### 6.2 콘솔 모드로 먼저 확인
@@ -325,13 +340,28 @@ lnis.agent.token=중앙서버-env의-receiver-token
 lnis.native.dir=native
 ```
 
-Agent 배포 디렉터리에서 실행합니다.
+한 PC에서 로컬 통합 시험을 할 때는 Agent 배포 디렉터리에서 PowerShell 창을 두 개 열고
+역할별 스크립트를 하나씩 실행합니다.
 
 ```powershell
-.\bin\lnis-agent.bat
+.\start-sender-agent.bat
 ```
 
-Sender 화면의 Agent 상태가 `READY`로 바뀌면 중앙 서버 인증 및 WebSocket 연결이 정상입니다. 종료는 `Ctrl+C`입니다.
+```powershell
+.\start-receiver-agent.bat
+```
+
+각 스크립트는 `conf\agent-sender.properties` 또는 `conf\agent-receiver.properties`를
+자동 선택합니다. Sender와 Receiver를 서로 다른 PC에 배치하면 각 배포본의 설정 파일에서
+`localhost`를 중앙 서버 PC의 실제 IPv4 주소로 변경합니다. 화면의 Agent 상태가 `READY`로
+바뀌면 중앙 서버 인증 및 WebSocket 연결이 정상입니다. 종료는 각 창에서 `Ctrl+C`입니다.
+
+백그라운드로 실행한 로컬 Agent 두 개를 종료할 때는 다음 스크립트를 사용합니다. 다른 Java
+프로세스는 건드리지 않고 현재 배포본의 Java 21로 실행된 LNIS Agent만 종료합니다.
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\stop-local-agents.ps1
+```
 
 설정은 다음 우선순위로 읽습니다.
 
@@ -340,7 +370,8 @@ Sender 화면의 Agent 상태가 `READY`로 바뀌면 중앙 서버 인증 및 W
 3. `conf/agent.properties`
 4. 코드 기본값
 
-사용 가능한 환경 변수는 `LNIS_AGENT_ID`, `LNIS_AGENT_ROLE`, `LNIS_SERVER_WS`, `LNIS_AGENT_TOKEN`, `LNIS_NATIVE_DIR`입니다.
+사용 가능한 환경 변수는 `LNIS_AGENT_CONFIG`, `LNIS_AGENT_ID`, `LNIS_AGENT_ROLE`,
+`LNIS_SERVER_WS`, `LNIS_AGENT_TOKEN`, `LNIS_NATIVE_DIR`입니다.
 
 ### 6.3 Windows 서비스 설치
 
@@ -376,6 +407,7 @@ Set-Location 'C:\LNIS\receiver-agent'
 
 - WinSW 실행 파일을 `service\lnis-agent-service.exe`로 복사
 - `conf\agent.properties` 생성
+- `runtime\jdk-21\bin\java.exe`를 서비스 실행 파일로 사용
 - `LNIS AFS Agent` 서비스 설치 및 시작
 - 부팅 시 자동 시작 설정
 - 장애 시 5초 후 재시작

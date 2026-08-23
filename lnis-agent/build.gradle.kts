@@ -20,6 +20,8 @@ distributions {
         contents {
             from(rootProject.file("native/bin/win-x64")) { into("native") }
             from("conf") { into("conf") }
+            from("launcher")
+            from("runtime-support") { into("runtime") }
             from("service") { into("service") }
         }
     }
