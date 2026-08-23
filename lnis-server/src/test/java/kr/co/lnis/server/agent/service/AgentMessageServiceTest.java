@@ -7,6 +7,7 @@ import kr.co.lnis.protocol.model.AgentProtocol.MessageType;
 import kr.co.lnis.protocol.model.LnisModels.AgentRole;
 import kr.co.lnis.server.agent.repository.AgentRepository;
 import kr.co.lnis.server.input.service.InputBufferService;
+import kr.co.lnis.server.frameevidence.service.FrameEvidenceService;
 import kr.co.lnis.server.realtime.service.EventService;
 import kr.co.lnis.server.session.repository.SessionRepository;
 import kr.co.lnis.server.session.service.SessionService;
@@ -42,6 +43,9 @@ class AgentMessageServiceTest {
     @Mock
     private SessionService lifecycle;
 
+    @Mock
+    private FrameEvidenceService frameEvidence;
+
     @Test
     void statusWithoutEventTypeIsReportedAsErrorInsteadOfThrowingNullPointerException() {
         ObjectMapper json = new ObjectMapper().findAndRegisterModules();
@@ -51,7 +55,8 @@ class AgentMessageServiceTest {
                 inputs,
                 sessions,
                 events,
-                lifecycle);
+                lifecycle,
+                frameEvidence);
         UUID sessionId = UUID.randomUUID();
         Envelope malformedStatus = new Envelope(
                 1,

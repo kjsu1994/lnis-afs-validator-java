@@ -153,6 +153,7 @@ public final class AgentRuntime implements AutoCloseable {
                 sessionId,
                 command,
                 (type, payload) -> event(sessionId, type, payload),
+                evidence -> frameEvidence(sessionId, evidence),
                 result -> completeRole(sessionId, result));
     }
 
@@ -172,7 +173,15 @@ public final class AgentRuntime implements AutoCloseable {
                 command,
                 input.toByteArray(),
                 (type, payload) -> event(sessionId, type, payload),
+                evidence -> frameEvidence(sessionId, evidence),
                 result -> completeRole(sessionId, result));
+    }
+
+    /** AFS 원문은 UDP 결과에 넣지 않고 전용 WebSocket 메시지로 중앙 서버에 보낸다. */
+    private void frameEvidence(
+            UUID sessionId,
+            FrameEvidenceMessage evidence) {
+        send(MessageType.FRAME_EVIDENCE, sessionId, json.valueToTree(evidence));
     }
 
     private void completeRole(UUID sessionId, Object result) {

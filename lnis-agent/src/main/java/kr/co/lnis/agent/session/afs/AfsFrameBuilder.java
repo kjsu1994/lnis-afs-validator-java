@@ -30,11 +30,13 @@ public final class AfsFrameBuilder {
 
     /** 조립된 프레임과 프레임별 오류 주입 내역을 함께 보관한다. */
     public record Prepared(
+            List<Frame> referenceFrames,
             List<Frame> frames,
             int injectedFrameCount,
             long recordCount,
             List<InjectionDetail> injections) {
         public Prepared {
+            referenceFrames = List.copyOf(referenceFrames);
             frames = List.copyOf(frames);
             injections = List.copyOf(injections);
         }
@@ -51,6 +53,7 @@ public final class AfsFrameBuilder {
         int totalFrames = (blocks.size() + 1) / 2;
         int injected = 0;
         List<Frame> frames = new ArrayList<>(totalFrames);
+        List<Frame> referenceFrames = new ArrayList<>(totalFrames);
         List<InjectionDetail> injections = new ArrayList<>();
         for (int index = 0; index < blocks.size(); index += 2) {
             byte[] second = index + 1 < blocks.size() ? blocks.get(index + 1) : blocks.get(index);
@@ -59,6 +62,7 @@ public final class AfsFrameBuilder {
                     sb2(time[0], time[1]),
                     AfsRawFragmentCodec.toSbBits(blocks.get(index)),
                     AfsRawFragmentCodec.toSbBits(second));
+            byte[] reference = encoded.clone();
             int frameIndex = frames.size();
             int mode = mode(
                     options.testType(),
@@ -78,12 +82,19 @@ public final class AfsFrameBuilder {
                         bitPositions));
                 injected++;
             }
-            frames.add(new Frame(time[0], time[1], time[2], encoded)); advance(time);
+            referenceFrames.add(new Frame(time[0], time[1], time[2], reference));
+            frames.add(new Frame(time[0], time[1], time[2], encoded));
+            advance(time);
         }
         if (options.testType() == TestType.TEST_D_SYNC_RECOVERY && frames.size() < 2) {
             throw new IllegalArgumentException("Test D requires at least two frames");
         }
-        return new Prepared(frames, injected, records.size(), injections);
+        return new Prepared(
+                referenceFrames,
+                frames,
+                injected,
+                records.size(),
+                injections);
     }
 
     private static int mode(TestType type, int index, int total, int interval) {

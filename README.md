@@ -666,6 +666,10 @@ Set-Location 'C:\Users\honeybadger\Desktop\Lins Java'
 - Test A/B/C: 복호화 `4/4`, record `4/4`, byte `464/464`, SHA-256 일치
 - Test D: 복호화·재동기 `3/3`, record `3/4`, byte `348/464`, SHA-256 불일치가 예상 결과인지 확인
 - Test E: Sender가 실제로 미전송한 복제본이 1건 이상이면서도 `4/4`, `464/464`, SHA-256 일치인지 확인
+- 프레임 증거: 4개 프레임의 Sender/Receiver 증거 병합, 단계별 750 byte 원문, 송신/수신 차이 0,
+  복호화 후 재인코딩과 기준 프레임 일치 여부를 확인
+- Test D 프레임 증거: 동기 손상 프레임은 `intentionalSyncRejection=true`이고 재인코딩 자료가 없으며,
+  나머지 3개 프레임은 기준 대비 0 bit인지 확인
 
 2026-08-23 로컬 loopback 실측에서는 A/B/C/E가 모두 `4/4 record`, `464/464 byte`,
 SHA-256 일치로 PASS했습니다. Test D는 설계대로 `3/4 record`, `348/464 byte`, SHA-256
@@ -681,6 +685,8 @@ TX와 RX 각각 다음 파일을 HTTP attachment로 내려받을 수 있습니�
 | `result.json` | 판정, 무결성 결과, 지표, 네트워크 카운터, 자원 샘플, 오류 정보 |
 | `metrics-summary.csv` | Role/Category/Name/Description/Value/Unit/Status 요약 |
 | `metrics-timeseries.csv` | Timestamp별 CPU 및 Working Set 메모리 |
+| `frame-evidence.json` | 보관된 프레임별 기준/송신/수신/재인코딩 6,000비트 원문, SHA-256, 차이 위치 |
+| `frame-diff-summary.csv` | 프레임별 오류 주입·전송 중 변화·최종 복구 비트 차이 수와 해시 요약 |
 
 CSV는 Excel 한글 호환성을 위해 UTF-8 BOM을 포함합니다. 실제 다운로드 파일명에는 session ID와 `tx` 또는 `rx`가 포함됩니다.
 
@@ -690,9 +696,33 @@ CSV는 Excel 한글 호환성을 위해 UTF-8 BOM을 포함합니다. 실제 다
 <session-id>-tx-result.json
 <session-id>-rx-metrics-summary.csv
 <session-id>-rx-metrics-timeseries.csv
+<session-id>-frame-evidence.json
+<session-id>-frame-diff-summary.csv
 ```
 
 결과 파일은 미리 서버 디스크에 생성하지 않습니다. 사용자가 다운로드할 때 Redis의 결과 객체를 CSV 또는 JSON byte stream으로 생성합니다. 현재 구현은 `reconstructed.graw` 파일을 산출하지 않습니다.
+
+### 9.1 AFS 6,000비트 점자형 지도 읽는 방법
+
+시험 결과 아래의 **6,000비트 프레임 직접 비교** 영역은 AFSFrame 하나를 100열 × 60행으로
+표시합니다. 작은 사각형 하나가 AFS 심볼 1개이므로 한 지도에 정확히 6,000개가 들어갑니다.
+진한 점과 옅은 점은 각각 비트 1과 0이고, 빨간 점은 해당 단계의 비교 기준과 다른 위치입니다.
+
+화면은 다음 네 단계를 같은 좌표로 보여줍니다.
+
+1. **기준 AFSFrame**: GRAW를 정상 인코딩했으며 아직 시험 오류를 넣지 않은 기준값
+2. **실제 송신 AFSFrame**: Test B/C/D 오류를 주입한 뒤 Sender가 실제 UDP에 넣은 값
+3. **Receiver 수신 AFSFrame**: UDP 구조와 CRC32 검사를 통과해 Receiver가 채택한 값
+4. **복호화 후 재인코딩 검증**: Receiver가 복호화한 SB2/SB3/SB4를 같은 TOI로 다시 인코딩한 값
+
+지도 위에 마우스를 올리면 같은 심볼 좌표가 네 지도에서 함께 강조되고, 해당 위치의 단계별
+0/1 값이 표시됩니다. **최종 복구 차이 0 bit**는 네 번째 검증 프레임이 첫 번째 기준 프레임과
+6,000비트 전부 같다는 뜻입니다. 단, 이는 프레임 수준 증거이며 최종 PASS는 GRAW 크기,
+record 수, SHA-256과 시험별 판정 조건도 함께 충족해야 합니다.
+
+Test D에서 동기 패턴을 의도적으로 훼손한 프레임은 Receiver가 정상 프레임으로 채택하지 않으므로
+네 번째 지도가 없을 수 있습니다. 이것은 Test D의 설계된 동작이며, 다음 정상 동기를 찾아낸
+프레임들의 복구 결과와 Test D 판정 카드를 함께 확인해야 합니다.
 
 ## 10. Redis 저장 정책
 
@@ -702,6 +732,8 @@ Redis는 시험 중 필요한 임시 버퍼로만 사용됩니다.
 - AOF 비활성화: `--appendonly no`
 - 메모리 정책: `noeviction`
 - 입력/세션/결과/Agent 상태 키 TTL: 최대 24시간
+- AFS 프레임 상세 증거 TTL: 최대 24시간
+- 상세 증거 상한: 세션당 최대 500프레임. 초과 시 처음 250개와 마지막 250개 보관
 - Redis 포트는 Docker 내부 네트워크에서만 접근
 
 `noeviction`은 메모리가 부족할 때 오래된 진행 중 시험을 임의로 삭제하지 않고 새로운 쓰기를 실패시키기 위한 선택입니다. 대용량 입력을 사용할 때는 `.env`의 `REDIS_MAXMEMORY`를 조정해야 합니다.
@@ -716,6 +748,10 @@ Redis는 시험 중 필요한 임시 버퍼로만 사용됩니다.
 - 운영자가 키를 삭제
 
 보존이 필요한 결과는 시험 완료 직후 CSV/JSON으로 다운로드하여 별도 저장소에 보관해야 합니다.
+
+프레임 증거는 프레임당 최대 네 개의 750 byte 원문과 JSON/Base64 오버헤드를 사용합니다.
+따라서 대용량 시험에서 모든 프레임을 무제한 저장하지 않습니다. 보관되지 않은 중간 프레임은
+화면 선택 목록과 `frame-evidence.json`에도 포함되지 않습니다.
 
 ## 11. REST API 상세
 
@@ -864,7 +900,15 @@ GET /lnis/api/v1/sessions/{sessionId}/artifacts/tx/metrics-timeseries.csv
 GET /lnis/api/v1/sessions/{sessionId}/artifacts/rx/result.json
 GET /lnis/api/v1/sessions/{sessionId}/artifacts/rx/metrics-summary.csv
 GET /lnis/api/v1/sessions/{sessionId}/artifacts/rx/metrics-timeseries.csv
+GET /lnis/api/v1/sessions/{sessionId}/frame-evidence
+GET /lnis/api/v1/sessions/{sessionId}/frame-evidence/{frameIndex}
+GET /lnis/api/v1/sessions/{sessionId}/frame-evidence/artifacts/frame-evidence.json
+GET /lnis/api/v1/sessions/{sessionId}/frame-evidence/artifacts/frame-diff-summary.csv
 ```
+
+첫 번째 프레임 증거 API는 원문을 제외한 프레임 선택 목록과 SHA-256/차이 수를 반환합니다.
+두 번째 API만 선택한 750 byte 프레임 네 단계 원문과 비트 차이 위치를 Base64 JSON으로 반환해
+브라우저와 서버가 한 번에 불필요한 대용량 데이터를 주고받지 않게 합니다.
 
 `role`에는 `tx`/`sender` 또는 `rx`/`receiver`를 사용할 수 있습니다.
 

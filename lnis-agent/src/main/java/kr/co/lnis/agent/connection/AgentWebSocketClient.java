@@ -25,6 +25,8 @@ public final class AgentWebSocketClient implements WebSocket.Listener, AutoClose
             runnable -> new Thread(runnable, "lnis-agent-heartbeat"));
     private final AtomicLong heartbeat = new AtomicLong();
     private final StringBuilder text = new StringBuilder();
+    /** Java WebSocket은 동시에 두 sendText를 허용하지 않으므로 모든 송신을 직렬화한다. */
+    private final Object sendLock = new Object();
     private volatile WebSocket socket;
 
     public AgentWebSocketClient(AgentConfig config, AgentRuntime runtime) {
@@ -115,7 +117,16 @@ public final class AgentWebSocketClient implements WebSocket.Listener, AutoClose
         WebSocket current = socket;
         if (current != null) {
             try {
-                current.sendText(json.writeValueAsString(envelope), true);
+                /*
+                 * 프레임 증거 여러 건과 heartbeat가 동시에 전송되면 send pending 예외가 발생할 수 있다.
+                 * 완료를 기다린 뒤 다음 메시지를 보내야 증거와 최종 결과의 순서 및 전달을 보장할 수 있다.
+                 */
+                synchronized (sendLock) {
+                    current.sendText(
+                                    json.writeValueAsString(envelope),
+                                    true)
+                            .join();
+                }
             } catch (Exception ignored) {
                 // 재연결 스케줄러가 연결을 복구하므로 개별 전송 실패는 무시한다.
             }

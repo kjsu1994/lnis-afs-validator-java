@@ -180,6 +180,57 @@ function Test-SessionResult {
     }
 }
 
+<#
+판정값뿐 아니라 Sender/Receiver 6,000비트 프레임 증거가 실제로 병합됐는지 검증한다.
+이 검사가 있어야 Agent 또는 서버 한쪽만 구버전으로 회귀한 상황을 즉시 발견할 수 있다.
+#>
+function Test-FrameEvidence {
+    param(
+        [object]$Session,
+        [object]$Definition
+    )
+
+    # 서버 재기동 직후 Agent WebSocket 재연결 큐까지 고려해 최대 15초 동안 기다린다.
+    $evidenceDeadline = (Get-Date).AddSeconds(15)
+    do {
+        # Invoke-RestMethod가 JSON 배열을 그대로 반환하므로 다시 @()로 감싸면 배열 하나로 오인할 수 있다.
+        $evidence = Invoke-RestMethod -Uri "$BaseUrl/sessions/$($Session.sessionId)/frame-evidence"
+        $evidenceComplete = $evidence.Count -eq 4 `
+            -and -not ($evidence | Where-Object { -not $_.senderEvidenceAvailable }) `
+            -and -not ($evidence | Where-Object { -not $_.receiverEvidenceAvailable })
+        if (-not $evidenceComplete) {
+            Start-Sleep -Milliseconds 200
+        }
+    } while (-not $evidenceComplete -and (Get-Date) -lt $evidenceDeadline)
+
+    Assert-Condition ($evidence.Count -eq 4) "$($Definition.Type) 프레임 증거가 4개가 아닙니다."
+    Assert-Condition (-not ($evidence | Where-Object { -not $_.senderEvidenceAvailable })) "$($Definition.Type) Sender 프레임 증거가 누락됐습니다."
+    Assert-Condition (-not ($evidence | Where-Object { -not $_.receiverEvidenceAvailable })) "$($Definition.Type) Receiver 프레임 증거가 누락됐습니다."
+    Assert-Condition (-not ($evidence | Where-Object { $_.transmittedToReceivedDifferences -ne 0 })) "$($Definition.Type) 송신/수신 프레임에 예상하지 않은 차이가 있습니다."
+
+    $injected = ($evidence | Measure-Object referenceToTransmittedDifferences -Sum).Sum
+    if ($Definition.Type -in @('TEST_B_RANDOM_ERRORS', 'TEST_C_BURST_ERRORS')) {
+        Assert-Condition ($injected -eq 4) "$($Definition.Type) 점자 지도 오류 주입 합계가 4 bit가 아닙니다."
+    } elseif ($Definition.Type -eq 'TEST_D_SYNC_RECOVERY') {
+        Assert-Condition ($injected -eq 1) 'Test D 점자 지도 동기 손상이 1 bit가 아닙니다.'
+        Assert-Condition (-not $evidence[0].decodeSucceeded) 'Test D 손상 동기 프레임이 복호화된 것으로 표시됩니다.'
+        Assert-Condition ($null -eq $evidence[0].referenceToReencodedDifferences) 'Test D 제외 프레임에 재인코딩 비교값이 생겼습니다.'
+        Assert-Condition $evidence[0].intentionalSyncRejection 'Test D 의도적 동기 제외 표시가 없습니다.'
+    } else {
+        Assert-Condition ($injected -eq 0) "$($Definition.Type)에 예상하지 않은 점자 지도 오류 주입이 있습니다."
+    }
+
+    $decodedEvidence = @($evidence | Where-Object { $_.decodeSucceeded })
+    Assert-Condition (-not ($decodedEvidence | Where-Object { $_.referenceToReencodedDifferences -ne 0 })) "$($Definition.Type) 복호화 후 재인코딩 프레임이 기준과 다릅니다."
+
+    $detailIndex = if ($Definition.Type -eq 'TEST_D_SYNC_RECOVERY') { 1 } else { 0 }
+    $detail = Invoke-RestMethod -Uri "$BaseUrl/sessions/$($Session.sessionId)/frame-evidence/$detailIndex"
+    foreach ($field in @('referenceFrame', 'transmittedFrame', 'receivedFrame', 'reencodedFrame')) {
+        $bytes = [Convert]::FromBase64String($detail.$field)
+        Assert-Condition ($bytes.Length -eq 750) "$($Definition.Type) $field 원문이 750 byte가 아닙니다."
+    }
+}
+
 Assert-Condition (Test-Path -LiteralPath $SamplePath -PathType Leaf) "샘플 파일이 없습니다: $SamplePath"
 Wait-AgentsReady
 $uploadedInput = Upload-Sample
@@ -196,6 +247,7 @@ $summary = foreach ($definition in $definitions) {
     Write-Host "[$($definition.Type)] 실행 중..."
     $session = Start-TestSession $uploadedInput $definition
     Test-SessionResult $session $definition
+    Test-FrameEvidence $session $definition
     $integrity = $session.rxResult.integrity
     $row = [pscustomobject]@{
         Test = $definition.Type

@@ -6,8 +6,9 @@ import {
     setPill,
     downloads,
     renderMetrics,
-} from './api.js?v=20260823-final1';
+} from './api.js?v=20260823-frame4';
 import { formatEventLog } from './event-log.js?v=20260823-final1';
+import { renderFrameEvidence } from './frame-evidence.js?v=20260823-frame4';
 
 const $ = (id) => document.getElementById(id);
 const eventLog = $('event-log');
@@ -508,6 +509,7 @@ statusSocket(
                 event.sessionId,
                 event.role === 'SENDER' ? 'tx' : 'rx',
             );
+            renderFrameEvidence($('frame-evidence'), event.sessionId);
             // 한쪽 RESULT만으로는 시험이 끝난 것이 아니므로 서버의 활성 상태를 다시 확인한다.
             refreshActiveSession().catch((error) => log(eventLog, error.message));
         }

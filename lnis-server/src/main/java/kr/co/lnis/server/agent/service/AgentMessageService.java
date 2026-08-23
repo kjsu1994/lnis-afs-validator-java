@@ -6,6 +6,7 @@ import kr.co.lnis.protocol.model.LnisModels.*;
 import kr.co.lnis.server.agent.entity.AgentEntity;
 import kr.co.lnis.server.agent.repository.AgentRepository;
 import kr.co.lnis.server.input.service.InputBufferService;
+import kr.co.lnis.server.frameevidence.service.FrameEvidenceService;
 import kr.co.lnis.server.realtime.service.EventService;
 import kr.co.lnis.server.session.repository.SessionRepository;
 import kr.co.lnis.server.session.service.SessionService;
@@ -28,6 +29,7 @@ public class AgentMessageService {
     private final SessionRepository sessions;
     private final EventService events;
     private final SessionService lifecycle;
+    private final FrameEvidenceService frameEvidence;
 
     public AgentMessageService(
             ObjectMapper json,
@@ -35,13 +37,15 @@ public class AgentMessageService {
             InputBufferService inputs,
             SessionRepository sessions,
             EventService events,
-            SessionService lifecycle) {
+            SessionService lifecycle,
+            FrameEvidenceService frameEvidence) {
         this.json = json;
         this.agents = agents;
         this.inputs = inputs;
         this.sessions = sessions;
         this.events = events;
         this.lifecycle = lifecycle;
+        this.frameEvidence = frameEvidence;
     }
 
     /** envelope 종류에 따라 Agent 상태, 입력 청크, 진행률 또는 역할 결과 처리로 분기한다. */
@@ -85,6 +89,10 @@ public class AgentMessageService {
                     envelope.role(),
                     null,
                     json.treeToValue(envelope.payload(), PortList.class));
+            case FRAME_EVIDENCE -> frameEvidence.save(
+                    envelope.sessionId(),
+                    envelope.role(),
+                    json.treeToValue(envelope.payload(), FrameEvidenceMessage.class));
             case ROLE_RESULT -> {
                 RoleResult result = json.treeToValue(envelope.payload(), RoleResult.class);
                 sessions.saveResult(result);

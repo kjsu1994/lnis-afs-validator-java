@@ -90,6 +90,17 @@ export function downloads(container, sessionId, role) {
         link.href = `${API}/sessions/${sessionId}/artifacts/${role}/${name}`;
         container.append(link);
     }
+
+    // Sender/Receiver 양쪽을 병합한 6,000비트 프레임 증거 산출물이다.
+    for (const name of ['frame-evidence.json', 'frame-diff-summary.csv']) {
+        const link = document.createElement('a');
+        link.textContent = `AFS ${name}`;
+        link.href = `${API}/sessions/${sessionId}/frame-evidence/artifacts/${name}`;
+        link.title = name.endsWith('.json')
+            ? '프레임별 네 단계 6,000비트 원문과 차이 위치를 JSON 파일로 저장합니다.'
+            : '프레임별 비트 차이 수와 SHA-256 요약을 CSV 파일로 저장합니다.';
+        container.append(link);
+    }
 }
 
 function displayNumber(value) {

@@ -199,3 +199,150 @@
         font-size: 18px;
     }
 }
+
+/* AFS 6,000비트 증거 비교: 100×60 점자형 지도와 단계별 해석을 한 컴포넌트로 묶는다. */
+.frame-evidence {
+    margin-top: 24px;
+    padding-top: 20px;
+    border-top: 1px solid var(--line);
+}
+
+.frame-evidence-heading {
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: 16px;
+}
+
+.frame-evidence-heading h3 {
+    margin: 3px 0 5px;
+    font-size: 20px;
+}
+
+.frame-evidence-heading p,
+.frame-retention-note {
+    margin: 0;
+    color: var(--muted);
+    font-size: 12px;
+    line-height: 1.55;
+}
+
+.frame-evidence-heading label {
+    min-width: 240px;
+    font-weight: 800;
+}
+
+.frame-retention-note {
+    margin-top: 10px;
+    padding: 9px 12px;
+    border-radius: 8px;
+    background: #f2f6f7;
+}
+
+.frame-interpretation {
+    margin: 14px 0 10px;
+    padding: 12px 14px;
+    border-left: 4px solid #d39725;
+    border-radius: 8px;
+    background: #fff8e8;
+}
+
+.frame-interpretation.pass {
+    border-left-color: #2a9d7f;
+    background: #e8f8f2;
+}
+
+.frame-interpretation p {
+    margin: 4px 0 0;
+}
+
+.frame-comparison-summary,
+.frame-map-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 10px;
+}
+
+.frame-comparison-summary article,
+.frame-map-card {
+    padding: 12px;
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    background: #fbfcfc;
+}
+
+.frame-comparison-summary span,
+.frame-comparison-summary strong {
+    display: block;
+}
+
+.frame-comparison-summary strong {
+    margin-top: 4px;
+    font-size: 19px;
+}
+
+.frame-comparison-summary p,
+.frame-map-card > p {
+    margin: 6px 0 0;
+    color: var(--muted);
+    font-size: 12px;
+    line-height: 1.5;
+}
+
+.frame-map-grid {
+    margin-top: 12px;
+    grid-template-columns: repeat(auto-fit, minmax(520px, 1fr));
+}
+
+.frame-map-heading {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 10px;
+}
+
+.frame-map-badge {
+    padding: 4px 8px;
+    border-radius: 99px;
+    background: #f9dada;
+    color: #9d2f2f;
+    font-size: 11px;
+    font-weight: 800;
+}
+
+.frame-map-badge.same {
+    background: #d4f0e6;
+    color: #08624f;
+}
+
+.frame-map-viewport {
+    margin-top: 10px;
+    overflow-x: auto;
+    border: 1px solid #cad7dc;
+    border-radius: 6px;
+    background: #edf2f4;
+}
+
+.frame-map-viewport canvas {
+    display: block;
+    width: 500px;
+    height: 300px;
+    cursor: crosshair;
+    image-rendering: pixelated;
+}
+
+.frame-hover-info {
+    min-height: 18px;
+    font-variant-numeric: tabular-nums;
+}
+
+@media(max-width: 700px) {
+    .frame-evidence-heading {
+        align-items: stretch;
+        flex-direction: column;
+    }
+
+    .frame-map-grid {
+        grid-template-columns: 1fr;
+    }
+}

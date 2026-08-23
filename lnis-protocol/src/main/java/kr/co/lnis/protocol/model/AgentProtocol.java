@@ -23,7 +23,7 @@ public final class AgentProtocol {
     /** Envelope payload가 어떤 형태인지 결정하는 최상위 메시지 종류다. */
     public enum MessageType {
         HELLO, HELLO_ACK, HEARTBEAT, COMMAND, COMMAND_ACK, STATUS, PORT_LIST,
-        INPUT_CHUNK, INPUT_COMPLETE, ROLE_RESULT, ERROR
+        INPUT_CHUNK, INPUT_COMPLETE, FRAME_EVIDENCE, ROLE_RESULT, ERROR
     }
 
     /** 중앙 서버가 Agent에 실행을 요청할 수 있는 명령 목록이다. */
@@ -77,6 +77,37 @@ public final class AgentProtocol {
 
     /** GNSS/TX/RX 작업의 진행률, 단계, 사용자 메시지와 추가 카운터를 전달한다. */
     public record Progress(EventType type, int percent, String stage, String message, Map<String, Object> counters) {}
+
+    /**
+     * 한 Agent가 확보한 AFS 6,000비트 프레임 증거를 서버로 전달한다.
+     *
+     * <p>Sender는 {@code referenceFrame}/{@code transmittedFrame}, Receiver는
+     * {@code receivedFrame}/{@code reencodedFrame}을 채운다. 역할별로 확보할 수 없는 값은 null이며,
+     * 서버가 sessionId와 frameIndex를 기준으로 두 메시지를 하나의 비교 자료로 병합한다.
+     */
+    public record FrameEvidenceMessage(
+            int frameIndex,
+            byte[] referenceFrame,
+            byte[] transmittedFrame,
+            byte[] receivedFrame,
+            byte[] reencodedFrame,
+            List<Integer> injectedBitPositions,
+            boolean decodeSucceeded,
+            String note) {
+        public FrameEvidenceMessage {
+            referenceFrame = copy(referenceFrame);
+            transmittedFrame = copy(transmittedFrame);
+            receivedFrame = copy(receivedFrame);
+            reencodedFrame = copy(reencodedFrame);
+            injectedBitPositions = injectedBitPositions == null
+                    ? List.of()
+                    : List.copyOf(injectedBitPositions);
+        }
+
+        private static byte[] copy(byte[] value) {
+            return value == null ? null : value.clone();
+        }
+    }
 
     /** 서버가 순번과 발생 시각을 붙여 브라우저 상태 WebSocket으로 방송하는 이벤트다. */
     public record BrowserEvent(long sequence, EventType type, Instant occurredAt, String agentId, AgentRole role, UUID sessionId, Object payload) {}

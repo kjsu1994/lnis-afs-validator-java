@@ -5,6 +5,7 @@ import kr.co.lnis.agent.codec.NativeAfsCodec;
 import kr.co.lnis.agent.session.afs.*;
 import kr.co.lnis.protocol.codec.*;
 import kr.co.lnis.protocol.model.AgentProtocol.EventType;
+import kr.co.lnis.protocol.model.AgentProtocol.FrameEvidenceMessage;
 import kr.co.lnis.protocol.model.LnisModels.*;
 import java.io.ByteArrayOutputStream;
 import java.lang.management.ManagementFactory;
@@ -28,6 +29,8 @@ import static kr.co.lnis.protocol.codec.AfsPacketCodec.*;
  * 결정론적으로 적용해 동일 seed의 결과를 재현한다.
  */
 public final class UdpSessionService implements AutoCloseable {
+    /** Redis 상세 증거 보관 상한과 동일한 Agent 전송 상한이다. */
+    private static final int MAX_EVIDENCE_FRAMES = 500;
     public record SessionCommand(String senderAgentId, String receiverAgentId, UUID inputId, TransportSettings transport, TestOptions options) {}
     private record Manifest(UUID testId, int protocolVersion, int prn, int customMessageType, long sourceLength, String sourceSha256,
                             int recordCount, int frameCount, int startWeek, int startIntervalOfWeek, int startTimeOfInterval,
@@ -53,8 +56,15 @@ public final class UdpSessionService implements AutoCloseable {
             SessionCommand command,
             byte[] source,
             BiConsumer<EventType, Object> event,
+            java.util.function.Consumer<FrameEvidenceMessage> evidenceSink,
             java.util.function.Consumer<RoleResult> resultSink) {
-        executor.submit(() -> runSender(sessionId, command, source, event, resultSink));
+        executor.submit(() -> runSender(
+                sessionId,
+                command,
+                source,
+                event,
+                evidenceSink,
+                resultSink));
     }
 
     /** Receiver socket 대기 작업을 별도 virtual thread에 제출한다. */
@@ -62,8 +72,14 @@ public final class UdpSessionService implements AutoCloseable {
             UUID sessionId,
             SessionCommand command,
             BiConsumer<EventType, Object> event,
+            java.util.function.Consumer<FrameEvidenceMessage> evidenceSink,
             java.util.function.Consumer<RoleResult> resultSink) {
-        executor.submit(() -> runReceiver(sessionId, command, event, resultSink));
+        executor.submit(() -> runReceiver(
+                sessionId,
+                command,
+                event,
+                evidenceSink,
+                resultSink));
     }
 
     /** 활성 socket을 닫아 blocking receive를 깨우고 현재 세션에 취소 신호를 전달한다. */
@@ -76,7 +92,13 @@ public final class UdpSessionService implements AutoCloseable {
     }
 
     /** GRAW를 AFS frame으로 변환하고 manifest/frame/end 순서로 송신한 뒤 결과를 기다린다. */
-    private void runSender(UUID id, SessionCommand command, byte[] source, BiConsumer<EventType,Object> event, java.util.function.Consumer<RoleResult> sink) {
+    private void runSender(
+            UUID id,
+            SessionCommand command,
+            byte[] source,
+            BiConsumer<EventType, Object> event,
+            java.util.function.Consumer<FrameEvidenceMessage> evidenceSink,
+            java.util.function.Consumer<RoleResult> sink) {
         Instant started = Instant.now();
         try {
             cancelled.set(false);
@@ -224,6 +246,21 @@ public final class UdpSessionService implements AutoCloseable {
                         frameDetails.put("injectedBitPositions", injection.bitPositions());
                     }
                     event.accept(EventType.TX_STATUS, frameDetails);
+
+                    // 대용량 시험에서는 앞/뒤 프레임을 균형 있게 남겨 Redis 사용량을 제한한다.
+                    if (shouldKeepEvidence(index, prepared.frames().size())) {
+                        evidenceSink.accept(new FrameEvidenceMessage(
+                                index,
+                                prepared.referenceFrames().get(index).payload(),
+                                frame.payload(),
+                                null,
+                                null,
+                                injection == null ? List.of() : injection.bitPositions(),
+                                false,
+                                injection == null
+                                        ? "오류가 주입되지 않은 Sender 프레임"
+                                        : "Sender가 시험 조건에 따라 비트를 반전한 프레임"));
+                    }
                 }
                 Packet end = new Packet(
                         Kind.SESSION_END,
@@ -294,7 +331,12 @@ public final class UdpSessionService implements AutoCloseable {
     }
 
     /** SESSION_START부터 END까지 수신하고 복원 무결성을 계산해 RESULT packet을 Sender에 반환한다. */
-    private void runReceiver(UUID requestedId, SessionCommand command, BiConsumer<EventType,Object> event, java.util.function.Consumer<RoleResult> sink) {
+    private void runReceiver(
+            UUID requestedId,
+            SessionCommand command,
+            BiConsumer<EventType, Object> event,
+            java.util.function.Consumer<FrameEvidenceMessage> evidenceSink,
+            java.util.function.Consumer<RoleResult> sink) {
         Instant started=Instant.now();
         try (DatagramSocket socket = new DatagramSocket(command.transport().dataPort())) {
             cancelled.set(false);
@@ -425,6 +467,26 @@ public final class UdpSessionService implements AutoCloseable {
                     "corruptDatagrams", corrupt));
 
             DecodeAggregate aggregate = decodeFrames(frames.values(), manifest.testType);
+
+            // Receiver가 실제로 채택한 6,000비트와 복호화 후 재인코딩한 검증 프레임을 서버에 전달한다.
+            for (ReceivedFrame frame : frames.values()) {
+                int frameIndex = Math.toIntExact(frame.sequence());
+                if (!shouldKeepEvidence(frameIndex, manifest.frameCount)) {
+                    continue;
+                }
+                byte[] reencoded = aggregate.reencodedFrames.get(frameIndex);
+                evidenceSink.accept(new FrameEvidenceMessage(
+                        frameIndex,
+                        null,
+                        null,
+                        frame.payload(),
+                        reencoded,
+                        List.of(),
+                        aggregate.decodedFrameIndexes.contains(frameIndex),
+                        reencoded == null
+                                ? "복호화에 성공하지 못해 재인코딩 검증 프레임이 없습니다."
+                                : "Receiver 복호화 결과를 같은 TOI로 다시 인코딩한 검증 프레임"));
+            }
             List<byte[]> records = aggregate.reassembler.completeRecords();
             ByteArrayOutputStream reconstructed = new ByteArrayOutputStream();
             for (byte[] record : records) {
@@ -584,21 +646,34 @@ public final class UdpSessionService implements AutoCloseable {
                     decodeOne(
                             extract(joined, offset),
                             ordered.get(source).toi,
+                            Math.toIntExact(ordered.get(source).sequence),
                             total);
                 }
             }
             return total;
         }
         for (ReceivedFrame frame : input) {
-            decodeOne(frame.payload, frame.toi, total);
+            decodeOne(
+                    frame.payload,
+                    frame.toi,
+                    Math.toIntExact(frame.sequence),
+                    total);
         }
         return total;
     }
 
-    private void decodeOne(byte[] frame, int toi, DecodeAggregate total) {
+    private void decodeOne(
+            byte[] frame,
+            int toi,
+            int frameIndex,
+            DecodeAggregate total) {
         try {
             var decoded = codec.decode(toi, frame);
             total.decodedFrames++;
+            total.decodedFrameIndexes.add(frameIndex);
+            total.reencodedFrames.put(
+                    frameIndex,
+                    codec.encode(toi, decoded.sb2(), decoded.sb3(), decoded.sb4()));
             if (decoded.sb2Valid()) {
                 total.sb2Valid++;
             }
@@ -659,6 +734,8 @@ public final class UdpSessionService implements AutoCloseable {
 
     private static final class DecodeAggregate {
         final AfsReassembler reassembler = new AfsReassembler();
+        final Map<Integer, byte[]> reencodedFrames = new HashMap<>();
+        final Set<Integer> decodedFrameIndexes = new HashSet<>();
         long decodedFrames;
         long sb2Valid;
         long sb3Valid;
@@ -666,6 +743,18 @@ public final class UdpSessionService implements AutoCloseable {
         long corrected;
         long recoveredSyncFrames;
         long corruptFrames;
+    }
+
+    /**
+     * 500프레임 이하는 모두 보관하고, 초과하면 시험 시작과 끝을 각각 250프레임씩 보관한다.
+     * 전체 프레임 수가 아무리 커도 WebSocket과 Redis 사용량이 선형으로 증가하지 않는다.
+     */
+    private static boolean shouldKeepEvidence(int frameIndex, int totalFrames) {
+        if (totalFrames <= MAX_EVIDENCE_FRAMES) {
+            return true;
+        }
+        int half = MAX_EVIDENCE_FRAMES / 2;
+        return frameIndex < half || frameIndex >= totalFrames - half;
     }
 
     private static List<Metric> metrics(WireResult result) {
