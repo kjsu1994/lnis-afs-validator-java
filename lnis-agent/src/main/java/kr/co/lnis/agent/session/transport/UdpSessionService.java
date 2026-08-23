@@ -115,6 +115,35 @@ public final class UdpSessionService implements AutoCloseable {
                     command.options().errorSeed(),
                     command.options().syncDamageInterval(),
                     prepared.injectedFrameCount());
+
+            Map<Integer, AfsFrameBuilder.InjectionDetail> injectionsByFrame =
+                    new HashMap<>();
+            for (var injection : prepared.injections()) {
+                injectionsByFrame.put(injection.frameIndex(), injection);
+            }
+
+            // 시험 시작 전에 원본 규모, 전송 목적지와 Test A~E 조건을 구조화해 브라우저에 알린다.
+            Map<String, Object> preparedDetails = new LinkedHashMap<>();
+            preparedDetails.put("percent", 30);
+            preparedDetails.put("stage", "Prepared");
+            preparedDetails.put("message", "Transmission plan prepared");
+            preparedDetails.put("testType", command.options().testType());
+            preparedDetails.put("sourceBytes", source.length);
+            preparedDetails.put("recordCount", records.size());
+            preparedDetails.put("totalFrames", prepared.frames().size());
+            preparedDetails.put("destinationAddress", command.transport().broadcastAddress());
+            preparedDetails.put("dataPort", command.transport().dataPort());
+            preparedDetails.put("resultPort", command.transport().resultPort());
+            preparedDetails.put("repeatCount", command.transport().repeatCount());
+            preparedDetails.put("errorCount", command.options().errorCount());
+            preparedDetails.put("errorSeed", command.options().errorSeed());
+            preparedDetails.put("syncDamageInterval", command.options().syncDamageInterval());
+            preparedDetails.put("injectedFrameCount", prepared.injectedFrameCount());
+            preparedDetails.put("dropRatePercent", dropRate);
+            preparedDetails.put("dropSeed", command.options().dropSeed());
+            preparedDetails.put("plannedDroppedDatagrams", plannedDrops);
+            event.accept(EventType.TX_STATUS, preparedDetails);
+
             InetAddress destination = InetAddress.getByName(command.transport().broadcastAddress());
             try (DatagramSocket socket = new DatagramSocket(command.transport().resultPort())) {
                 activeSocket = socket;
@@ -153,6 +182,8 @@ public final class UdpSessionService implements AutoCloseable {
                             frame.timeOfInterval(),
                             utcTicks(),
                             frame.payload());
+                    int sentCopies = 0;
+                    List<Integer> droppedCopyIndexes = new ArrayList<>();
                     for (int copy = 0; copy < command.transport().repeatCount(); copy++) {
                         if (!AfsDropSimulator.shouldDrop(
                                 index, copy, dropRate, command.options().dropSeed())) {
@@ -162,13 +193,35 @@ public final class UdpSessionService implements AutoCloseable {
                                     command.transport().dataPort(),
                                     withCopy(packet, copy));
                             sent++;
+                            sentCopies++;
+                        } else {
+                            droppedCopyIndexes.add(copy);
                         }
                     }
-                    event.accept(EventType.TX_STATUS, Map.of(
-                            "percent", 35 + (int) (45.0 * (index + 1) / prepared.frames().size()),
-                            "stage", "Transmitting",
-                            "message", "Sent " + (index + 1) + "/"
-                                    + prepared.frames().size() + " frames"));
+
+                    Map<String, Object> frameDetails = new LinkedHashMap<>();
+                    frameDetails.put(
+                            "percent",
+                            35 + (int) (45.0 * (index + 1) / prepared.frames().size()));
+                    frameDetails.put("stage", "Transmitting");
+                    frameDetails.put(
+                            "message",
+                            "Sent " + (index + 1) + "/"
+                                    + prepared.frames().size() + " frames");
+                    frameDetails.put("testType", command.options().testType());
+                    frameDetails.put("frameIndex", index);
+                    frameDetails.put("frameNumber", index + 1);
+                    frameDetails.put("totalFrames", prepared.frames().size());
+                    frameDetails.put("repeatCount", command.transport().repeatCount());
+                    frameDetails.put("sentCopies", sentCopies);
+                    frameDetails.put("droppedCopyIndexes", droppedCopyIndexes);
+
+                    var injection = injectionsByFrame.get(index);
+                    if (injection != null) {
+                        frameDetails.put("injectionMode", injection.mode());
+                        frameDetails.put("injectedBitPositions", injection.bitPositions());
+                    }
+                    event.accept(EventType.TX_STATUS, frameDetails);
                 }
                 Packet end = new Packet(
                         Kind.SESSION_END,
@@ -278,11 +331,31 @@ public final class UdpSessionService implements AutoCloseable {
                         manifest = json.readValue(packet.payload(), Manifest.class);
                         senderAddress = datagram.getAddress();
                         senderPort = command.transport().resultPort();
-                        event.accept(EventType.RX_STATUS, Map.of(
-                                "percent", 5,
-                                "stage", "Receiving",
-                                "message", manifest.testType + " session started",
-                                "testType", manifest.testType));
+                        Map<String, Object> sessionDetails = new LinkedHashMap<>();
+                        sessionDetails.put("percent", 5);
+                        sessionDetails.put("stage", "Receiving");
+                        sessionDetails.put(
+                                "message",
+                                manifest.testType + " session started");
+                        sessionDetails.put("testType", manifest.testType);
+                        sessionDetails.put("sourceBytes", manifest.sourceLength);
+                        sessionDetails.put("recordCount", manifest.recordCount);
+                        sessionDetails.put("expectedFrames", manifest.frameCount);
+                        sessionDetails.put("repeatCount", command.transport().repeatCount());
+                        sessionDetails.put("errorCount", manifest.errorCount);
+                        sessionDetails.put("errorSeed", manifest.errorSeed);
+                        sessionDetails.put(
+                                "syncDamageInterval",
+                                manifest.syncDamageInterval);
+                        sessionDetails.put("injectedFrameCount", manifest.injectedFrameCount);
+                        sessionDetails.put(
+                                "dropRatePercent",
+                                manifest.simulatedDropRatePercent);
+                        sessionDetails.put("dropSeed", manifest.simulatedDropSeed);
+                        sessionDetails.put(
+                                "plannedDroppedDatagrams",
+                                manifest.simulatedDroppedDatagrams);
+                        event.accept(EventType.RX_STATUS, sessionDetails);
                         continue;
                     }
                     if (manifest == null || !packet.testId().equals(manifest.testId)) {
@@ -295,11 +368,23 @@ public final class UdpSessionService implements AutoCloseable {
                                         packet.sequence(),
                                         packet.timeOfInterval(),
                                         packet.payload()));
-                        event.accept(EventType.RX_STATUS, Map.of(
-                                "percent", 10 + (int) (70.0 * frames.size()
-                                        / Math.max(1, manifest.frameCount)),
-                                "stage", "Receiving",
-                                "message", "Received frame " + packet.sequence()));
+                        Map<String, Object> frameDetails = new LinkedHashMap<>();
+                        frameDetails.put(
+                                "percent",
+                                10 + (int) (70.0 * frames.size()
+                                        / Math.max(1, manifest.frameCount)));
+                        frameDetails.put("stage", "Receiving");
+                        frameDetails.put(
+                                "message",
+                                "Received frame " + packet.sequence());
+                        frameDetails.put("testType", manifest.testType);
+                        frameDetails.put("frameIndex", packet.sequence());
+                        frameDetails.put("receivedFrames", frames.size());
+                        frameDetails.put("expectedFrames", manifest.frameCount);
+                        frameDetails.put("receivedDatagrams", datagrams);
+                        frameDetails.put("duplicateDatagrams", duplicates);
+                        frameDetails.put("corruptDatagrams", corrupt);
+                        event.accept(EventType.RX_STATUS, frameDetails);
                         continue;
                     }
                     if (packet.kind() == Kind.SESSION_END) {
@@ -321,6 +406,17 @@ public final class UdpSessionService implements AutoCloseable {
             if (manifest == null || senderAddress == null) {
                 throw new IllegalStateException("Session ended without manifest");
             }
+
+            event.accept(EventType.RX_STATUS, Map.of(
+                    "percent", 85,
+                    "stage", "Evaluating",
+                    "message", "Reassembling frames and verifying integrity",
+                    "receivedFrames", frames.size(),
+                    "expectedFrames", manifest.frameCount,
+                    "receivedDatagrams", datagrams,
+                    "duplicateDatagrams", duplicates,
+                    "corruptDatagrams", corrupt));
+
             DecodeAggregate aggregate = decodeFrames(frames.values(), manifest.testType);
             List<byte[]> records = aggregate.reassembler.completeRecords();
             ByteArrayOutputStream reconstructed = new ByteArrayOutputStream();
@@ -394,6 +490,25 @@ public final class UdpSessionService implements AutoCloseable {
                     counters,
                     List.of(resourceSample()),
                     wire.error);
+
+            Map<String, Object> verificationDetails = new LinkedHashMap<>();
+            verificationDetails.put("percent", 95);
+            verificationDetails.put("stage", "Verifying");
+            verificationDetails.put("message", "Integrity comparison completed");
+            verificationDetails.put("integritySuccess", integrity.success());
+            verificationDetails.put("sourceLength", integrity.sourceLength());
+            verificationDetails.put(
+                    "reconstructedLength",
+                    integrity.reconstructedLength());
+            verificationDetails.put("expectedRecords", integrity.expectedRecords());
+            verificationDetails.put(
+                    "reconstructedRecords",
+                    integrity.reconstructedRecords());
+            verificationDetails.put(
+                    "sha256Match",
+                    integrity.sourceSha256().equals(integrity.reconstructedSha256()));
+            event.accept(EventType.RX_STATUS, verificationDetails);
+
             sink.accept(result);
             event.accept(EventType.RESULT, result);
 

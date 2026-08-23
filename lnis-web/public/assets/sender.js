@@ -6,7 +6,8 @@ import {
     setPill,
     downloads,
     renderMetrics,
-} from './api.js';
+} from './api.js?v=20260823-detail1';
+import { formatEventLog } from './event-log.js?v=20260823-detail1';
 
 const $ = (id) => document.getElementById(id);
 const eventLog = $('event-log');
@@ -424,7 +425,7 @@ statusSocket(
         }
 
         const payload = event.payload || {};
-        log(eventLog, `${event.type}: ${payload.message || payload.stage || ''}`);
+        log(eventLog, formatEventLog(event));
         if (event.type === 'SESSION_STATUS') {
             if (TERMINAL_SESSION_STATES.has(payload.state)) {
                 applyActiveSession(null);

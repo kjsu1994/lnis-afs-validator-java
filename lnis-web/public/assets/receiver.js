@@ -5,7 +5,12 @@ import {
     setPill,
     downloads,
     renderMetrics,
-} from './api.js';
+} from './api.js?v=20260823-detail1';
+import {
+    formatEventLog,
+    describeTestType,
+    describeTestCondition,
+} from './event-log.js?v=20260823-detail1';
 
 const $ = (id) => document.getElementById(id);
 const eventLog = $('event-log');
@@ -69,13 +74,15 @@ statusSocket(
         }
 
         const payload = event.payload || {};
-        log(eventLog, `${event.type}: ${payload.message || payload.stage || ''}`);
+        log(eventLog, formatEventLog(event));
 
-        if (payload.testType) {
-            $('current-test').textContent = payload.testType;
+        const progressDetails = payload.counters || payload;
+        if (progressDetails.testType) {
+            $('current-test').textContent = describeTestType(progressDetails.testType);
+            $('test-conditions').textContent = describeTestCondition(progressDetails);
         }
-        if (payload.testConditions) {
-            $('test-conditions').textContent = payload.testConditions;
+        if (progressDetails.testConditions) {
+            $('test-conditions').textContent = progressDetails.testConditions;
         }
 
         // Agent 진행 이벤트는 percent, 세션 상태 이벤트는 progress 필드를 사용한다.

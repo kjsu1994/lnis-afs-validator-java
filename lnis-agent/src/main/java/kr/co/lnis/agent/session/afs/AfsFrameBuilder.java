@@ -17,7 +17,28 @@ import java.util.*;
  */
 public final class AfsFrameBuilder {
     public record Frame(int week, int intervalOfWeek, int timeOfInterval, byte[] payload) {}
-    public record Prepared(List<Frame> frames, int injectedFrameCount, long recordCount) {}
+
+    /** 시험 오류가 주입된 프레임과 실제 비트 위치를 화면 로그에 전달하기 위한 상세 정보다. */
+    public record InjectionDetail(
+            int frameIndex,
+            String mode,
+            List<Integer> bitPositions) {
+        public InjectionDetail {
+            bitPositions = List.copyOf(bitPositions);
+        }
+    }
+
+    /** 조립된 프레임과 프레임별 오류 주입 내역을 함께 보관한다. */
+    public record Prepared(
+            List<Frame> frames,
+            int injectedFrameCount,
+            long recordCount,
+            List<InjectionDetail> injections) {
+        public Prepared {
+            frames = List.copyOf(frames);
+            injections = List.copyOf(injections);
+        }
+    }
     private final NativeAfsCodec codec;
     public AfsFrameBuilder(NativeAfsCodec codec) { this.codec = codec; }
 
@@ -26,7 +47,11 @@ public final class AfsFrameBuilder {
         if (records.isEmpty()) throw new IllegalArgumentException("capture.graw is empty");
         List<byte[]> blocks = new ArrayList<>();
         for (int i = 0; i < records.size(); i++) blocks.addAll(AfsRawFragmentCodec.fragment(i, records.get(i)));
-        int[] time = timeFrom(records); int totalFrames = (blocks.size() + 1) / 2, injected = 0; List<Frame> frames = new ArrayList<>(totalFrames);
+        int[] time = timeFrom(records);
+        int totalFrames = (blocks.size() + 1) / 2;
+        int injected = 0;
+        List<Frame> frames = new ArrayList<>(totalFrames);
+        List<InjectionDetail> injections = new ArrayList<>();
         for (int index = 0; index < blocks.size(); index += 2) {
             byte[] second = index + 1 < blocks.size() ? blocks.get(index + 1) : blocks.get(index);
             byte[] encoded = codec.encode(
@@ -34,14 +59,31 @@ public final class AfsFrameBuilder {
                     sb2(time[0], time[1]),
                     AfsRawFragmentCodec.toSbBits(blocks.get(index)),
                     AfsRawFragmentCodec.toSbBits(second));
-            int frameIndex = frames.size(); int mode = mode(options.testType(), frameIndex, totalFrames, options.syncDamageInterval());
-            if (mode != 0) { inject(encoded, mode, options.errorCount(), options.errorSeed(), frameIndex); injected++; }
+            int frameIndex = frames.size();
+            int mode = mode(
+                    options.testType(),
+                    frameIndex,
+                    totalFrames,
+                    options.syncDamageInterval());
+            if (mode != 0) {
+                List<Integer> bitPositions = inject(
+                        encoded,
+                        mode,
+                        options.errorCount(),
+                        options.errorSeed(),
+                        frameIndex);
+                injections.add(new InjectionDetail(
+                        frameIndex,
+                        injectionModeName(mode),
+                        bitPositions));
+                injected++;
+            }
             frames.add(new Frame(time[0], time[1], time[2], encoded)); advance(time);
         }
         if (options.testType() == TestType.TEST_D_SYNC_RECOVERY && frames.size() < 2) {
             throw new IllegalArgumentException("Test D requires at least two frames");
         }
-        return new Prepared(List.copyOf(frames), injected, records.size());
+        return new Prepared(frames, injected, records.size(), injections);
     }
 
     private static int mode(TestType type, int index, int total, int interval) {
@@ -49,13 +91,29 @@ public final class AfsFrameBuilder {
         if (type == TestType.TEST_C_BURST_ERRORS) return 2;
         return type == TestType.TEST_D_SYNC_RECOVERY && index < total - 1 && index % interval == 0 ? 3 : 0;
     }
-    private static void inject(byte[] frame, int mode, int count, int seed, int trial) {
+    /** 오류를 실제로 적용하고 0부터 시작하는 AFS frame 비트 위치를 반환한다. */
+    private static List<Integer> inject(
+            byte[] frame,
+            int mode,
+            int count,
+            int seed,
+            int trial) {
         int start = mode == 3 ? 0 : 120, end = mode == 3 ? 68 : 6000;
         if (count < 1 || count > end - start) throw new IllegalArgumentException("Invalid error count");
         DotNetRandom random = new DotNetRandom(seed * 397 ^ trial); Set<Integer> indices = new TreeSet<>();
         if (mode == 2) { int first = random.next(start, end - count + 1); for (int i = 0; i < count; i++) indices.add(first + i); }
         else while (indices.size() < count) indices.add(random.next(start, end));
         for (int bit : indices) frame[bit >>> 3] ^= (byte) (1 << (7 - (bit & 7)));
+        return List.copyOf(indices);
+    }
+
+    private static String injectionModeName(int mode) {
+        return switch (mode) {
+            case 1 -> "RANDOM_BIT_ERROR";
+            case 2 -> "BURST_BIT_ERROR";
+            case 3 -> "SYNC_DAMAGE";
+            default -> "NONE";
+        };
     }
     private static byte[] sb2(int week, int interval) {
         byte[] bits = new byte[1176]; int state = 0x6D2B79F5 ^ (week << 9) ^ interval;

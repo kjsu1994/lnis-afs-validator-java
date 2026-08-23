@@ -66,7 +66,9 @@ function attachHelp(root = document) {
 
     root.querySelectorAll('.metric').forEach((element) => {
         const name = element.querySelector('span')?.textContent?.trim() || '측정값';
-        const message = `${name} 항목의 시험 측정 결과입니다.`;
+        // 결과 렌더러가 항목별 전문 설명을 넣었다면 이를 유지하고, 없을 때만 기본 설명을 쓴다.
+        const message = element.dataset.tooltip
+            || `${name} 항목의 시험 측정 결과입니다.`;
         element.dataset.tooltip = message;
         element.title = message;
         element.tabIndex = 0;
