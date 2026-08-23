@@ -109,4 +109,60 @@ assert.match(result, /프레임 4\/4/);
 assert.match(result, /SHA-256 일치/);
 assert.match(result, /복호화 프레임 4 frame \(PASS\)/);
 
+const syncSessionId = 'test-d-event-log-regression';
+formatEventLog({
+    type: 'RX_STATUS',
+    sessionId: syncSessionId,
+    payload: {
+        message: 'TEST_D_SYNC_RECOVERY session started',
+        counters: {
+            testType: 'TEST_D_SYNC_RECOVERY',
+            expectedFrames: 4,
+            sourceBytes: 464,
+            recordCount: 4,
+            errorCount: 1,
+            syncDamageInterval: 10,
+            injectedFrameCount: 1,
+        },
+    },
+});
+const syncVerifying = formatEventLog({
+    type: 'RX_STATUS',
+    sessionId: syncSessionId,
+    payload: {
+        stage: 'Verifying',
+        percent: 95,
+        counters: {
+            integritySuccess: false,
+            reconstructedLength: 348,
+            sourceLength: 464,
+            reconstructedRecords: 3,
+            expectedRecords: 4,
+        },
+    },
+});
+assert.match(syncVerifying, /Test D 예상 부분 복원/);
+assert.doesNotMatch(syncVerifying, /무결성 검증 실패/);
+
+const syncResult = formatEventLog({
+    type: 'RESULT',
+    role: 'RECEIVER',
+    sessionId: syncSessionId,
+    payload: {
+        role: 'RECEIVER',
+        verdict: 'PASS',
+        counters: {},
+        integrity: {
+            success: false,
+            sourceLength: 464,
+            reconstructedLength: 348,
+            expectedRecords: 4,
+            reconstructedRecords: 3,
+            sourceSha256: 'source',
+            reconstructedSha256: 'partial',
+        },
+    },
+});
+assert.match(syncResult, /GRAW 부분 복원 \(Test D 예상\)/);
+
 console.log('event-log smoke test passed');

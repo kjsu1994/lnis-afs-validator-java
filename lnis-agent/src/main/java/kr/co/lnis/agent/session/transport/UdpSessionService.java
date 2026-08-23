@@ -275,7 +275,6 @@ public final class UdpSessionService implements AutoCloseable {
                             List.of(),
                             wire.error);
                     sink.accept(result);
-                    event.accept(EventType.RESULT, result);
                     return;
                 }
             }
@@ -510,7 +509,6 @@ public final class UdpSessionService implements AutoCloseable {
             event.accept(EventType.RX_STATUS, verificationDetails);
 
             sink.accept(result);
-            event.accept(EventType.RESULT, result);
 
             byte[] payload = json.writeValueAsBytes(wire);
             if (payload.length > MAXIMUM_PAYLOAD_LENGTH) {

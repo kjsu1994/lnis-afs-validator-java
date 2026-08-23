@@ -5,12 +5,12 @@ import {
     setPill,
     downloads,
     renderMetrics,
-} from './api.js?v=20260823-detail1';
+} from './api.js?v=20260823-result3';
 import {
     formatEventLog,
     describeTestType,
     describeTestCondition,
-} from './event-log.js?v=20260823-detail1';
+} from './event-log.js?v=20260823-detail2';
 
 const $ = (id) => document.getElementById(id);
 const eventLog = $('event-log');
@@ -23,6 +23,46 @@ const TERMINAL_SESSION_STATES = new Set([
 ]);
 
 let activeSession = null;
+let resultContext = {};
+
+/** 최종 SESSION_STATUS의 기본값 0이 앞서 받은 실제 시험 조건을 덮어쓰지 않게 병합한다. */
+function mergeResultContext(details) {
+    const merged = { ...resultContext };
+    for (const [key, value] of Object.entries(details)) {
+        const positiveCondition = [
+            'errorCount',
+            'errorSeed',
+            'syncDamageInterval',
+            'injectedFrameCount',
+            'dropRatePercent',
+            'dropSeed',
+            'plannedDroppedDatagrams',
+        ].includes(key);
+        if (!positiveCondition || Number(value) > 0 || merged[key] === undefined) {
+            merged[key] = value;
+        }
+    }
+    resultContext = merged;
+}
+
+/** 시험별 핵심 조건이 실제로 포함된 이벤트인지 판별한다. */
+function hasUsableTestCondition(details) {
+    if (details.testType === 'TEST_A_NORMAL') {
+        return true;
+    }
+    if (['TEST_B_RANDOM_ERRORS', 'TEST_C_BURST_ERRORS'].includes(details.testType)) {
+        return Number(details.errorCount) > 0;
+    }
+    if (details.testType === 'TEST_D_SYNC_RECOVERY') {
+        return Number(details.errorCount) > 0
+            && Number(details.syncDamageInterval) > 0
+            && Number(details.injectedFrameCount) > 0;
+    }
+    if (details.testType === 'TEST_E_UDP_DROP') {
+        return Number(details.dropRatePercent) > 0;
+    }
+    return false;
+}
 
 /** 서버가 보내는 진행률을 0~100 범위로 보정하여 화면에 표시한다. */
 function updateProgress(value) {
@@ -69,6 +109,9 @@ statusSocket(
             return;
         }
 
+        if (event.sessionId && activeSession && event.sessionId !== activeSession) {
+            resultContext = {};
+        }
         if (event.sessionId) {
             activeSession = event.sessionId;
         }
@@ -77,9 +120,12 @@ statusSocket(
         log(eventLog, formatEventLog(event));
 
         const progressDetails = payload.counters || payload;
+        mergeResultContext(progressDetails);
         if (progressDetails.testType) {
             $('current-test').textContent = describeTestType(progressDetails.testType);
-            $('test-conditions').textContent = describeTestCondition(progressDetails);
+            if (hasUsableTestCondition(progressDetails)) {
+                $('test-conditions').textContent = describeTestCondition(progressDetails);
+            }
         }
         if (progressDetails.testConditions) {
             $('test-conditions').textContent = progressDetails.testConditions;
@@ -98,7 +144,7 @@ statusSocket(
         }
 
         if (event.type === 'RESULT') {
-            renderMetrics($('metrics'), payload);
+            renderMetrics($('metrics'), payload, resultContext);
             $('receiver-verdict').textContent = payload.verdict || '판정 확인 필요';
 
             // Receiver RESULT는 수신과 무결성 검증이 끝났다는 의미이므로 즉시 100%로 마무리한다.

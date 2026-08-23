@@ -51,6 +51,19 @@ public class AgentMessageService {
             case HEARTBEAT -> handleHeartbeat(envelope);
             case STATUS -> {
                 Progress progress = json.treeToValue(envelope.payload(), Progress.class);
+                // 구버전 또는 결함 Agent가 RoleResult를 STATUS로 잘못 보낸 경우 type이 null이 된다.
+                // 이 메시지 하나 때문에 Agent WebSocket 전체가 종료되지 않도록 오류 이벤트로 격리한다.
+                if (progress.type() == null) {
+                    events.publish(
+                            EventType.ERROR,
+                            envelope.agentId(),
+                            envelope.role(),
+                            envelope.sessionId(),
+                            java.util.Map.of(
+                                    "message",
+                                    "Agent STATUS event type is missing"));
+                    return;
+                }
                 events.publish(
                         progress.type(),
                         envelope.agentId(),

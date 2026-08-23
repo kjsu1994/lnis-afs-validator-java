@@ -161,7 +161,7 @@ function formatTxStatus(event, details) {
 }
 
 function formatRxStatus(event, details) {
-    rememberTestType(event, details);
+    const testType = rememberTestType(event, details);
     if (details.message?.endsWith('session started')) {
         return [
             `RX 시작 ${percent(details)} · ${describeTestType(details.testType)}`,
@@ -182,6 +182,12 @@ function formatRxStatus(event, details) {
             + ` (중복 ${number(details.duplicateDatagrams)}, 손상 ${number(details.corruptDatagrams)})`;
     }
     if (details.stage === 'Verifying') {
+        if (testType === 'TEST_D_SYNC_RECOVERY' && !details.integritySuccess) {
+            return `RX ${percent(details)} · Test D 예상 부분 복원`
+                + ` · 크기 ${bytes(details.reconstructedLength)}/${bytes(details.sourceLength)}`
+                + ` · records ${number(details.reconstructedRecords)}/${number(details.expectedRecords)}`
+                + ' · 전체 SHA-256 불일치는 동기 손상 프레임 제외에 따른 정상 결과';
+        }
         return `RX ${percent(details)} · 무결성 검증 ${details.integritySuccess ? '성공' : '실패'}`
             + ` · 크기 ${bytes(details.reconstructedLength)}/${bytes(details.sourceLength)}`
             + ` · records ${number(details.reconstructedRecords)}/${number(details.expectedRecords)}`
@@ -204,6 +210,7 @@ function formatMetrics(metrics) {
 }
 
 function formatResult(event, result) {
+    const testType = testTypeBySession.get(event.sessionId);
     const role = result.role || event.role || 'UNKNOWN';
     const counters = isObject(result.counters) ? result.counters : {};
     const integrity = isObject(result.integrity) ? result.integrity : {};
@@ -216,8 +223,11 @@ function formatResult(event, result) {
     ];
 
     if (Object.keys(integrity).length > 0) {
+        const integrityLabel = testType === 'TEST_D_SYNC_RECOVERY' && !integrity.success
+            ? 'GRAW 부분 복원 (Test D 예상)'
+            : `무결성 ${integrity.success ? '성공' : '실패'}`;
         lines.push(
-            `무결성 ${integrity.success ? '성공' : '실패'}`
+            integrityLabel
             + ` · 크기 ${bytes(integrity.reconstructedLength)}/${bytes(integrity.sourceLength)}`
             + ` · records ${number(integrity.reconstructedRecords)}/${number(integrity.expectedRecords)}`
             + ` · SHA-256 ${integrity.sourceSha256 === integrity.reconstructedSha256 ? '일치' : '불일치'}`,

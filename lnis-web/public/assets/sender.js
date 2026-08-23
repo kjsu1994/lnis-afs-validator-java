@@ -6,8 +6,8 @@ import {
     setPill,
     downloads,
     renderMetrics,
-} from './api.js?v=20260823-detail1';
-import { formatEventLog } from './event-log.js?v=20260823-detail1';
+} from './api.js?v=20260823-result3';
+import { formatEventLog } from './event-log.js?v=20260823-detail2';
 
 const $ = (id) => document.getElementById(id);
 const eventLog = $('event-log');
@@ -18,6 +18,7 @@ let sessionId = null;
 let captureRunning = false;
 let sessionRunning = false;
 let agentCache = [];
+let resultContext = {};
 
 const TERMINAL_SESSION_STATES = new Set([
     'COMPLETED',
@@ -369,6 +370,8 @@ $('test-start').onclick = async () => {
             body: JSON.stringify(body),
         });
         sessionId = session.sessionId;
+        // RESULT에는 시험 조건이 일부 생략될 수 있으므로 시작 요청의 조건을 세션 문맥으로 보존한다.
+        resultContext = { ...body.options };
         sessionRunning = true;
         setPill($('session-state'), '시험 진행 중 · 취소 가능', 'warning');
         log(eventLog, `시험 ${sessionId} 시작`);
@@ -425,6 +428,11 @@ statusSocket(
         }
 
         const payload = event.payload || {};
+        const progressDetails = payload.counters || payload;
+        resultContext = {
+            ...resultContext,
+            ...progressDetails,
+        };
         log(eventLog, formatEventLog(event));
         if (event.type === 'SESSION_STATUS') {
             if (TERMINAL_SESSION_STATES.has(payload.state)) {
@@ -446,7 +454,7 @@ statusSocket(
             $('progress-label').textContent = `${payload.percent}%`;
         }
         if (event.type === 'RESULT') {
-            renderMetrics($('metrics'), payload);
+            renderMetrics($('metrics'), payload, resultContext);
             const verdict = payload.verdict?.toLowerCase();
             $('verdict').textContent = `판정: ${payload.verdict}`;
             $('verdict').className = `verdict ${verdict === 'pass' ? 'pass' : 'fail'}`;

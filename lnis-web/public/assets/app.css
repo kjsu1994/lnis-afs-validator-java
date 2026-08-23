@@ -27,3 +27,175 @@
     outline: 2px solid var(--teal2);
     outline-offset: 2px;
 }
+
+/* 최종 결과는 핵심 판정부터 전문 진단까지 정보 중요도 순서로 보여준다. */
+.result-details {
+    display: grid;
+    gap: 18px;
+    margin: 18px 0;
+}
+
+.result-overview {
+    padding: 20px;
+    border: 1px solid;
+    border-radius: 14px;
+}
+
+.result-overview.pass {
+    border-color: #9bd9c7;
+    background: #e8f8f2;
+    color: #075f50;
+}
+
+.result-overview.fail {
+    border-color: #edb2b2;
+    background: #fff0f0;
+    color: #922b2b;
+}
+
+.result-overview-kicker {
+    display: block;
+    margin-bottom: 5px;
+    font-size: 11px;
+    font-weight: 800;
+    letter-spacing: .08em;
+}
+
+.result-overview > strong {
+    display: block;
+    font-size: 20px;
+}
+
+.result-overview > p {
+    margin: 7px 0 14px;
+    color: var(--ink);
+}
+
+.result-checks {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 7px;
+}
+
+.result-checks span,
+.metric-status {
+    padding: 4px 8px;
+    border-radius: 99px;
+    font-size: 11px;
+    font-style: normal;
+    font-weight: 800;
+}
+
+.result-checks .pass,
+.metric-status.pass {
+    background: #d4f0e6;
+    color: #08624f;
+}
+
+.result-checks .fail,
+.metric-status.fail {
+    background: #f9dada;
+    color: #9d2f2f;
+}
+
+.metric-status.info {
+    background: #e5edf0;
+    color: #506a75;
+}
+
+.metric-status.warning {
+    background: #fff0cc;
+    color: #855700;
+}
+
+.result-group {
+    padding-top: 2px;
+}
+
+.result-group-heading {
+    margin-bottom: 10px;
+}
+
+.result-group-heading h3 {
+    margin: 0;
+    font-size: 15px;
+}
+
+.result-group-heading p,
+.result-diagnostics > p {
+    margin: 3px 0 0;
+    color: var(--muted);
+    font-size: 12px;
+}
+
+.result-metric-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+    gap: 10px;
+}
+
+.result-details .metric {
+    min-height: 148px;
+    border-left: 4px solid #b9c9cf;
+    background: #fbfcfc;
+}
+
+.result-details .metric-pass {
+    border-left-color: #2a9d7f;
+}
+
+.result-details .metric-fail {
+    border-left-color: #c84747;
+}
+
+.result-details .metric-warning {
+    border-left-color: #d39725;
+}
+
+.metric-heading {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 8px;
+}
+
+.result-details .metric strong {
+    font-size: 21px;
+}
+
+.result-details .metric > p {
+    margin: 8px 0 0;
+    color: var(--muted);
+    font-size: 12px;
+    line-height: 1.55;
+}
+
+.result-diagnostics {
+    border-top: 1px solid var(--line);
+    padding-top: 14px;
+}
+
+.result-diagnostics summary {
+    width: fit-content;
+    color: var(--navy);
+    cursor: pointer;
+    font-weight: 800;
+}
+
+.result-diagnostics[open] summary {
+    margin-bottom: 4px;
+}
+
+.result-diagnostics .result-metric-grid {
+    margin-top: 12px;
+}
+
+@media(max-width: 600px) {
+    .result-metric-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .result-overview > strong {
+        font-size: 18px;
+    }
+}

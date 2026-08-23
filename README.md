@@ -543,6 +543,22 @@ AFS 기본값은 PRN `8`, Custom Message Type `63`입니다.
 
 Receiver는 복원 결과의 byte 길이, record 수, SHA-256 및 미완성 fragment 여부를 원본 manifest와 비교합니다. Test D는 손상되지 않은 프레임의 복호화 수와 재동기 프레임 조건을 별도로 평가합니다.
 
+Test D는 다른 시험과 PASS 기준이 다릅니다. 동기 패턴을 손상한 현재 프레임은 Receiver가
+정상 프레임으로 오인하지 않고 버려야 하며, 그 다음 정상 동기 패턴부터 다시 찾아 복호화를
+계속해야 합니다. 따라서 Test D에서 다음 조건을 모두 만족하면 전체 GRAW SHA-256이 달라도
+PASS입니다.
+
+1. Sender가 준비한 UDP 논리 프레임이 Receiver까지 모두 도착합니다.
+2. 의도적으로 동기를 손상한 프레임 수가 시험 조건과 같습니다.
+3. `복호화 프레임 = 전체 프레임 - 동기 손상 프레임`입니다.
+4. `동기 복구 프레임 = 전체 프레임 - 동기 손상 프레임`입니다.
+
+예를 들어 `dummy-capture.graw`는 464 byte, 4 record이고 이 입력에서는 record 한 개가
+116 byte입니다. 첫 프레임 한 개의 동기를 손상하면 Receiver는 UDP 논리 프레임 4개를 모두
+받지만 손상 프레임은 버립니다. 따라서 `3/4 record`, `348/464 byte`, SHA-256 불일치가 되며,
+나머지 `3/3 frame`을 재동기화하고 복호화했다면 정상 PASS입니다. 화면은 이 경우를 빨간
+실패가 아니라 `예상 결과`와 `부분 복원`으로 표시합니다.
+
 Receiver는 세션 시작 패킷 또는 다음 패킷을 제한 시간 안에 받지 못하면 자동으로
 `INCONCLUSIVE` 결과를 보내고 수신 socket을 종료합니다. 중앙 서버도 Agent 결과 유실에
 대비한 watchdog을 실행하며, 입력 크기와 결과 제한 시간을 기준으로 만료된 시험을 자동
@@ -582,11 +598,63 @@ Agent 진행 이벤트의 `percent`와 중앙 서버 세션 이벤트의 `progre
 커지지 않도록 한 프레임에서 오류 위치가 40개를 넘으면 앞의 40개와 나머지 개수를 표시하지만,
 Agent 이벤트에는 해당 프레임의 전체 위치 목록이 구조화된 값으로 전달됩니다.
 
+결과 화면은 단순 수치 나열 대신 다음 순서로 표시합니다.
+
+1. 시험 결과 해석: PASS/FAIL 이유와 프레임·크기·레코드·SHA-256 핵심 확인표
+2. 원본 복원 결과: 복원값/원본값을 한 카드에서 직접 비교
+3. 프레임 처리 결과: 수신값/예상값과 복호화값/수신값을 직접 비교
+4. 네트워크 전송 현황: 데이터 FRAME 송신과 제어 패킷을 포함한 전체 수신을 구분
+5. 전문 진단 지표: SB2/SB3/SB4 CRC 및 LDPC 내부 값은 접힌 영역에서 필요할 때 확인
+
+`CorrectedSymbols` 원시 값은 화면에서 `LDPC 내부 판정 변경량`으로 표시합니다. 이 값은
+LDPC 디코더가 초기 판정에서 변경한 누적 비트 수이며 천공·소거 처리의 영향도 받을 수
+있으므로, 사용자가 주입한 오류 개수나 실제 채널 오류 개수로 해석하면 안 됩니다.
+
+`sentDatagrams`는 실제 AFS FRAME UDP 패킷만 세지만 `receivedDatagrams`는 Receiver가 받은
+SESSION_START 같은 제어 패킷도 포함합니다. 따라서 정상 시험에서도 수신 데이터그램 수가
+송신 데이터그램 수보다 클 수 있으며, 화면 설명에도 이 집계 범위 차이를 명시합니다.
+
 상세 로그 포맷 회귀 테스트는 다음 명령으로 실행합니다.
 
 ```powershell
 node lnis-web\test\event-log.smoke.mjs
 ```
+
+결과 카드의 일반 시험 및 Test D 전용 표시 회귀 테스트는 다음 명령으로 실행합니다.
+
+```powershell
+node lnis-web\test\result-presentation.smoke.mjs
+```
+
+### 8.7 sample-data 실제 A~E 회귀시험
+
+`C:\Users\honeybadger\Desktop\Lnis\sample-data\dummy-capture.graw`를 REST API로 실제 업로드하고,
+로컬 Sender/Receiver Agent와 UDP 통신을 사용해 A~E를 순서대로 실행하는 스크립트를 제공합니다.
+서버, Redis, Nginx와 두 Agent가 실행된 상태에서 다음 명령을 사용합니다.
+
+```powershell
+Set-Location 'C:\Users\honeybadger\Desktop\Lins Java'
+.\scripts\run-sample-regression.ps1
+```
+
+특정 시험만 다시 확인하려면 다음처럼 `TestTypes`를 지정합니다.
+
+```powershell
+.\scripts\run-sample-regression.ps1 -TestTypes 'TEST_D_SYNC_RECOVERY'
+.\scripts\run-sample-regression.ps1 -TestTypes 'TEST_A_NORMAL','TEST_E_UDP_DROP'
+```
+
+스크립트는 단순히 HTTP 200이나 최종 PASS만 검사하지 않습니다.
+
+- 공통: 세션 `COMPLETED`, TX/RX/최종 `PASS`, 논리 프레임 `4/4`, 손상 datagram `0`
+- Test A/B/C: 복호화 `4/4`, record `4/4`, byte `464/464`, SHA-256 일치
+- Test D: 복호화·재동기 `3/3`, record `3/4`, byte `348/464`, SHA-256 불일치가 예상 결과인지 확인
+- Test E: 실제 의도적 Drop이 1건 이상 발생하고도 `4/4`, `464/464`, SHA-256 일치인지 확인
+
+2026-08-23 로컬 loopback 실측에서는 A/B/C/E가 모두 `4/4 record`, `464/464 byte`,
+SHA-256 일치로 PASS했습니다. Test D는 설계대로 `3/4 record`, `348/464 byte`, SHA-256
+불일치이면서 재동기·복호화 `3/3`으로 PASS했습니다. Test E는 반복 송신 5회, Drop 30%,
+Seed 1 조건에서 복제 datagram 3건이 실제로 제외되었지만 원본을 완전히 복원했습니다.
 
 ## 9. 결과 파일
 
