@@ -1,5 +1,119 @@
-import{agents,statusSocket,log,setPill,downloads,renderMetrics}from'./api.js';const $=id=>document.getElementById(id),eventLog=$('event-log');let activeSession=null;
-async function refresh(){const receiver=(await agents()).find(a=>a.role==='RECEIVER');setPill($('receiver-status'),receiver?`Receiver ${receiver.state}`:'Receiver OFFLINE',receiver?.state==='READY'?'online':'')}
-statusSocket(event=>{if(event.role&&event.role!=='RECEIVER'&&event.type!=='SESSION_STATUS')return;if(event.sessionId)activeSession=event.sessionId;const p=event.payload||{};log(eventLog,`${event.type}: ${p.message||p.stage||''}`);if(p.testType)$('current-test').textContent=p.testType;if(p.testConditions)$('test-conditions').textContent=p.testConditions;if(Number.isFinite(p.percent)){$('session-progress').value=p.percent;$('progress-label').textContent=`${p.percent}%`}if(event.type==='RX_STATUS')setPill($('listen-status'),p.stage||'수신 중','online');if(event.type==='RESULT'){renderMetrics($('metrics'),p);$('receiver-verdict').textContent=p.verdict;downloads($('downloads'),event.sessionId,'rx')}} ,online=>setPill($('server-status'),online?'서버 연결됨':'서버 재연결 중',online?'online':'warning'));
-$('clear-log').onclick=()=>eventLog.textContent='';refresh().catch(e=>log(eventLog,e.message));setInterval(()=>refresh().catch(()=>{}),5000);
+import {
+    agents,
+    statusSocket,
+    log,
+    setPill,
+    downloads,
+    renderMetrics,
+} from './api.js';
 
+const $ = (id) => document.getElementById(id);
+const eventLog = $('event-log');
+
+const TERMINAL_SESSION_STATES = new Set([
+    'COMPLETED',
+    'CANCELLED',
+    'FAILED',
+    'INCONCLUSIVE',
+]);
+
+let activeSession = null;
+
+/** 서버가 보내는 진행률을 0~100 범위로 보정하여 화면에 표시한다. */
+function updateProgress(value) {
+    const numericValue = Number(value);
+    if (!Number.isFinite(numericValue)) {
+        return;
+    }
+
+    const percent = Math.min(100, Math.max(0, Math.round(numericValue)));
+    $('session-progress').value = percent;
+    $('progress-label').textContent = `${percent}%`;
+}
+
+/** Receiver Agent의 연결 상태를 주기적으로 확인하여 상단 상태표시에 반영한다. */
+async function refresh() {
+    const receiver = (await agents()).find((agent) => agent.role === 'RECEIVER');
+    setPill(
+        $('receiver-status'),
+        receiver ? `Receiver ${receiver.state}` : 'Receiver OFFLINE',
+        receiver?.state === 'READY' ? 'online' : '',
+    );
+}
+
+/** 세션 종료 원인을 일반 사용자가 바로 이해할 수 있는 상태 문구로 표시한다. */
+function applyTerminalState(state) {
+    if (state === 'COMPLETED') {
+        updateProgress(100);
+        setPill($('listen-status'), '수신 및 검증 완료', 'online');
+        return;
+    }
+
+    if (state === 'CANCELLED') {
+        setPill($('listen-status'), '시험 취소됨', 'warning');
+        return;
+    }
+
+    setPill($('listen-status'), '시험 확인 필요', 'error');
+}
+
+statusSocket(
+    (event) => {
+        // Receiver 화면은 Receiver 이벤트와 전체 세션 상태만 표시한다.
+        if (event.role && event.role !== 'RECEIVER' && event.type !== 'SESSION_STATUS') {
+            return;
+        }
+
+        if (event.sessionId) {
+            activeSession = event.sessionId;
+        }
+
+        const payload = event.payload || {};
+        log(eventLog, `${event.type}: ${payload.message || payload.stage || ''}`);
+
+        if (payload.testType) {
+            $('current-test').textContent = payload.testType;
+        }
+        if (payload.testConditions) {
+            $('test-conditions').textContent = payload.testConditions;
+        }
+
+        // Agent 진행 이벤트는 percent, 세션 상태 이벤트는 progress 필드를 사용한다.
+        // 두 형식을 모두 처리해야 수신 80% 이후의 최종 100%가 화면에 반영된다.
+        updateProgress(payload.progress ?? payload.percent);
+
+        if (event.type === 'RX_STATUS') {
+            setPill($('listen-status'), payload.stage || '수신 중', 'online');
+        }
+
+        if (event.type === 'SESSION_STATUS' && TERMINAL_SESSION_STATES.has(payload.state)) {
+            applyTerminalState(payload.state);
+        }
+
+        if (event.type === 'RESULT') {
+            renderMetrics($('metrics'), payload);
+            $('receiver-verdict').textContent = payload.verdict || '판정 확인 필요';
+
+            // Receiver RESULT는 수신과 무결성 검증이 끝났다는 의미이므로 즉시 100%로 마무리한다.
+            // 이후 도착하는 SESSION_STATUS도 progress 필드로 같은 완료 상태를 재확인한다.
+            updateProgress(100);
+            setPill($('listen-status'), '수신 및 검증 완료', 'online');
+
+            if (event.sessionId) {
+                downloads($('downloads'), event.sessionId, 'rx');
+            }
+        }
+    },
+    (online) => setPill(
+        $('server-status'),
+        online ? '서버 연결됨' : '서버 재연결 중',
+        online ? 'online' : 'warning',
+    ),
+);
+
+$('clear-log').onclick = () => {
+    eventLog.textContent = '';
+};
+
+refresh().catch((error) => log(eventLog, error.message));
+setInterval(() => refresh().catch(() => {}), 5000);
