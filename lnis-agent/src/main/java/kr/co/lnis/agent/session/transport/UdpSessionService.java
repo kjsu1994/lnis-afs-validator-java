@@ -40,6 +40,7 @@ public final class UdpSessionService implements AutoCloseable {
                               long receivedDatagrams, long duplicates, long corrupt,
                               long invalidDatagrams, long decodeFailedFrames,
                               long injectedBitCount, long syncRejectedFrames, long decodedFrames,
+                              long fullyDecodedFrames,
                               long sb2ValidFrames, long sb3ValidFrames, long sb4ValidFrames, long correctedSymbols,
                               long recoveredSyncFrames, String error) {}
     private record Key(Kind kind, long sequence) {}
@@ -257,6 +258,15 @@ public final class UdpSessionService implements AutoCloseable {
                                 null,
                                 injection == null ? List.of() : injection.bitPositions(),
                                 false,
+                                false,
+                                false,
+                                false,
+                                false,
+                                0,
+                                0,
+                                0,
+                                false,
+                                null,
                                 injection == null
                                         ? "오류가 주입되지 않은 Sender 프레임"
                                         : "Sender가 시험 조건에 따라 비트를 반전한 프레임"));
@@ -475,6 +485,7 @@ public final class UdpSessionService implements AutoCloseable {
                     continue;
                 }
                 byte[] reencoded = aggregate.reencodedFrames.get(frameIndex);
+                FrameDecodeDiagnostic diagnostic = aggregate.diagnostics.get(frameIndex);
                 evidenceSink.accept(new FrameEvidenceMessage(
                         frameIndex,
                         null,
@@ -482,10 +493,23 @@ public final class UdpSessionService implements AutoCloseable {
                         frame.payload(),
                         reencoded,
                         List.of(),
-                        aggregate.decodedFrameIndexes.contains(frameIndex),
-                        reencoded == null
+                        diagnostic != null && diagnostic.fullyDecoded(),
+                        diagnostic != null && diagnostic.decoderCompleted(),
+                        diagnostic != null && diagnostic.sb2Valid(),
+                        diagnostic != null && diagnostic.sb3Valid(),
+                        diagnostic != null && diagnostic.sb4Valid(),
+                        diagnostic == null ? 0 : diagnostic.sb2DecisionChanges(),
+                        diagnostic == null ? 0 : diagnostic.sb3DecisionChanges(),
+                        diagnostic == null ? 0 : diagnostic.sb4DecisionChanges(),
+                        diagnostic != null && diagnostic.usedForGrawReassembly(),
+                        diagnostic == null
+                                ? "동기 패턴을 찾지 못해 복호화 대상에서 제외됐습니다."
+                                : diagnostic.failureReason(),
+                        diagnostic == null || !diagnostic.decoderCompleted()
                                 ? "복호화에 성공하지 못해 재인코딩 검증 프레임이 없습니다."
-                                : "Receiver 복호화 결과를 같은 TOI로 다시 인코딩한 검증 프레임"));
+                                : diagnostic.fullyDecoded()
+                                        ? "SB2·SB3·SB4 CRC를 모두 통과한 복호화 결과의 재인코딩 검증 프레임"
+                                        : "CRC 실패가 포함된 복호화 출력의 진단용 재인코딩 프레임"));
             }
             List<byte[]> records = aggregate.reassembler.completeRecords();
             ByteArrayOutputStream reconstructed = new ByteArrayOutputStream();
@@ -525,14 +549,17 @@ public final class UdpSessionService implements AutoCloseable {
                     frames.size(),
                     datagrams,
                     duplicates,
-                    corrupt + aggregate.corruptFrames,
+                    // UDP 데이터그램 해석 실패와 AFS 프레임 CRC 실패는 서로 다른 계층의 오류다.
+                    // 서브블록 CRC 실패를 데이터그램 손상에 더하면 네트워크 장애처럼 오해할 수 있다.
                     corrupt,
-                    aggregate.corruptFrames,
+                    corrupt,
+                    aggregate.decodeFailedFrames,
                     (long) manifest.errorCount * manifest.injectedFrameCount,
                     manifest.testType == TestType.TEST_D_SYNC_RECOVERY
                             ? frames.size() - aggregate.recoveredSyncFrames
                             : 0,
                     aggregate.decodedFrames,
+                    aggregate.fullyDecodedFrames,
                     aggregate.sb2Valid,
                     aggregate.sb3Valid,
                     aggregate.sb4Valid,
@@ -546,7 +573,8 @@ public final class UdpSessionService implements AutoCloseable {
                             - manifest.simulatedDroppedDatagrams,
                     datagrams,
                     duplicates,
-                    corrupt + aggregate.corruptFrames,
+                    // 이 값은 AfsPacketCodec으로 해석하지 못한 UDP 데이터그램만 집계한다.
+                    corrupt,
                     0,
                     0,
                     raw.length,
@@ -555,7 +583,8 @@ public final class UdpSessionService implements AutoCloseable {
                     manifest.simulatedDroppedDatagrams,
                     manifest.simulatedDropRatePercent,
                     corrupt,
-                    aggregate.corruptFrames,
+                    // Decoder 실행 후 하나 이상의 SB CRC가 실패한 프레임은 별도 항목으로 제공한다.
+                    aggregate.decodeFailedFrames,
                     (long) manifest.errorCount * manifest.injectedFrameCount,
                     manifest.testType == TestType.TEST_D_SYNC_RECOVERY
                             ? frames.size() - aggregate.recoveredSyncFrames
@@ -670,7 +699,6 @@ public final class UdpSessionService implements AutoCloseable {
         try {
             var decoded = codec.decode(toi, frame);
             total.decodedFrames++;
-            total.decodedFrameIndexes.add(frameIndex);
             total.reencodedFrames.put(
                     frameIndex,
                     codec.encode(toi, decoded.sb2(), decoded.sb3(), decoded.sb4()));
@@ -686,17 +714,69 @@ public final class UdpSessionService implements AutoCloseable {
             total.corrected += Math.max(0, decoded.sb2Corrections())
                     + Math.max(0, decoded.sb3Corrections())
                     + Math.max(0, decoded.sb4Corrections());
-            if (!decoded.sb3Valid() || !decoded.sb4Valid()) {
-                total.corruptFrames++;
+            boolean fullyDecoded = decoded.sb2Valid()
+                    && decoded.sb3Valid()
+                    && decoded.sb4Valid();
+            boolean usedForGraw = decoded.sb3Valid() && decoded.sb4Valid();
+            if (fullyDecoded) {
+                total.fullyDecodedFrames++;
+            }
+            total.diagnostics.put(
+                    frameIndex,
+                    new FrameDecodeDiagnostic(
+                            true,
+                            fullyDecoded,
+                            decoded.sb2Valid(),
+                            decoded.sb3Valid(),
+                            decoded.sb4Valid(),
+                            Math.max(0, decoded.sb2Corrections()),
+                            Math.max(0, decoded.sb3Corrections()),
+                            Math.max(0, decoded.sb4Corrections()),
+                            usedForGraw,
+                            failureReason(decoded)));
+            if (!fullyDecoded) {
+                total.decodeFailedFrames++;
+            }
+            if (!usedForGraw) {
                 return;
             }
             total.reassembler.add(AfsRawFragmentCodec.decode(
                     AfsRawFragmentCodec.fromSbBits(decoded.sb3())));
             total.reassembler.add(AfsRawFragmentCodec.decode(
                     AfsRawFragmentCodec.fromSbBits(decoded.sb4())));
-        } catch (Exception ignored) {
-            total.corruptFrames++;
+        } catch (Exception error) {
+            total.decodeFailedFrames++;
+            total.diagnostics.put(
+                    frameIndex,
+                    new FrameDecodeDiagnostic(
+                            false,
+                            false,
+                            false,
+                            false,
+                            false,
+                            0,
+                            0,
+                            0,
+                            false,
+                            safe(error)));
         }
+    }
+
+    /** CRC 실패 블록을 일반 사용자가 바로 확인할 수 있는 한글 원인으로 조합한다. */
+    private static String failureReason(NativeAfsCodec.Decoded decoded) {
+        List<String> failed = new ArrayList<>();
+        if (!decoded.sb2Valid()) {
+            failed.add("SB2 CRC 실패");
+        }
+        if (!decoded.sb3Valid()) {
+            failed.add("SB3 CRC 실패");
+        }
+        if (!decoded.sb4Valid()) {
+            failed.add("SB4 CRC 실패");
+        }
+        return failed.isEmpty()
+                ? null
+                : String.join(", ", failed);
     }
     private static final byte[] SYNC={(byte)0xCC,0x63,(byte)0xF7,0x45,0x36,(byte)0xF4,(byte)0x9E,0x04,(byte)0xA0};
     private static List<Long> findSync(byte[] bytes) {
@@ -735,14 +815,30 @@ public final class UdpSessionService implements AutoCloseable {
     private static final class DecodeAggregate {
         final AfsReassembler reassembler = new AfsReassembler();
         final Map<Integer, byte[]> reencodedFrames = new HashMap<>();
-        final Set<Integer> decodedFrameIndexes = new HashSet<>();
+        final Map<Integer, FrameDecodeDiagnostic> diagnostics = new HashMap<>();
         long decodedFrames;
+        long fullyDecodedFrames;
         long sb2Valid;
         long sb3Valid;
         long sb4Valid;
         long corrected;
         long recoveredSyncFrames;
-        long corruptFrames;
+        /** Decoder 처리 오류 또는 SB2/SB3/SB4 CRC 실패가 발생한 AFS 프레임 수다. */
+        long decodeFailedFrames;
+    }
+
+    /** Receiver가 프레임 하나를 처리하며 얻은 블록별 CRC와 GRAW 사용 여부다. */
+    private record FrameDecodeDiagnostic(
+            boolean decoderCompleted,
+            boolean fullyDecoded,
+            boolean sb2Valid,
+            boolean sb3Valid,
+            boolean sb4Valid,
+            int sb2DecisionChanges,
+            int sb3DecisionChanges,
+            int sb4DecisionChanges,
+            boolean usedForGrawReassembly,
+            String failureReason) {
     }
 
     /**
@@ -760,6 +856,10 @@ public final class UdpSessionService implements AutoCloseable {
     private static List<Metric> metrics(WireResult result) {
         List<Metric> metrics = new ArrayList<>();
         metrics.add(metric("DecodedFrames", result.decodedFrames, "frame"));
+        metrics.add(metric(
+                "FullyDecodedFrames",
+                result.fullyDecodedFrames,
+                "frame"));
         metrics.add(metric("Sb2CrcValidFrames", result.sb2ValidFrames, "frame"));
         metrics.add(metric("Sb3CrcValidFrames", result.sb3ValidFrames, "frame"));
         metrics.add(metric("Sb4CrcValidFrames", result.sb4ValidFrames, "frame"));

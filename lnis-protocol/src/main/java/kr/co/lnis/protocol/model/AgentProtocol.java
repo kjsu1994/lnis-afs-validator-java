@@ -93,6 +93,15 @@ public final class AgentProtocol {
             byte[] reencodedFrame,
             List<Integer> injectedBitPositions,
             boolean decodeSucceeded,
+            boolean decoderCompleted,
+            boolean sb2CrcValid,
+            boolean sb3CrcValid,
+            boolean sb4CrcValid,
+            int sb2DecisionChanges,
+            int sb3DecisionChanges,
+            int sb4DecisionChanges,
+            boolean usedForGrawReassembly,
+            String failureReason,
             String note) {
         public FrameEvidenceMessage {
             referenceFrame = copy(referenceFrame);

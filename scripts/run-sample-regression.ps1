@@ -156,10 +156,12 @@ function Test-SessionResult {
     Assert-Condition ($Session.rxResult.counters.decodeFailedFrames -eq 0) "$($Definition.Type)에 AFS 복호화 실패 프레임이 있습니다."
 
     $decoded = Get-MetricValue $Session.rxResult 'DecodedFrames'
+    $fullyDecoded = Get-MetricValue $Session.rxResult 'FullyDecodedFrames'
     if ($Definition.Type -eq 'TEST_D_SYNC_RECOVERY') {
         $recovered = Get-MetricValue $Session.rxResult 'RecoveredSyncFrames'
         Assert-Condition (-not $Session.rxResult.integrity.success) 'Test D는 손상 프레임 제외로 전체 무결성이 불일치해야 합니다.'
         Assert-Condition ($decoded -eq 3) 'Test D에서 손상 1개를 제외한 3개 프레임이 복호화되지 않았습니다.'
+        Assert-Condition ($fullyDecoded -eq 3) 'Test D의 정상 동기 프레임 3개가 CRC까지 통과하지 못했습니다.'
         Assert-Condition ($recovered -eq 3) 'Test D에서 다음 동기 패턴 3개를 복구하지 못했습니다.'
         Assert-Condition ($Session.rxResult.integrity.reconstructedLength -eq 348) 'Test D 부분 복원 크기가 348 byte가 아닙니다.'
         Assert-Condition ($Session.rxResult.integrity.reconstructedRecords -eq 3) 'Test D 부분 복원 레코드가 3개가 아닙니다.'
@@ -168,6 +170,7 @@ function Test-SessionResult {
     } else {
         Assert-Condition $Session.rxResult.integrity.success "$($Definition.Type) 원본/복원 SHA-256이 일치하지 않습니다."
         Assert-Condition ($decoded -eq 4) "$($Definition.Type)에서 4개 프레임을 모두 복호화하지 못했습니다."
+        Assert-Condition ($fullyDecoded -eq 4) "$($Definition.Type)에서 CRC까지 통과한 완전 복호 프레임이 4개가 아닙니다."
         Assert-Condition ($Session.rxResult.integrity.reconstructedLength -eq 464) "$($Definition.Type) 복원 크기가 464 byte가 아닙니다."
         Assert-Condition ($Session.rxResult.integrity.reconstructedRecords -eq 4) "$($Definition.Type) 복원 레코드가 4개가 아닙니다."
     }

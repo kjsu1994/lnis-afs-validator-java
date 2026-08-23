@@ -106,6 +106,12 @@ const result = formatEventLog({
                 unit: 'frame',
                 status: 'PASS',
             },
+            {
+                name: 'FullyDecodedFrames',
+                value: 4,
+                unit: 'frame',
+                status: 'PASS',
+            },
         ],
     },
 });
@@ -114,7 +120,8 @@ assert.match(result, /프레임 4\/4/);
 assert.match(result, /UDP 해석 실패 0 · AFS 복호화 실패 0/);
 assert.match(result, /시험 주입 오류 4 bit/);
 assert.match(result, /SHA-256 일치/);
-assert.match(result, /복호화 프레임 4 frame \(정상\)/);
+assert.match(result, /Decoder 처리 프레임 4 frame \(정상\)/);
+assert.match(result, /CRC 통과 완전 복호 프레임 4 frame \(정상\)/);
 
 const syncSessionId = 'test-d-event-log-regression';
 formatEventLog({

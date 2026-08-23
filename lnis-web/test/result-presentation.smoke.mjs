@@ -29,6 +29,7 @@ const result = {
     },
     metrics: [
         { name: 'DecodedFrames', value: 4 },
+        { name: 'FullyDecodedFrames', value: 4 },
         { name: 'Sb2CrcValidFrames', value: 4 },
         { name: 'Sb3CrcValidFrames', value: 4 },
         { name: 'Sb4CrcValidFrames', value: 4 },
@@ -51,6 +52,14 @@ assert.equal(
 );
 assert.equal(
     allMetrics.find((metric) => metric.name === '논리 프레임 수신')?.value,
+    '4 / 4 frame',
+);
+assert.equal(
+    allMetrics.find((metric) => metric.name === 'AFS Decoder 처리')?.value,
+    '4 / 4 frame',
+);
+assert.equal(
+    allMetrics.find((metric) => metric.name === 'CRC까지 통과한 완전 복호')?.value,
     '4 / 4 frame',
 );
 assert.match(
@@ -96,6 +105,7 @@ const syncRecoveryResult = {
     },
     metrics: [
         { name: 'DecodedFrames', value: 3 },
+        { name: 'FullyDecodedFrames', value: 3 },
         { name: 'RecoveredSyncFrames', value: 3 },
     ],
 };

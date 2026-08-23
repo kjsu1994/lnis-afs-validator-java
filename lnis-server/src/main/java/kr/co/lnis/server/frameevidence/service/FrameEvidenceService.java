@@ -85,12 +85,23 @@ public class FrameEvidenceService {
 
     public byte[] csvArtifact(UUID sessionId) {
         StringBuilder csv = new StringBuilder(
-                "FrameIndex,DecodeSucceeded,ReferenceToTransmittedBits,"
+                "FrameIndex,DecoderCompleted,FullyDecoded,SB2CrcValid,SB3CrcValid,SB4CrcValid,"
+                        + "SB2DecisionChanges,SB3DecisionChanges,SB4DecisionChanges,UsedForGrawReassembly,FailureReason,"
+                        + "ReferenceToTransmittedBits,"
                         + "TransmittedToReceivedBits,ReferenceToReencodedBits,"
                         + "ReferenceSha256,TransmittedSha256,ReceivedSha256,ReencodedSha256,Interpretation\r\n");
         for (FrameEvidenceSummary item : summaries(sessionId)) {
             csv.append(item.frameIndex()).append(',')
+                    .append(item.decoderCompleted()).append(',')
                     .append(item.decodeSucceeded()).append(',')
+                    .append(item.sb2CrcValid()).append(',')
+                    .append(item.sb3CrcValid()).append(',')
+                    .append(item.sb4CrcValid()).append(',')
+                    .append(item.sb2DecisionChanges()).append(',')
+                    .append(item.sb3DecisionChanges()).append(',')
+                    .append(item.sb4DecisionChanges()).append(',')
+                    .append(item.usedForGrawReassembly()).append(',')
+                    .append(cell(item.failureReason())).append(',')
                     .append(number(item.referenceToTransmittedDifferences())).append(',')
                     .append(number(item.transmittedToReceivedDifferences())).append(',')
                     .append(number(item.referenceToReencodedDifferences())).append(',')
@@ -130,6 +141,15 @@ public class FrameEvidenceService {
                 sender != null,
                 receiver != null,
                 receiver != null && receiver.decodeSucceeded(),
+                receiver != null && receiver.decoderCompleted(),
+                receiver != null && receiver.sb2CrcValid(),
+                receiver != null && receiver.sb3CrcValid(),
+                receiver != null && receiver.sb4CrcValid(),
+                receiver == null ? 0 : receiver.sb2DecisionChanges(),
+                receiver == null ? 0 : receiver.sb3DecisionChanges(),
+                receiver == null ? 0 : receiver.sb4DecisionChanges(),
+                receiver != null && receiver.usedForGrawReassembly(),
+                receiver == null ? null : receiver.failureReason(),
                 hash(reference),
                 hash(transmitted),
                 hash(received),
@@ -156,12 +176,20 @@ public class FrameEvidenceService {
         if (receiver == null) {
             return "Receiver 증거를 기다리는 중입니다.";
         }
-        if (!receiver.decodeSucceeded() || recovered == null) {
-            if (intentionalSyncDamage(sender, receiver)) {
-                return "Test D에서 동기 패턴을 의도적으로 손상해 제외한 프레임입니다. "
-                        + "재인코딩 자료가 없는 것이 정상이며 다음 프레임의 동기 복구 결과를 확인하세요.";
-            }
-            return "Receiver가 이 프레임을 복호화하지 못해 최종 복구 비교를 할 수 없습니다.";
+        if (intentionalSyncDamage(sender, receiver)) {
+            return "Test D에서 동기 패턴을 의도적으로 손상해 제외한 프레임입니다. "
+                    + "재인코딩 자료가 없는 것이 정상이며 다음 프레임의 동기 복구 결과를 확인하세요.";
+        }
+        if (!receiver.decoderCompleted()) {
+            return "AFS Decoder가 처리를 완료하지 못했습니다. 원인: "
+                    + defaultReason(receiver.failureReason());
+        }
+        if (!receiver.decodeSucceeded()) {
+            String use = receiver.usedForGrawReassembly()
+                    ? "SB3·SB4가 정상이라 GRAW 재조립에는 사용됐습니다."
+                    : "GRAW 재조립에서는 제외됐습니다.";
+            return "Decoder 처리는 완료됐지만 완전 복호에 실패했습니다. 원인: "
+                    + defaultReason(receiver.failureReason()) + ". " + use;
         }
         if (recovered == 0) {
             if (injected != null && injected > 0) {
@@ -173,6 +201,12 @@ public class FrameEvidenceService {
             return "송신 이후 수신 단계에서도 비트 차이가 발생했고 최종 기준과 일치하지 않습니다.";
         }
         return "수신 프레임은 확보했지만 복호화 후 기준 프레임과 차이가 남았습니다.";
+    }
+
+    private static String defaultReason(String value) {
+        return value == null || value.isBlank()
+                ? "상세 원인 없음"
+                : value;
     }
 
     /** 동기 패턴 68비트 안의 의도적 손상 때문에 복호화에서 제외된 Test D 프레임인지 판별한다. */

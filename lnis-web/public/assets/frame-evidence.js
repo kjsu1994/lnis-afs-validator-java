@@ -1,4 +1,4 @@
-import { request } from './api.js?v=20260823-frame4';
+import { request } from './api.js?v=20260823-frame5';
 
 const FRAME_BITS = 6000;
 const COLUMNS = 100;
@@ -78,12 +78,13 @@ function stageCard(stage) {
 
     card.className = 'frame-map-card';
     title.textContent = stage.title;
-    badge.className = `frame-map-badge ${stage.differences.size === 0 ? 'same' : 'different'}`;
-    badge.textContent = stage.bytes
-        ? (stage.differences.size === 0
+    const defaultSame = stage.differences.size === 0;
+    badge.className = `frame-map-badge ${stage.statusTone || (defaultSame ? 'same' : 'different')}`;
+    badge.textContent = stage.statusText || (stage.bytes
+        ? (defaultSame
             ? '비교 기준과 동일'
             : `${stage.differences.size.toLocaleString('ko-KR')} bit 차이`)
-        : '자료 없음';
+        : '자료 없음');
     description.textContent = stage.description;
     canvas.width = COLUMNS * CELL_SIZE;
     canvas.height = ROWS * CELL_SIZE;
@@ -129,6 +130,65 @@ function comparisonCards(summary) {
     return grid;
 }
 
+function crcState(valid) {
+    return valid
+        ? { text: '정상', tone: 'pass' }
+        : { text: '실패', tone: 'fail' };
+}
+
+/** 프레임 하나의 Decoder 처리와 블록별 CRC 결과를 성공 여부와 분리해 표시한다. */
+function decodeDiagnostics(summary) {
+    const section = document.createElement('section');
+    const heading = document.createElement('div');
+    const title = document.createElement('h4');
+    const description = document.createElement('p');
+    const grid = document.createElement('div');
+    title.textContent = '프레임별 복호 진단';
+    description.textContent = 'Decoder 처리 완료만으로 복구 성공으로 판정하지 않습니다. SB2·SB3·SB4 CRC가 모두 정상이어야 완전 복호입니다.';
+    heading.className = 'frame-diagnostic-heading';
+    heading.append(title, description);
+    grid.className = 'frame-diagnostic-grid';
+
+    const decoder = summary.decoderCompleted
+        ? { text: '처리 완료', tone: 'info' }
+        : { text: '처리 실패', tone: 'fail' };
+    const complete = summary.decodeSucceeded
+        ? { text: '완전 복호', tone: 'pass' }
+        : summary.intentionalSyncRejection
+            ? { text: '의도적 제외', tone: 'warning' }
+            : { text: '복호 실패', tone: 'fail' };
+    const items = [
+        ['Decoder', decoder, summary.failureReason || 'Native AFS Decoder 호출 상태입니다.'],
+        ['SB2 CRC', crcState(summary.sb2CrcValid), `LDPC 내부 판정 변경량 ${Number(summary.sb2DecisionChanges || 0).toLocaleString('ko-KR')} bit`],
+        ['SB3 CRC', crcState(summary.sb3CrcValid), `LDPC 내부 판정 변경량 ${Number(summary.sb3DecisionChanges || 0).toLocaleString('ko-KR')} bit`],
+        ['SB4 CRC', crcState(summary.sb4CrcValid), `LDPC 내부 판정 변경량 ${Number(summary.sb4DecisionChanges || 0).toLocaleString('ko-KR')} bit`],
+        ['최종 상태', complete, summary.decodeSucceeded
+            ? '세 블록 CRC를 모두 통과했습니다.'
+            : summary.failureReason || '완전 복호 조건을 충족하지 못했습니다.'],
+        ['GRAW 재조립', summary.usedForGrawReassembly
+            ? { text: '사용됨', tone: 'pass' }
+            : { text: '제외됨', tone: 'warning' },
+        summary.usedForGrawReassembly
+            ? 'GRAW 데이터가 위치한 SB3·SB4 CRC가 정상이라 재조립에 사용했습니다.'
+            : 'SB3 또는 SB4 CRC 실패로 GRAW 재조립에 사용하지 않았습니다.'],
+    ];
+    for (const [name, state, help] of items) {
+        const item = document.createElement('article');
+        const label = document.createElement('span');
+        const value = document.createElement('strong');
+        const explanation = document.createElement('p');
+        item.className = `frame-diagnostic-item ${state.tone}`;
+        label.textContent = name;
+        value.textContent = state.text;
+        explanation.textContent = help;
+        item.title = help;
+        item.append(label, value, explanation);
+        grid.append(item);
+    }
+    section.append(heading, grid);
+    return section;
+}
+
 async function renderSelectedFrame(container, sessionId, frameIndex) {
     const detail = await request(`/sessions/${sessionId}/frame-evidence/${frameIndex}`);
     const summary = detail.summary;
@@ -164,19 +224,31 @@ async function renderSelectedFrame(container, sessionId, frameIndex) {
             hash: summary.reencodedSha256,
             differences: new Set(detail.referenceToReencodedPositions || []),
             comparison: `기준 대비 ${number(summary.referenceToReencodedDifferences)}`,
+            statusText: summary.decodeSucceeded
+                ? 'CRC 통과 · 완전 복호'
+                : summary.intentionalSyncRejection
+                    ? '의도적 동기 제외'
+                    : summary.decoderCompleted ? 'CRC 실패 · 진단용' : 'Decoder 처리 실패',
+            statusTone: summary.decodeSucceeded
+                ? 'same'
+                : summary.intentionalSyncRejection ? 'warning' : 'failed',
         },
     ];
 
     const content = container.querySelector('.frame-evidence-content');
     content.replaceChildren();
     const interpretation = document.createElement('div');
-    interpretation.className = `frame-interpretation ${summary.referenceToReencodedDifferences === 0 ? 'pass' : 'warning'}`;
+    interpretation.className = `frame-interpretation ${summary.decodeSucceeded ? 'pass' : summary.intentionalSyncRejection ? 'warning' : 'fail'}`;
     const label = document.createElement('strong');
     const interpretationText = document.createElement('p');
     label.textContent = '이 프레임의 해석';
     interpretationText.textContent = summary.interpretation;
     interpretation.append(label, interpretationText);
-    content.append(interpretation, comparisonCards(summary));
+    content.append(
+        interpretation,
+        comparisonCards(summary),
+        decodeDiagnostics(summary),
+    );
 
     const maps = document.createElement('div');
     maps.className = 'frame-map-grid';
@@ -218,7 +290,74 @@ async function renderSelectedFrame(container, sessionId, frameIndex) {
 }
 
 /** 세션 결과 아래에 프레임 선택기, 비교 요약, 네 장의 6,000비트 지도를 표시한다. */
-export async function renderFrameEvidence(container, sessionId) {
+/** SB CRC와 재인코딩 비교를 모두 통과했는지 동일한 기준으로 판단한다. */
+function isFullyRecovered(summary) {
+    return summary.decodeSucceeded
+        && summary.referenceToReencodedDifferences === 0;
+}
+
+/** FAIL 시험은 첫 실패 프레임을, 그 외 시험은 첫 보관 프레임을 기본 선택한다. */
+export function selectInitialFrameIndex(summaries, sessionVerdict) {
+    const fallback = summaries[0]?.frameIndex ?? 0;
+    if (String(sessionVerdict || '').toUpperCase() !== 'FAIL') {
+        return fallback;
+    }
+    return summaries.find((summary) => !isFullyRecovered(summary))?.frameIndex
+        ?? fallback;
+}
+
+/** 전체 시험과 현재 선택한 단일 프레임의 판정 범위를 나란히 보여준다. */
+function updateScopeSummary(
+    container,
+    summaries,
+    selectedFrameIndex,
+    sessionVerdict,
+) {
+    const scope = container.querySelector('.frame-scope-summary');
+    const selected = summaries.find(
+        (summary) => summary.frameIndex === selectedFrameIndex,
+    );
+    if (!scope || !selected) return;
+
+    const recoveredCount = summaries.filter(isFullyRecovered).length;
+    const overallVerdict = String(sessionVerdict || '').toUpperCase();
+    const selectedRecovered = isFullyRecovered(selected);
+    const overallFailed = overallVerdict === 'FAIL';
+
+    scope.replaceChildren();
+    const overall = document.createElement('article');
+    const current = document.createElement('article');
+    overall.className = `frame-scope-card ${overallFailed ? 'fail' : 'pass'}`;
+    current.className = `frame-scope-card ${selectedRecovered ? 'pass' : 'fail'}`;
+
+    const overallLabel = document.createElement('span');
+    const overallValue = document.createElement('strong');
+    const overallHelp = document.createElement('p');
+    overallLabel.textContent = '전체 시험 판정';
+    overallValue.textContent = overallVerdict || '프레임 결과 확인';
+    overallHelp.textContent = `보관된 ${summaries.length}개 프레임 중 ${recoveredCount}개가 CRC와 6,000비트 재인코딩 비교를 모두 통과했습니다.`;
+    overall.append(overallLabel, overallValue, overallHelp);
+
+    const currentLabel = document.createElement('span');
+    const currentValue = document.createElement('strong');
+    const currentHelp = document.createElement('p');
+    currentLabel.textContent = '현재 선택 프레임 판정';
+    currentValue.textContent = `${selected.frameIndex + 1}번 · ${selectedRecovered ? '완전 복구' : '복구 실패'}`;
+    currentHelp.textContent = overallFailed && selectedRecovered
+        ? '전체 시험은 FAIL이지만, 현재 선택한 이 프레임 하나는 정상 복구됐습니다. 다른 실패 프레임도 선택해 원인을 확인하세요.'
+        : selectedRecovered
+            ? '현재 선택한 프레임은 기준 AFSFrame과 재인코딩 검증 결과가 같습니다.'
+            : `현재 선택한 프레임의 실패 원인: ${selected.failureReason || 'CRC 또는 재인코딩 비교 실패'}`;
+    current.append(currentLabel, currentValue, currentHelp);
+
+    scope.append(overall, current);
+}
+
+export async function renderFrameEvidence(
+    container,
+    sessionId,
+    sessionVerdict = null,
+) {
     container.classList.remove('hidden');
     container.innerHTML = `
         <div class="frame-evidence-heading">
@@ -230,6 +369,7 @@ export async function renderFrameEvidence(container, sessionId) {
             <label title="보관된 AFS 프레임 중 점자형 지도로 비교할 프레임을 선택합니다.">확인할 프레임 <select class="frame-selector" aria-label="확인할 AFS 프레임" title="확인할 AFS 프레임을 선택합니다."></select></label>
         </div>
         <p class="frame-retention-note">최대 500프레임의 상세 원문을 Redis에 24시간 보관합니다. 500프레임을 넘으면 처음 250개와 마지막 250개를 보관합니다.</p>
+        <div class="frame-scope-summary" aria-live="polite"></div>
         <div class="frame-evidence-content" aria-live="polite">프레임 증거를 불러오는 중입니다.</div>`;
     try {
         let summaries = [];
@@ -249,20 +389,41 @@ export async function renderFrameEvidence(container, sessionId) {
         }
         const selector = container.querySelector('.frame-selector');
         summaries.forEach((summary) => {
-            const state = summary.referenceToReencodedDifferences === 0
-                ? '복구 일치'
-                : summary.intentionalSyncRejection ? '의도적 동기 제외' : '확인 필요';
+            const state = summary.decodeSucceeded
+                && summary.referenceToReencodedDifferences === 0
+                ? '완전 복구'
+                : summary.intentionalSyncRejection
+                    ? '의도적 동기 제외'
+                    : summary.decoderCompleted ? 'CRC 실패' : 'Decoder 실패';
             selector.add(new Option(
                 `${summary.frameIndex + 1}번 (index ${summary.frameIndex}) · ${state}`,
                 summary.frameIndex,
             ));
         });
-        selector.onchange = () => renderSelectedFrame(
+        // 전체 시험이 FAIL이면 사용자가 원인을 바로 볼 수 있도록 첫 실패 프레임을 기본 선택한다.
+        selector.value = String(selectInitialFrameIndex(
+            summaries,
+            sessionVerdict,
+        ));
+
+        selector.onchange = async () => {
+            const selectedFrameIndex = Number(selector.value);
+            updateScopeSummary(
+                container,
+                summaries,
+                selectedFrameIndex,
+                sessionVerdict,
+            );
+            await renderSelectedFrame(container, sessionId, selectedFrameIndex);
+        };
+        const initialFrameIndex = Number(selector.value);
+        updateScopeSummary(
             container,
-            sessionId,
-            Number(selector.value),
+            summaries,
+            initialFrameIndex,
+            sessionVerdict,
         );
-        await renderSelectedFrame(container, sessionId, Number(selector.value));
+        await renderSelectedFrame(container, sessionId, initialFrameIndex);
     } catch (error) {
         container.querySelector('.frame-evidence-content').textContent =
             `프레임 증거를 불러오지 못했습니다: ${error.message}`;

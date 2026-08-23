@@ -18,7 +18,8 @@ const SESSION_STATES = {
 };
 
 const METRIC_NAMES = {
-    DecodedFrames: '복호화 프레임',
+    DecodedFrames: 'Decoder 처리 프레임',
+    FullyDecodedFrames: 'CRC 통과 완전 복호 프레임',
     Sb2CrcValidFrames: 'SB2 CRC 정상 프레임',
     Sb3CrcValidFrames: 'SB3 CRC 정상 프레임',
     Sb4CrcValidFrames: 'SB4 CRC 정상 프레임',

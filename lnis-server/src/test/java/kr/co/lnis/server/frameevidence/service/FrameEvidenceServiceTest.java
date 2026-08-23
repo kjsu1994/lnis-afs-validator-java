@@ -34,10 +34,14 @@ class FrameEvidenceServiceTest {
 
         FrameEvidenceMessage sender = new FrameEvidenceMessage(
                 0, reference, transmitted, null, null,
-                List.of(0, 5999), false, "sender");
+                List.of(0, 5999), false,
+                false, false, false, false,
+                0, 0, 0, false, null, "sender");
         FrameEvidenceMessage receiver = new FrameEvidenceMessage(
                 0, null, null, received, reencoded,
-                List.of(), true, "receiver");
+                List.of(), true,
+                true, true, true, true,
+                10, 20, 30, true, null, "receiver");
         when(repository.find(sessionId, AgentRole.SENDER, 0))
                 .thenReturn(java.util.Optional.of(new FrameEvidenceEntity(
                         sessionId, AgentRole.SENDER, 0, sender, Instant.now())));
@@ -64,7 +68,9 @@ class FrameEvidenceServiceTest {
                 new ObjectMapper().findAndRegisterModules());
         FrameEvidenceMessage invalid = new FrameEvidenceMessage(
                 0, new byte[749], null, null, null,
-                List.of(), false, "invalid");
+                List.of(), false,
+                false, false, false, false,
+                0, 0, 0, false, null, "invalid");
 
         assertThrows(
                 IllegalArgumentException.class,

@@ -239,6 +239,48 @@
     background: #f2f6f7;
 }
 
+/* 시험 전체와 현재 선택한 한 프레임의 판정 범위를 시각적으로 분리한다. */
+.frame-scope-summary {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+    margin-top: 12px;
+}
+
+.frame-scope-card {
+    padding: 12px 14px;
+    border: 1px solid var(--line);
+    border-left: 4px solid #2a9d7f;
+    border-radius: 9px;
+    background: #f7fbfa;
+}
+
+.frame-scope-card.fail {
+    border-left-color: #c84747;
+    background: #fff5f5;
+}
+
+.frame-scope-card span,
+.frame-scope-card strong {
+    display: block;
+}
+
+.frame-scope-card span {
+    color: var(--muted);
+    font-size: 12px;
+}
+
+.frame-scope-card strong {
+    margin-top: 3px;
+    font-size: 18px;
+}
+
+.frame-scope-card p {
+    margin: 5px 0 0;
+    color: var(--muted);
+    line-height: 1.55;
+}
+
 .frame-interpretation {
     margin: 14px 0 10px;
     padding: 12px 14px;
@@ -250,6 +292,11 @@
 .frame-interpretation.pass {
     border-left-color: #2a9d7f;
     background: #e8f8f2;
+}
+
+.frame-interpretation.fail {
+    border-left-color: #c84747;
+    background: #fff0f0;
 }
 
 .frame-interpretation p {
@@ -315,6 +362,74 @@
     color: #08624f;
 }
 
+.frame-map-badge.warning {
+    background: #fff0cc;
+    color: #855700;
+}
+
+.frame-map-badge.failed {
+    background: #f9dada;
+    color: #9d2f2f;
+}
+
+.frame-diagnostic-heading {
+    margin: 16px 0 9px;
+}
+
+.frame-diagnostic-heading h4 {
+    margin: 0;
+    font-size: 15px;
+}
+
+.frame-diagnostic-heading p {
+    margin: 4px 0 0;
+    color: var(--muted);
+    font-size: 12px;
+}
+
+.frame-diagnostic-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+    gap: 8px;
+}
+
+.frame-diagnostic-item {
+    padding: 10px;
+    border: 1px solid var(--line);
+    border-left: 4px solid #9eb3bb;
+    border-radius: 8px;
+    background: #fbfcfc;
+}
+
+.frame-diagnostic-item.pass {
+    border-left-color: #2a9d7f;
+}
+
+.frame-diagnostic-item.fail {
+    border-left-color: #c84747;
+}
+
+.frame-diagnostic-item.warning {
+    border-left-color: #d39725;
+}
+
+.frame-diagnostic-item span,
+.frame-diagnostic-item strong {
+    display: block;
+}
+
+.frame-diagnostic-item strong {
+    margin-top: 3px;
+    font-size: 17px;
+}
+
+.frame-diagnostic-item p {
+    margin: 5px 0 0;
+    color: var(--muted);
+    font-size: 11px;
+    line-height: 1.45;
+}
+
 .frame-map-viewport {
     margin-top: 10px;
     overflow-x: auto;
@@ -337,6 +452,10 @@
 }
 
 @media(max-width: 700px) {
+    .frame-scope-summary {
+        grid-template-columns: 1fr;
+    }
+
     .frame-evidence-heading {
         align-items: stretch;
         flex-direction: column;

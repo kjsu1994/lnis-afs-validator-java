@@ -5,13 +5,13 @@ import {
     setPill,
     downloads,
     renderMetrics,
-} from './api.js?v=20260823-frame4';
+} from './api.js?v=20260823-frame5';
 import {
     formatEventLog,
     describeTestType,
     describeTestCondition,
-} from './event-log.js?v=20260823-final1';
-import { renderFrameEvidence } from './frame-evidence.js?v=20260823-frame4';
+} from './event-log.js?v=20260823-frame5';
+import { renderFrameEvidence } from './frame-evidence.js?v=20260823-frame6';
 
 const $ = (id) => document.getElementById(id);
 const eventLog = $('event-log');
@@ -155,7 +155,11 @@ statusSocket(
 
             if (event.sessionId) {
                 downloads($('downloads'), event.sessionId, 'rx');
-                renderFrameEvidence($('frame-evidence'), event.sessionId);
+                renderFrameEvidence(
+                    $('frame-evidence'),
+                    event.sessionId,
+                    payload.verdict,
+                );
             }
         }
     },

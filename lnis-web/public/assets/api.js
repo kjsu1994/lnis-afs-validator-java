@@ -306,11 +306,13 @@ function syncRecoveryCards(result, context = {}) {
 
 function frameCards(result) {
     const counters = result?.counters || {};
-    const decoded = metricValue(result, 'DecodedFrames');
+    const processed = metricValue(result, 'DecodedFrames');
+    const fullyDecoded = metricValue(result, 'FullyDecodedFrames');
     const expected = counters.expectedLogicalFrames;
     const received = counters.receivedLogicalFrames;
     const receivedAll = hasValue(expected) && received === expected;
-    const decodedAll = hasValue(received) && decoded === received;
+    const processedAll = hasValue(received) && processed === received;
+    const fullyDecodedAll = hasValue(received) && fullyDecoded === received;
 
     return [
         hasValue(received) && hasValue(expected) ? card(
@@ -320,11 +322,18 @@ function frameCards(result) {
             status(receivedAll, '모두 수신'),
             'frame',
         ) : null,
-        hasValue(decoded) && hasValue(received) ? card(
-            'AFS 프레임 복호화',
-            `${displayNumber(decoded)} / ${displayNumber(received)}`,
-            '수신한 논리 프레임 중 AFS 디코더가 처리한 프레임 수입니다.',
-            status(decodedAll, '모두 복호화'),
+        hasValue(processed) && hasValue(received) ? card(
+            'AFS Decoder 처리',
+            `${displayNumber(processed)} / ${displayNumber(received)}`,
+            'AFS Decoder 호출이 예외 없이 끝난 프레임 수입니다. CRC 통과나 완전 복구 성공을 뜻하지 않으며, 바로 다음 완전 복호 수치를 함께 확인해야 합니다.',
+            status(processedAll, '모두 처리'),
+            'frame',
+        ) : null,
+        hasValue(fullyDecoded) && hasValue(received) ? card(
+            'CRC까지 통과한 완전 복호',
+            `${displayNumber(fullyDecoded)} / ${displayNumber(received)}`,
+            'Decoder 처리를 마친 뒤 SB2·SB3·SB4 CRC가 모두 정상인 프레임 수입니다. 이 값이 실제 프레임 완전 복호 성공 수입니다.',
+            status(fullyDecodedAll, '모두 완전 복호', '일부 복호 실패'),
             'frame',
         ) : null,
     ].filter(Boolean);
@@ -392,7 +401,7 @@ function networkCards(result, context = {}) {
         card(
             'AFS 복호화 실패',
             decodeFailedFrames,
-            'Receiver가 복호화를 시도한 AFS 프레임 중 디코더 예외 또는 SB3/SB4 CRC 실패로 GRAW 재조립에 사용하지 못한 수입니다.',
+            'Receiver가 처리한 AFS 프레임 중 Decoder 예외 또는 SB2·SB3·SB4 중 하나 이상의 CRC 실패가 발생한 수입니다. 프레임별 실패 블록은 아래 6,000비트 비교에서 확인할 수 있습니다.',
             status(decodeFailedFrames === 0, '없음'),
             'frame',
         ),
