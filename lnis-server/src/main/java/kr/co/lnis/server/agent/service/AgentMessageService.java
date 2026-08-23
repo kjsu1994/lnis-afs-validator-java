@@ -1,8 +1,8 @@
 package kr.co.lnis.server.agent.service;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import kr.co.lnis.common.model.AgentProtocol.*;
-import kr.co.lnis.common.model.LnisModels.*;
+import kr.co.lnis.protocol.model.AgentProtocol.*;
+import kr.co.lnis.protocol.model.LnisModels.*;
 import kr.co.lnis.server.agent.entity.AgentEntity;
 import kr.co.lnis.server.agent.repository.AgentRepository;
 import kr.co.lnis.server.input.service.InputBufferService;
@@ -14,7 +14,13 @@ import java.time.Instant;
 import java.util.Base64;
 
 @Service
-/** Agent 프로토콜 메시지를 기능별 저장소와 브라우저 이벤트로 연결한다. */
+/**
+ * Agent protocol 메시지를 기능별 저장소와 브라우저 이벤트로 연결한다.
+ *
+ * <p>이 클래스가 Agent WebSocket transport와 input/session/realtime 도메인 사이의 경계다.
+ * 메시지 종류별 payload 타입을 여기서 확정하고, Agent가 보낸 임의 JSON이
+ * Repository까지 직접 전달되지 않게 한다.
+ */
 public class AgentMessageService {
     private final ObjectMapper json;
     private final AgentRepository agents;
@@ -38,6 +44,7 @@ public class AgentMessageService {
         this.lifecycle = lifecycle;
     }
 
+    /** envelope 종류에 따라 Agent 상태, 입력 청크, 진행률 또는 역할 결과 처리로 분기한다. */
     public void handle(Envelope envelope) throws Exception {
         switch (envelope.type()) {
             case HELLO -> handleHello(envelope);

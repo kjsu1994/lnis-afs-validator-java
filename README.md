@@ -60,7 +60,7 @@ Sender와 Receiver 사이의 실제 시험 프레임은 중앙 서버를 경유�
 
 | 경로 | 설명 |
 |---|---|
-| `lnis-common` | LGRW/LAFS wire 계약, CRC32, 공통 모델, 결정론적 Drop 로직 |
+| `lnis-protocol` | 서버/Agent 공유 protocol, LGRW/LAFS wire 계약, CRC32, 결정론적 Drop 로직 |
 | `lnis-server` | Spring Boot Controller/DTO/Entity/Service/Repository/Mapper 및 Redis 연동 |
 | `lnis-agent` | Windows COM/u-blox, JNA 네이티브 코덱, UDP Sender/Receiver |
 | `lnis-web` | Sender/Receiver HTML, JavaScript, CSS 및 Nginx 설정 |
@@ -68,6 +68,24 @@ Sender와 Receiver 사이의 실제 시험 프레임은 중앙 서버를 경유�
 | `dist/server` | 빌드된 Spring Boot 실행 JAR |
 | `dist/windows-agent` | Windows Agent 설치용 전체 배포본 |
 | `docker-compose.yml` | Redis, Spring Boot, Nginx 실행 정의 |
+
+### 2.1 `lnis-protocol`을 독립 모듈로 두는 이유
+
+`lnis-protocol`은 일반적인 유틸리티 모음이 아니라 중앙 서버와 Windows Agent 사이의 **공유 계약**입니다.
+
+```text
+lnis-server ──┐
+              ├──> lnis-protocol
+lnis-agent  ──┘
+```
+
+- Spring Boot, Redis, COM 포트, JNA 같은 실행 환경 의존성을 포함하지 않습니다.
+- WebSocket envelope, 세션/결과 모델, canonical GRAW와 UDP binary 규격만 제공합니다.
+- 서버가 Agent의 Windows 전용 라이브러리를 의존하거나 Agent가 Spring Boot를 의존하지 않게 합니다.
+- protocol 변경 시 서버와 Agent가 함께 컴파일되므로 양쪽 규격 불일치를 조기에 발견할 수 있습니다.
+- 빌드 시 `lnis-protocol-1.0.0.jar`가 서버 JAR과 Agent 배포본에 각각 포함됩니다.
+
+따라서 세 모듈은 별도 저장소가 아니라 하나의 Gradle 멀티모듈 프로젝트이며, 실제 실행 산출물은 서버와 Agent 두 종류입니다.
 
 백엔드는 공통 계층 폴더에 모든 클래스를 모으는 방식이 아니라, 업무 기능을 먼저 나누고 각 기능 아래에 필요한 계층을 배치하는 **기능 우선(Vertical Slice)** 구조입니다.
 
@@ -760,6 +778,24 @@ Get-Service 'lnis-agent'
 - USB 드라이버 설치 상태 확인
 - 올바른 baud rate 선택
 - `COM 포트 새로고침` 후 Agent 이벤트 확인
+
+브라우저에서 COM 포트를 직접 조회하지는 않습니다. 중앙 서버가 다음 API를 통해 선택된
+Windows Sender Agent에 `LIST_PORTS` 명령을 보내고, Agent가 조회 결과를 WebSocket으로
+화면에 돌려주는 구조입니다.
+
+```text
+POST /lnis/api/v1/agents/{agentId}/serial-ports/refresh
+```
+
+개발자 도구에 `/agents//serial-ports/refresh`처럼 Agent ID가 비어 있는 URL이 보이면
+서버에 연결된 Sender Agent가 없다는 뜻입니다. `/lnis/api/v1/agents` 응답을 확인하고,
+Sender PC에서 Agent를 먼저 실행해야 합니다. 화면은 연결된 Agent가 없을 때 선택 상자에
+`연결된 Sender Agent 없음`을 표시하고 새로고침 및 수집 시작 버튼을 비활성화합니다.
+
+`POST /lnis/api/v1/captures`가 `400 Bad Request`를 반환하면 응답의 `detail`에 표시된
+Sender Agent, COM 포트, baud rate 또는 프로토콜 입력을 확인합니다. 화면에서는 팝업 대신
+상단 인라인 알림으로 원인과 조치 방법을 안내합니다. Agent 조회나 명령 전송이 실패한 경우
+서버는 생성 중이던 Redis 입력 메타데이터도 즉시 제거합니다.
 
 ### 13.4 Receiver가 데이터를 받지 못함
 

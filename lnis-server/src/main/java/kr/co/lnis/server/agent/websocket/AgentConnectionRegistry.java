@@ -1,7 +1,7 @@
 package kr.co.lnis.server.agent.websocket;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import kr.co.lnis.common.model.AgentProtocol.Envelope;
+import kr.co.lnis.protocol.model.AgentProtocol.Envelope;
 import org.springframework.stereotype.Component;
 import org.springframework.web.socket.TextMessage;
 import org.springframework.web.socket.WebSocketSession;

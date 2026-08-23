@@ -1,10 +1,16 @@
 package kr.co.lnis.agent.session.afs;
 
-import kr.co.lnis.common.codec.Hashing;
+import kr.co.lnis.protocol.codec.Hashing;
 import java.io.ByteArrayOutputStream;
 import java.util.*;
 
-/** 순서가 뒤섞이거나 중복된 AFS fragment를 원래 GRAW 레코드로 복원한다. */
+/**
+ * 순서가 뒤섞이거나 중복된 AFS fragment를 원래 GRAW 레코드로 복원한다.
+ *
+ * <p>record sequence별 상태를 유지하고 모든 fragment가 모인 record만 반환한다. 같은 index의 중복
+ * fragment 내용이나 metadata가 다르면 조용히 덮어쓰지 않고 예외로 처리하며, 최종 길이와 CRC32도
+ * 다시 확인한다.
+ */
 public final class AfsReassembler {
     private final SortedMap<Long, RecordState> records = new TreeMap<>();
     public void add(AfsRawFragmentCodec.Fragment fragment) {

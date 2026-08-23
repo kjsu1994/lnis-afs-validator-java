@@ -8,15 +8,21 @@ import kr.co.lnis.agent.gnss.SerialCaptureService;
 import kr.co.lnis.agent.codec.NativeAfsCodec;
 import kr.co.lnis.agent.config.AgentConfig;
 import kr.co.lnis.agent.session.transport.UdpSessionService;
-import kr.co.lnis.common.model.AgentProtocol.*;
-import kr.co.lnis.common.model.LnisModels.AgentState;
+import kr.co.lnis.protocol.model.AgentProtocol.*;
+import kr.co.lnis.protocol.model.LnisModels.AgentState;
 import java.io.ByteArrayOutputStream;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
 
-/** 서버 명령을 GNSS 수집 또는 Sender/Receiver UDP 작업으로 분배하는 Agent 핵심 런타임이다. */
+/**
+ * 서버 명령을 GNSS 수집 또는 Sender/Receiver UDP 작업으로 분배하는 Agent 핵심 런타임이다.
+ *
+ * <p>WebSocket transport와 장치/시험 구현을 분리하는 application 계층이다. 세션별 GRAW 청크를 메모리에
+ * 조립하고 역할 검증 후 비동기 UDP 작업을 시작한다. 작업 완료 callback에서 RoleResult를 서버로 보내고
+ * Agent 상태를 READY로 복원한다.
+ */
 public final class AgentRuntime implements AutoCloseable {
     private final AgentConfig config;
     private final NativeAfsCodec codec;
@@ -44,9 +50,10 @@ public final class AgentRuntime implements AutoCloseable {
         return state.get();
     }
 
+    /** protocol version과 메시지 종류를 확인한 뒤 입력 또는 명령 처리 흐름으로 분기한다. */
     public void handle(Envelope envelope) {
         if (envelope.protocolVersion()
-                != kr.co.lnis.common.model.AgentProtocol.PROTOCOL_VERSION) {
+                != kr.co.lnis.protocol.model.AgentProtocol.PROTOCOL_VERSION) {
             return;
         }
         try {
@@ -135,8 +142,9 @@ public final class AgentRuntime implements AutoCloseable {
                 Map.of());
     }
 
+    /** Receiver 역할을 확인하고 data port 수신 작업을 가상 thread에서 시작한다. */
     private void startReceiver(UUID sessionId, JsonNode args) throws Exception {
-        if (config.role() != kr.co.lnis.common.model.LnisModels.AgentRole.RECEIVER) {
+        if (config.role() != kr.co.lnis.protocol.model.LnisModels.AgentRole.RECEIVER) {
             throw new IllegalStateException("Only RECEIVER can arm UDP reception");
         }
         state.set(AgentState.BUSY);
@@ -148,8 +156,9 @@ public final class AgentRuntime implements AutoCloseable {
                 result -> completeRole(sessionId, result));
     }
 
+    /** 전달 완료된 GRAW 입력을 꺼내 Sender UDP 송신 작업을 시작한다. */
     private void startSender(UUID sessionId, JsonNode args) throws Exception {
-        if (config.role() != kr.co.lnis.common.model.LnisModels.AgentRole.SENDER) {
+        if (config.role() != kr.co.lnis.protocol.model.LnisModels.AgentRole.SENDER) {
             throw new IllegalStateException("Only SENDER can start UDP transmission");
         }
         ByteArrayOutputStream input = sessionInputs.remove(sessionId);
@@ -171,8 +180,9 @@ public final class AgentRuntime implements AutoCloseable {
         state.set(AgentState.READY);
     }
 
+    /** COM 포트 설정을 역직렬화하고 canonical GRAW 청크 callback을 등록한다. */
     private void startCapture(UUID sessionId, JsonNode args) throws Exception {
-        if (config.role() != kr.co.lnis.common.model.LnisModels.AgentRole.SENDER) {
+        if (config.role() != kr.co.lnis.protocol.model.LnisModels.AgentRole.SENDER) {
             throw new IllegalStateException("Only SENDER can capture GNSS");
         }
         var settings = json.treeToValue(args, SerialCaptureService.Settings.class);
@@ -234,7 +244,7 @@ public final class AgentRuntime implements AutoCloseable {
 
     private void ack(Envelope original, boolean accepted, String message) {
         outbound.accept(new Envelope(
-                kr.co.lnis.common.model.AgentProtocol.PROTOCOL_VERSION,
+                kr.co.lnis.protocol.model.AgentProtocol.PROTOCOL_VERSION,
                 MessageType.COMMAND_ACK,
                 UUID.randomUUID(),
                 original.messageId(),

@@ -1,7 +1,7 @@
 package kr.co.lnis.server.input.service;
 
-import kr.co.lnis.common.codec.GrawCodec;
-import kr.co.lnis.common.codec.Hashing;
+import kr.co.lnis.protocol.codec.GrawCodec;
+import kr.co.lnis.protocol.codec.Hashing;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.security.MessageDigest;

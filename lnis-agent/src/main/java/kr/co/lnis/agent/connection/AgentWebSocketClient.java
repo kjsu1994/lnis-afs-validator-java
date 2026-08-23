@@ -3,7 +3,7 @@ package kr.co.lnis.agent.connection;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import kr.co.lnis.agent.config.AgentConfig;
 import kr.co.lnis.agent.runtime.AgentRuntime;
-import kr.co.lnis.common.model.AgentProtocol.*;
+import kr.co.lnis.protocol.model.AgentProtocol.*;
 import java.net.http.HttpClient;
 import java.net.http.WebSocket;
 import java.time.Duration;
@@ -11,7 +11,12 @@ import java.util.Map;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicLong;
 
-/** 중앙 서버 연결, 재연결, HELLO 및 heartbeat 전송을 관리한다. */
+/**
+ * 중앙 서버 연결, 재연결, HELLO 및 heartbeat 전송을 관리한다.
+ *
+ * <p>HTTP WebSocket client는 Agent ID와 Bearer token을 handshake header에 넣는다. 연결 실패 또는 정상
+ * 종료 시 5초 뒤 재접속하고, 연결 중에는 5초마다 현재 AgentState와 증가 sequence를 전송한다.
+ */
 public final class AgentWebSocketClient implements WebSocket.Listener, AutoCloseable {
     private final AgentConfig config;
     private final AgentRuntime runtime;
@@ -28,11 +33,13 @@ public final class AgentWebSocketClient implements WebSocket.Listener, AutoClose
         runtime.outbound(this::send);
     }
 
+    /** 최초 연결을 요청하고 heartbeat scheduler를 시작한다. */
     public void start() {
         connect();
         scheduler.scheduleAtFixedRate(this::heartbeat, 5, 5, TimeUnit.SECONDS);
     }
 
+    /** 비동기 handshake 실패를 scheduler 기반 재시도로 전환한다. */
     private void connect() {
         HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(10)).build().newWebSocketBuilder()
                 .header("Authorization", "Bearer " + config.token())

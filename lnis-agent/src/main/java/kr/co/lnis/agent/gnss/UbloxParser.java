@@ -1,13 +1,19 @@
 package kr.co.lnis.agent.gnss;
 
-import kr.co.lnis.common.codec.GrawCodec;
+import kr.co.lnis.protocol.codec.GrawCodec;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 
-/** UBX checksum을 검증하고 RAWX/SFRBX payload를 공통 GNSS 모델로 변환한다. */
+/**
+ * UBX checksum을 검증하고 RAWX/SFRBX payload를 protocol GNSS 모델로 변환한다.
+ *
+ * <p>serial read 경계와 UBX frame 경계가 일치하지 않으므로 미완성 byte를 pending buffer에 보존한다.
+ * sync byte, payload 길이와 checksum이 유효한 frame만 반환하며 손상 구간에서는 다음 sync 후보를 찾아
+ * parser 전체가 멈추지 않게 한다.
+ */
 public final class UbloxParser {
     private byte[] pending = new byte[0];
     public record UbxFrame(int messageClass, int messageId, byte[] payload) {}

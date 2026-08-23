@@ -8,7 +8,13 @@ import java.nio.file.Path;
 import java.util.List;
 import java.util.concurrent.locks.ReentrantLock;
 
-/** JNA를 통해 기존 C AFS 코덱 ABI를 안전하게 호출한다. */
+/**
+ * JNA를 통해 기존 C AFS 코덱 ABI를 안전하게 호출한다.
+ *
+ * <p>Java 배열은 C 함수가 요구하는 정확한 SB bit 수인지 확인하고,
+ * bit 값도 0/1만 허용한다. C 코덱이 전역 오류 상태를 사용하므로
+ * encode/decode와 오류 문자열 조회를 하나의 lock 구간으로 보호한다.
+ */
 public final class NativeAfsCodec implements AutoCloseable {
     public static final int FRAME_BYTES = 750;
     private static final ReentrantLock GATE = new ReentrantLock();
@@ -45,6 +51,7 @@ public final class NativeAfsCodec implements AutoCloseable {
 
     public int abiVersion() { return api.lnis_afs_get_abi_version(); }
 
+    /** SB2/SB3/SB4 bit 배열을 750 byte AFS frame으로 부호화한다. */
     public byte[] encode(int toi, byte[] sb2, byte[] sb3, byte[] sb4) {
         require(toi, sb2, sb3, sb4); byte[] frame = new byte[FRAME_BYTES];
         GATE.lock();
@@ -52,6 +59,7 @@ public final class NativeAfsCodec implements AutoCloseable {
         finally { GATE.unlock(); }
     }
 
+    /** 750 byte frame을 세 sub-block과 CRC/보정 상태로 복호화한다. */
     public Decoded decode(int toi, byte[] frame) {
         if (toi < 0 || toi > 99 || frame.length != FRAME_BYTES) throw new IllegalArgumentException("Invalid AFS frame or TOI");
         byte[] sb2 = new byte[1176], sb3 = new byte[846], sb4 = new byte[846]; DecodeStatus status = new DecodeStatus();

@@ -1,7 +1,7 @@
 plugins { application }
 
 dependencies {
-    implementation(project(":lnis-common"))
+    implementation(project(":lnis-protocol"))
     implementation("com.fasterxml.jackson.core:jackson-databind:2.19.2")
     implementation("com.fasterxml.jackson.datatype:jackson-datatype-jsr310:2.19.2")
     implementation("net.java.dev.jna:jna:5.17.0")

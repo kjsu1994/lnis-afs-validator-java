@@ -1,6 +1,6 @@
 package kr.co.lnis.server.artifact.controller;
 
-import kr.co.lnis.common.model.LnisModels.AgentRole;
+import kr.co.lnis.protocol.model.LnisModels.AgentRole;
 import kr.co.lnis.server.artifact.service.ArtifactService;
 import org.springframework.http.*;
 import org.springframework.web.bind.annotation.*;

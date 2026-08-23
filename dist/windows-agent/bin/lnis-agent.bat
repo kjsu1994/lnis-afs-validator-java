@@ -70,7 +70,7 @@ goto fail
 :execute
 @rem Setup the command line
 
-set CLASSPATH=%APP_HOME%\lib\lnis-agent-1.0.0.jar;%APP_HOME%\lib\lnis-common-1.0.0.jar;%APP_HOME%\lib\jackson-annotations-2.19.2.jar;%APP_HOME%\lib\jackson-core-2.19.2.jar;%APP_HOME%\lib\jackson-datatype-jsr310-2.19.2.jar;%APP_HOME%\lib\jackson-databind-2.19.2.jar;%APP_HOME%\lib\jna-5.17.0.jar;%APP_HOME%\lib\jSerialComm-2.11.4.jar;%APP_HOME%\lib\logback-classic-1.5.18.jar;%APP_HOME%\lib\slf4j-api-2.0.17.jar;%APP_HOME%\lib\logback-core-1.5.18.jar
+set CLASSPATH=%APP_HOME%\lib\lnis-agent-1.0.0.jar;%APP_HOME%\lib\lnis-protocol-1.0.0.jar;%APP_HOME%\lib\jackson-annotations-2.19.2.jar;%APP_HOME%\lib\jackson-core-2.19.2.jar;%APP_HOME%\lib\jackson-datatype-jsr310-2.19.2.jar;%APP_HOME%\lib\jackson-databind-2.19.2.jar;%APP_HOME%\lib\jna-5.17.0.jar;%APP_HOME%\lib\jSerialComm-2.11.4.jar;%APP_HOME%\lib\logback-classic-1.5.18.jar;%APP_HOME%\lib\slf4j-api-2.0.17.jar;%APP_HOME%\lib\logback-core-1.5.18.jar
 
 
 @rem Execute lnis-agent

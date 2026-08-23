@@ -1,7 +1,7 @@
 package kr.co.lnis.agent.gnss;
 
 import com.fazecast.jSerialComm.SerialPort;
-import kr.co.lnis.common.codec.GrawCodec;
+import kr.co.lnis.protocol.codec.GrawCodec;
 import java.io.ByteArrayOutputStream;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
@@ -10,7 +10,13 @@ import java.util.*;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Consumer;
 
-/** Windows COM 포트에서 GNSS 데이터를 읽어 canonical GRAW 청크로 변환한다. */
+/**
+ * Windows COM 포트에서 GNSS 데이터를 읽어 canonical GRAW 청크로 변환한다.
+ *
+ * <p>전용 virtual thread에서 serial byte를 읽고 선택한 protocol parser에 전달한다. raw serial과 canonical
+ * GRAW를 함께 계수하지만 서버에는 시험에 사용할 canonical 레코드만 별도 필드로 전달한다. stop 또는
+ * close 시 포트를 닫고 가능한 경우 u-blox 임시 설정을 원래 값으로 복원한다.
+ */
 public final class SerialCaptureService implements AutoCloseable {
     public record Settings(String portName, int baudRate, String protocolId, String sessionName, String receiverModel,
                            String firmwareVersion, boolean dtrEnabled, boolean rtsEnabled) {}

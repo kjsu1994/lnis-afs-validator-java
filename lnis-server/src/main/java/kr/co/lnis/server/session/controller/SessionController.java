@@ -1,7 +1,7 @@
 package kr.co.lnis.server.session.controller;
 
 import jakarta.validation.Valid;
-import kr.co.lnis.common.model.LnisModels.SessionSnapshot;
+import kr.co.lnis.protocol.model.LnisModels.SessionSnapshot;
 import kr.co.lnis.server.session.dto.CreateSessionRequest;
 import kr.co.lnis.server.session.entity.TestSessionEntity;
 import kr.co.lnis.server.session.service.SessionService;

@@ -1,17 +1,180 @@
 <!doctype html>
 <html lang="ko">
-<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>LNIS AFS Sender</title><link rel="stylesheet" href="/lnis/assets/app.css"></head>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>LNIS AFS Sender</title>
+  <link rel="stylesheet" href="/lnis/assets/app.css">
+  <link rel="stylesheet" href="/lnis/assets/notice.css">
+</head>
 <body data-page="sender">
-<header><div><span class="eyebrow">LNIS AFS VALIDATOR</span><h1>Sender 시험 제어</h1></div><nav><a class="active" href="/lnis/test/sender">Sender</a><a href="/lnis/test/receiver">Receiver</a></nav></header>
-<main>
-  <section class="status-strip"><span id="server-status" class="pill warning">서버 연결 중</span><span id="sender-status" class="pill">Sender OFFLINE</span><span id="receiver-status" class="pill">Receiver OFFLINE</span><span id="session-state" class="pill">대기</span></section>
-  <div class="grid two">
-    <section class="card"><h2>시험 입력</h2><div class="tabs"><button class="tab active" data-tab="upload">GRAW 업로드</button><button class="tab" data-tab="capture">GNSS COM 수집</button></div>
-      <div id="upload-panel" class="panel"><label>capture.graw<input id="graw-file" type="file" accept=".graw,application/octet-stream"></label><button id="upload-button" class="primary">Redis 버퍼로 업로드</button><progress id="upload-progress" max="100" value="0"></progress><small id="input-summary">입력을 선택하세요.</small></div>
-      <div id="capture-panel" class="panel hidden"><div class="form-grid"><label>Sender Agent<select id="capture-agent"></select></label><label>COM 포트<div class="inline"><select id="com-port"></select><button id="refresh-ports" type="button">새로고침</button></div></label><label>Baud<select id="baud"><option>9600</option><option>38400</option><option>57600</option><option selected>115200</option><option>230400</option><option>460800</option><option>921600</option></select></label><label>프로토콜<select id="protocol"><option value="ubx">u-blox UBX</option><option value="lnis-canonical-v1">LNIS Canonical v1</option><option value="raw-only">Raw only</option></select></label></div><div class="actions"><button id="capture-start" class="primary">수집 시작</button><button id="capture-stop" disabled>수집 종료</button></div><small id="capture-summary">Agent와 COM 포트를 선택하세요.</small></div>
-    </section>
-    <section class="card"><h2>전송 설정</h2><div class="form-grid"><label>Sender Agent<select id="sender-agent"></select></label><label>Receiver Agent<select id="receiver-agent"></select></label><label>시험 종류<select id="test-type"><option value="TEST_A_NORMAL">Test A · 정상</option><option value="TEST_B_RANDOM_ERRORS">Test B · Random 오류</option><option value="TEST_C_BURST_ERRORS">Test C · Burst 오류</option><option value="TEST_D_SYNC_RECOVERY">Test D · Sync 복구</option><option value="TEST_E_UDP_DROP">Test E · UDP Drop</option></select></label><label>Broadcast/Receiver 주소<input id="broadcast-address" value="255.255.255.255"></label><label>데이터 포트<input id="data-port" type="number" value="45821"></label><label>결과 포트<input id="result-port" type="number" value="45822"></label><label>중복 송신<input id="repeat-count" type="number" value="3" min="1" max="20"></label><label>결과 대기(초)<input id="result-timeout" type="number" value="30"></label><label class="conditional error">오류 심볼 수<input id="error-count" type="number" value="1"></label><label class="conditional error">오류 Seed<input id="error-seed" type="number" value="1"></label><label class="conditional sync">SP 손상 간격<input id="sync-interval" type="number" value="10"></label><label class="conditional drop">Drop Rate %<input id="drop-rate" type="number" value="10" step="0.1"></label><label class="conditional drop">Drop Seed<input id="drop-seed" type="number" value="1"></label></div><div class="actions"><button id="test-start" class="primary">시험 시작</button><button id="test-cancel" disabled>취소</button></div></section>
+<header>
+  <div>
+    <span class="eyebrow">LNIS AFS VALIDATOR</span>
+    <h1>Sender 시험 제어</h1>
   </div>
-  <section class="card"><div class="card-title"><h2>실시간 상태</h2><strong id="progress-label">0%</strong></div><progress id="session-progress" max="100" value="0"></progress><div id="verdict" class="verdict neutral">판정 대기</div><div id="metrics" class="metrics"></div><pre id="event-log" class="log" aria-live="polite"></pre><div id="downloads" class="downloads hidden"></div></section>
-</main><script type="module" src="/lnis/assets/sender.js"></script></body></html>
+  <nav>
+    <a class="active" href="/lnis/test/sender">Sender</a>
+    <a href="/lnis/test/receiver">Receiver</a>
+  </nav>
+</header>
+<main>
+  <section class="status-strip">
+    <span id="server-status" class="pill warning">서버 연결 중</span>
+    <span id="sender-status" class="pill">Sender OFFLINE</span>
+    <span id="receiver-status" class="pill">Receiver OFFLINE</span>
+    <span id="session-state" class="pill">대기</span>
+  </section>
 
+  <section id="page-notice" class="notice hidden" role="alert" aria-live="assertive">
+    <div>
+      <strong id="notice-title"></strong>
+      <span id="notice-message"></span>
+    </div>
+    <button id="notice-close" type="button" aria-label="알림 닫기">닫기</button>
+  </section>
+
+  <div class="grid two">
+    <section class="card">
+      <h2>시험 입력</h2>
+      <div class="tabs">
+        <button class="tab active" data-tab="upload">GRAW 업로드</button>
+        <button class="tab" data-tab="capture">GNSS COM 수집</button>
+      </div>
+
+      <div id="upload-panel" class="panel">
+        <label>
+          capture.graw
+          <input id="graw-file" type="file" accept=".graw,application/octet-stream">
+        </label>
+        <button id="upload-button" class="primary">Redis 버퍼로 업로드</button>
+        <progress id="upload-progress" max="100" value="0"></progress>
+        <small id="input-summary">입력을 선택하세요.</small>
+      </div>
+
+      <div id="capture-panel" class="panel hidden">
+        <div class="form-grid">
+          <label>
+            Sender Agent
+            <select id="capture-agent"></select>
+          </label>
+          <label>
+            COM 포트
+            <div class="inline">
+              <select id="com-port"></select>
+              <button id="refresh-ports" type="button" disabled>새로고침</button>
+            </div>
+          </label>
+          <label>
+            Baud
+            <select id="baud">
+              <option>9600</option>
+              <option>38400</option>
+              <option>57600</option>
+              <option selected>115200</option>
+              <option>230400</option>
+              <option>460800</option>
+              <option>921600</option>
+            </select>
+          </label>
+          <label>
+            프로토콜
+            <select id="protocol">
+              <option value="ubx">u-blox UBX</option>
+              <option value="lnis-canonical-v1">LNIS Canonical v1</option>
+              <option value="raw-only">Raw only</option>
+            </select>
+          </label>
+        </div>
+        <div class="actions">
+          <button id="capture-start" class="primary" disabled>수집 시작</button>
+          <button id="capture-stop" disabled>수집 종료</button>
+        </div>
+        <small id="capture-summary">Windows Sender Agent 연결을 기다리는 중입니다.</small>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>전송 설정</h2>
+      <div class="form-grid">
+        <label>
+          Sender Agent
+          <select id="sender-agent"></select>
+        </label>
+        <label>
+          Receiver Agent
+          <select id="receiver-agent"></select>
+        </label>
+        <label>
+          시험 종류
+          <select id="test-type">
+            <option value="TEST_A_NORMAL">Test A · 정상</option>
+            <option value="TEST_B_RANDOM_ERRORS">Test B · Random 오류</option>
+            <option value="TEST_C_BURST_ERRORS">Test C · Burst 오류</option>
+            <option value="TEST_D_SYNC_RECOVERY">Test D · Sync 복구</option>
+            <option value="TEST_E_UDP_DROP">Test E · UDP Drop</option>
+          </select>
+        </label>
+        <label>
+          Broadcast/Receiver 주소
+          <input id="broadcast-address" value="255.255.255.255">
+        </label>
+        <label>
+          데이터 포트
+          <input id="data-port" type="number" value="45821">
+        </label>
+        <label>
+          결과 포트
+          <input id="result-port" type="number" value="45822">
+        </label>
+        <label>
+          중복 송신
+          <input id="repeat-count" type="number" value="3" min="1" max="20">
+        </label>
+        <label>
+          결과 대기(초)
+          <input id="result-timeout" type="number" value="30">
+        </label>
+        <label class="conditional error">
+          오류 심볼 수
+          <input id="error-count" type="number" value="1">
+        </label>
+        <label class="conditional error">
+          오류 Seed
+          <input id="error-seed" type="number" value="1">
+        </label>
+        <label class="conditional sync">
+          SP 손상 간격
+          <input id="sync-interval" type="number" value="10">
+        </label>
+        <label class="conditional drop">
+          Drop Rate %
+          <input id="drop-rate" type="number" value="10" step="0.1">
+        </label>
+        <label class="conditional drop">
+          Drop Seed
+          <input id="drop-seed" type="number" value="1">
+        </label>
+      </div>
+      <div class="actions">
+        <button id="test-start" class="primary" disabled>시험 시작</button>
+        <button id="test-cancel" disabled>취소</button>
+      </div>
+    </section>
+  </div>
+
+  <section class="card">
+    <div class="card-title">
+      <h2>실시간 상태</h2>
+      <strong id="progress-label">0%</strong>
+    </div>
+    <progress id="session-progress" max="100" value="0"></progress>
+    <div id="verdict" class="verdict neutral">판정 대기</div>
+    <div id="metrics" class="metrics"></div>
+    <pre id="event-log" class="log" aria-live="polite"></pre>
+    <div id="downloads" class="downloads hidden"></div>
+  </section>
+</main>
+<script type="module" src="/lnis/assets/sender.js?v=20260823-ux1"></script>
+</body>
+</html>

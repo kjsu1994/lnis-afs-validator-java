@@ -1,8 +1,8 @@
 package kr.co.lnis.server.session.repository;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import kr.co.lnis.common.model.LnisModels.AgentRole;
-import kr.co.lnis.common.model.LnisModels.RoleResult;
+import kr.co.lnis.protocol.model.LnisModels.AgentRole;
+import kr.co.lnis.protocol.model.LnisModels.RoleResult;
 import kr.co.lnis.server.session.entity.TestSessionEntity;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Repository;

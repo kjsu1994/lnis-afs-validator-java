@@ -1,8 +1,8 @@
 package kr.co.lnis.server.capture.controller;
 
 import jakarta.validation.Valid;
-import kr.co.lnis.common.model.AgentProtocol.CommandType;
-import kr.co.lnis.common.model.LnisModels.InputKind;
+import kr.co.lnis.protocol.model.AgentProtocol.CommandType;
+import kr.co.lnis.protocol.model.LnisModels.InputKind;
 import kr.co.lnis.server.agent.service.AgentCommandService;
 import kr.co.lnis.server.capture.dto.CaptureRequest;
 import kr.co.lnis.server.input.entity.InputBufferEntity;
@@ -26,14 +26,29 @@ public class CaptureController {
     @PostMapping
     public InputBufferEntity start(@Valid @RequestBody CaptureRequest request) {
         var input = inputs.create("capture.graw", 0, InputKind.GNSS_CAPTURE);
-        commands.command(
-                request.senderAgentId(),
-                input.inputId(),
-                CommandType.START_CAPTURE,
-                request);
-        return input;
+        try {
+            commands.command(
+                    request.senderAgentId(),
+                    input.inputId(),
+                    CommandType.START_CAPTURE,
+                    request);
+            return input;
+        } catch (RuntimeException error) {
+            // Agent 조회 또는 명령 전송이 실패하면 시험에 사용할 수 없는 Redis 입력을 남기지 않는다.
+            try {
+                inputs.remove(input.inputId());
+            } catch (RuntimeException cleanupError) {
+                // 정리 오류가 원래의 명령 실패 원인을 가리지 않도록 suppressed 예외로 보존한다.
+                error.addSuppressed(cleanupError);
+            }
+            throw error;
+        }
     }
-    @PostMapping("/{captureId}/stop") public Map<String,Object> stop(@PathVariable UUID captureId, @RequestParam String senderAgentId) {
+
+    @PostMapping("/{captureId}/stop")
+    public Map<String, Object> stop(
+            @PathVariable UUID captureId,
+            @RequestParam String senderAgentId) {
         UUID command = commands.command(
                 senderAgentId,
                 captureId,

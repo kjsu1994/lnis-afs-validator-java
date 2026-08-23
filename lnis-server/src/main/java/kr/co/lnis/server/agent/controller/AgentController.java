@@ -1,6 +1,6 @@
 package kr.co.lnis.server.agent.controller;
 
-import kr.co.lnis.common.model.AgentProtocol.CommandType;
+import kr.co.lnis.protocol.model.AgentProtocol.CommandType;
 import kr.co.lnis.server.agent.repository.AgentRepository;
 import kr.co.lnis.server.agent.service.AgentCommandService;
 import org.springframework.web.bind.annotation.*;

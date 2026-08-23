@@ -1,8 +1,8 @@
 package kr.co.lnis.server.session.service;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import kr.co.lnis.common.model.AgentProtocol.CommandType;
-import kr.co.lnis.common.model.LnisModels.*;
+import kr.co.lnis.protocol.model.AgentProtocol.CommandType;
+import kr.co.lnis.protocol.model.LnisModels.*;
 import kr.co.lnis.server.agent.repository.AgentRepository;
 import kr.co.lnis.server.agent.service.AgentCommandService;
 import kr.co.lnis.server.input.service.InputBufferService;
@@ -17,7 +17,13 @@ import java.time.Instant;
 import java.util.UUID;
 
 @Service
-/** 단일 활성 시험을 보장하고 Receiver 준비부터 최종 판정까지 수명주기를 조정한다. */
+/**
+ * 단일 활성 시험을 보장하고 Receiver 준비부터 최종 판정까지 수명주기를 조정한다.
+ *
+ * <p>세션 생성 시 입력과 Agent 역할을 검증하고 Redis lock을 획득한다. Receiver를 먼저 arm한 다음
+ * Sender에 GRAW 청크를 전달하고 송신을 시작한다. 모든 실패 경로에서는 가능한 한 lock을 해제해 다음
+ * 시험이 영구적으로 막히지 않게 한다.
+ */
 public class SessionService {
     private static final String ACTIVE_LOCK = "lnis:lock:active-test";
     private final SessionRepository sessions; private final AgentRepository agents; private final InputBufferService inputs;
@@ -33,6 +39,7 @@ public class SessionService {
         this.json = json;
     }
 
+    /** 요청 검증, 단일 시험 lock 획득, Receiver 준비 및 Sender 시작을 원자적인 흐름으로 수행한다. */
     public TestSessionEntity create(CreateSessionRequest request) {
         validate(request);
         UUID id = UUID.randomUUID();
@@ -65,7 +72,7 @@ public class SessionService {
             }
             commands.inputComplete(request.senderAgentId(), id);
             commands.command(request.senderAgentId(), id, CommandType.START_SENDER, request);
-            events.publish(kr.co.lnis.common.model.AgentProtocol.EventType.SESSION_STATUS, null, null, id, session);
+            events.publish(kr.co.lnis.protocol.model.AgentProtocol.EventType.SESSION_STATUS, null, null, id, session);
             return session;
         } catch (Exception e) {
             redis.delete(ACTIVE_LOCK);
@@ -81,6 +88,7 @@ public class SessionService {
                 .orElseThrow(() -> new IllegalArgumentException("Session not found: " + id));
     }
 
+    /** 양쪽 Agent에 취소 명령을 보내고 중앙 세션 상태와 활성 lock을 정리한다. */
     public TestSessionEntity cancel(UUID id) {
         var current = get(id);
         commands.command(current.senderAgentId(), id, CommandType.CANCEL_SESSION, null);
@@ -101,7 +109,7 @@ public class SessionService {
         sessions.save(cancelled);
         release(id);
         events.publish(
-                kr.co.lnis.common.model.AgentProtocol.EventType.SESSION_STATUS,
+                kr.co.lnis.protocol.model.AgentProtocol.EventType.SESSION_STATUS,
                 null,
                 null,
                 id,
@@ -109,6 +117,7 @@ public class SessionService {
         return cancelled;
     }
 
+    /** Redis의 세션 메타데이터와 현재 TX/RX 결과를 하나의 조회 응답으로 결합한다. */
     public SessionSnapshot snapshot(UUID id) {
         var value = get(id);
         return new SessionSnapshot(
@@ -127,6 +136,7 @@ public class SessionService {
                 sessions.result(id, AgentRole.RECEIVER).orElse(null));
     }
 
+    /** TX와 RX 결과가 모두 도착한 시점에 더 보수적인 판정으로 최종 상태를 계산한다. */
     public void onResult(UUID id) {
         var current = get(id);
         var tx = sessions.result(id, AgentRole.SENDER);
@@ -163,7 +173,7 @@ public class SessionService {
         sessions.save(completed);
         release(id);
         events.publish(
-                kr.co.lnis.common.model.AgentProtocol.EventType.SESSION_STATUS,
+                kr.co.lnis.protocol.model.AgentProtocol.EventType.SESSION_STATUS,
                 null,
                 null,
                 id,
@@ -177,6 +187,7 @@ public class SessionService {
         }
     }
 
+    /** 입력 완료 여부, Agent 역할, 포트, 반복 횟수와 시험별 오류 범위를 검증한다. */
     private void validate(CreateSessionRequest request) {
         var input = inputs.get(request.inputId());
         if (!input.complete()) {

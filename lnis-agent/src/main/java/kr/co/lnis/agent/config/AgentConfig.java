@@ -5,7 +5,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Locale;
 import java.util.Properties;
-import static kr.co.lnis.common.model.LnisModels.AgentRole;
+import static kr.co.lnis.protocol.model.LnisModels.AgentRole;
 
 /** 환경 변수, 시스템 속성 또는 properties 파일에서 Agent 실행 설정을 읽는다. */
 public record AgentConfig(

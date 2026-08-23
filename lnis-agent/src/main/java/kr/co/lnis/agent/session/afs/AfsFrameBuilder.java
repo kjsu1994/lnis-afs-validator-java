@@ -1,20 +1,27 @@
 package kr.co.lnis.agent.session.afs;
 
 import kr.co.lnis.agent.codec.NativeAfsCodec;
-import kr.co.lnis.common.codec.GrawCodec;
-import kr.co.lnis.common.model.LnisModels.TestOptions;
-import kr.co.lnis.common.model.LnisModels.TestType;
+import kr.co.lnis.protocol.codec.GrawCodec;
+import kr.co.lnis.protocol.model.LnisModels.TestOptions;
+import kr.co.lnis.protocol.model.LnisModels.TestType;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.*;
 
-/** canonical GRAW 레코드를 AFS 프레임으로 조립하고 시험 오류를 주입한다. */
+/**
+ * canonical GRAW 레코드를 AFS 프레임으로 조립하고 시험 오류를 주입한다.
+ *
+ * <p>각 GRAW 레코드를 CRC가 포함된 fragment로 나누고 두 fragment를 SB3/SB4에 배치한다. SB2에는
+ * week/interval과 결정론적 test pattern을 기록한다. Test B~D의 오류 위치는 seed와 frame index로
+ * 계산해 기존 WPF 시험과 반복 실행 결과가 같도록 유지한다.
+ */
 public final class AfsFrameBuilder {
     public record Frame(int week, int intervalOfWeek, int timeOfInterval, byte[] payload) {}
     public record Prepared(List<Frame> frames, int injectedFrameCount, long recordCount) {}
     private final NativeAfsCodec codec;
     public AfsFrameBuilder(NativeAfsCodec codec) { this.codec = codec; }
 
+    /** 전체 입력 record를 시간 순서의 AFS frame 목록과 오류 주입 개수로 변환한다. */
     public Prepared prepare(List<byte[]> records, TestOptions options) {
         if (records.isEmpty()) throw new IllegalArgumentException("capture.graw is empty");
         List<byte[]> blocks = new ArrayList<>();

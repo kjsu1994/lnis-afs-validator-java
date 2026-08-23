@@ -1,15 +1,20 @@
 package kr.co.lnis.server.agent.service;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import kr.co.lnis.common.model.AgentProtocol.*;
-import kr.co.lnis.common.model.LnisModels.AgentRole;
+import kr.co.lnis.protocol.model.AgentProtocol.*;
+import kr.co.lnis.protocol.model.LnisModels.AgentRole;
 import kr.co.lnis.server.agent.repository.AgentRepository;
 import kr.co.lnis.server.agent.websocket.AgentConnectionRegistry;
 import org.springframework.stereotype.Service;
 import java.util.UUID;
 
 @Service
-/** 중앙 서버의 명령과 입력 청크를 대상 Agent WebSocket으로 전달한다. */
+/**
+ * 중앙 서버의 명령과 입력 청크를 대상 Agent WebSocket으로 전달한다.
+ *
+ * <p>AgentRepository에서 대상 역할을 확인해 envelope에 기록하고, ConnectionRegistry를 통해 현재 활성
+ * 연결로만 전송한다. 오프라인 Agent에는 명령을 대기열에 적재하지 않고 즉시 오류를 반환한다.
+ */
 public class AgentCommandService {
     private final AgentConnectionRegistry connections;
     private final AgentRepository agents;
@@ -23,6 +28,7 @@ public class AgentCommandService {
         this.agents = agents;
         this.json = json;
     }
+    /** 명령 인수를 JSON tree로 변환해 COMMAND envelope로 전송하고 추적용 message ID를 반환한다. */
     public UUID command(String agentId, UUID sessionId, CommandType type, Object arguments) {
         AgentRole role = agents.find(agentId)
                 .orElseThrow(() -> new IllegalArgumentException("Unknown agent: " + agentId))
@@ -36,6 +42,7 @@ public class AgentCommandService {
         connections.send(agentId, envelope);
         return envelope.messageId();
     }
+    /** GRAW 청크를 Base64로 감싸 Sender Agent의 해당 세션 입력 버퍼로 전달한다. */
     public void inputChunk(String agentId, UUID sessionId, long index, byte[] bytes) {
         AgentRole role = agents.find(agentId).orElseThrow().role();
         var payload = json.createObjectNode()

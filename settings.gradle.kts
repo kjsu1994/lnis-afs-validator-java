@@ -1,3 +1,2 @@
 rootProject.name = "lnis-afs-validator"
-include("lnis-common", "lnis-agent", "lnis-server")
-
+include("lnis-protocol", "lnis-agent", "lnis-server")

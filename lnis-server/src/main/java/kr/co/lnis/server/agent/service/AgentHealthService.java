@@ -1,7 +1,7 @@
 package kr.co.lnis.server.agent.service;
 
-import kr.co.lnis.common.model.AgentProtocol.EventType;
-import kr.co.lnis.common.model.LnisModels.AgentState;
+import kr.co.lnis.protocol.model.AgentProtocol.EventType;
+import kr.co.lnis.protocol.model.LnisModels.AgentState;
 import kr.co.lnis.server.agent.entity.AgentEntity;
 import kr.co.lnis.server.agent.repository.AgentRepository;
 import kr.co.lnis.server.realtime.service.EventService;

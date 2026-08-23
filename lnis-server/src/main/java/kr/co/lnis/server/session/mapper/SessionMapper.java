@@ -1,6 +1,6 @@
 package kr.co.lnis.server.session.mapper;
 
-import kr.co.lnis.common.model.LnisModels.SessionSnapshot;
+import kr.co.lnis.protocol.model.LnisModels.SessionSnapshot;
 import kr.co.lnis.server.session.entity.TestSessionEntity;
 import org.mapstruct.Mapper;
 import org.mapstruct.Mapping;

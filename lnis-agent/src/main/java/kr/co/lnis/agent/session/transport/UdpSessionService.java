@@ -3,9 +3,9 @@ package kr.co.lnis.agent.session.transport;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import kr.co.lnis.agent.codec.NativeAfsCodec;
 import kr.co.lnis.agent.session.afs.*;
-import kr.co.lnis.common.codec.*;
-import kr.co.lnis.common.model.AgentProtocol.EventType;
-import kr.co.lnis.common.model.LnisModels.*;
+import kr.co.lnis.protocol.codec.*;
+import kr.co.lnis.protocol.model.AgentProtocol.EventType;
+import kr.co.lnis.protocol.model.LnisModels.*;
 import java.io.ByteArrayOutputStream;
 import java.lang.management.ManagementFactory;
 import java.net.*;
@@ -16,9 +16,17 @@ import java.util.*;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.BiConsumer;
-import static kr.co.lnis.common.codec.AfsPacketCodec.*;
+import static kr.co.lnis.protocol.codec.AfsPacketCodec.*;
 
-/** AFS 시험 프레임의 UDP 송수신, 오류 시험, 복원 및 역할별 판정을 수행한다. */
+/**
+ * AFS 시험 프레임의 UDP 송수신, 오류 시험, 복원 및 역할별 판정을 수행한다.
+ *
+ * <p>Sender는 원본 GRAW의 SHA-256 manifest와 AFS frame을 설정된 횟수만큼 전송하고
+ * Receiver 결과를 result port에서 기다린다. Receiver는 논리 sequence 단위로
+ * 중복 datagram을 제거하고 frame을 복호화해 GRAW를 재조립한다.
+ * 이후 길이, record 수와 SHA-256을 비교한다. Test E의 Drop은 실제 송신 직전에
+ * 결정론적으로 적용해 동일 seed의 결과를 재현한다.
+ */
 public final class UdpSessionService implements AutoCloseable {
     public record SessionCommand(String senderAgentId, String receiverAgentId, UUID inputId, TransportSettings transport, TestOptions options) {}
     private record Manifest(UUID testId, int protocolVersion, int prn, int customMessageType, long sourceLength, String sourceSha256,
@@ -37,6 +45,7 @@ public final class UdpSessionService implements AutoCloseable {
     private volatile DatagramSocket activeSocket;
     public UdpSessionService(NativeAfsCodec codec) { this.codec = codec; }
 
+    /** Sender 작업을 별도 virtual thread에 제출해 WebSocket 수신 thread를 차단하지 않는다. */
     public void send(
             UUID sessionId,
             SessionCommand command,
@@ -46,6 +55,7 @@ public final class UdpSessionService implements AutoCloseable {
         executor.submit(() -> runSender(sessionId, command, source, event, resultSink));
     }
 
+    /** Receiver socket 대기 작업을 별도 virtual thread에 제출한다. */
     public void receive(
             UUID sessionId,
             SessionCommand command,
@@ -54,6 +64,7 @@ public final class UdpSessionService implements AutoCloseable {
         executor.submit(() -> runReceiver(sessionId, command, event, resultSink));
     }
 
+    /** 활성 socket을 닫아 blocking receive를 깨우고 현재 세션에 취소 신호를 전달한다. */
     public void cancel() {
         cancelled.set(true);
         DatagramSocket socket = activeSocket;
@@ -62,6 +73,7 @@ public final class UdpSessionService implements AutoCloseable {
         }
     }
 
+    /** GRAW를 AFS frame으로 변환하고 manifest/frame/end 순서로 송신한 뒤 결과를 기다린다. */
     private void runSender(UUID id, SessionCommand command, byte[] source, BiConsumer<EventType,Object> event, java.util.function.Consumer<RoleResult> sink) {
         Instant started = Instant.now();
         try {
@@ -223,6 +235,7 @@ public final class UdpSessionService implements AutoCloseable {
         }
     }
 
+    /** SESSION_START부터 END까지 수신하고 복원 무결성을 계산해 RESULT packet을 Sender에 반환한다. */
     private void runReceiver(UUID requestedId, SessionCommand command, BiConsumer<EventType,Object> event, java.util.function.Consumer<RoleResult> sink) {
         Instant started=Instant.now();
         try (DatagramSocket socket = new DatagramSocket(command.transport().dataPort())) {
@@ -399,6 +412,7 @@ public final class UdpSessionService implements AutoCloseable {
         }
     }
 
+    /** Test D는 bit stream에서 sync를 다시 탐색하고, 나머지 시험은 frame 경계를 그대로 사용한다. */
     private DecodeAggregate decodeFrames(
             Collection<ReceivedFrame> input,
             TestType type) {

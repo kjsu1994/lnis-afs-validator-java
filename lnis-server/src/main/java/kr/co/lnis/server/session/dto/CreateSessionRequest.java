@@ -4,8 +4,8 @@ import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import java.util.UUID;
-import kr.co.lnis.common.model.LnisModels.TestOptions;
-import kr.co.lnis.common.model.LnisModels.TransportSettings;
+import kr.co.lnis.protocol.model.LnisModels.TestOptions;
+import kr.co.lnis.protocol.model.LnisModels.TransportSettings;
 
 /** 두 Agent, 입력, UDP 전송 조건과 시험 옵션을 결합한 세션 생성 요청이다. */
 public record CreateSessionRequest(
