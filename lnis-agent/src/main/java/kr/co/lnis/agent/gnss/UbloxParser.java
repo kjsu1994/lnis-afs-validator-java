@@ -16,7 +16,14 @@ import java.util.List;
  */
 public final class UbloxParser {
     private byte[] pending = new byte[0];
-    public record UbxFrame(int messageClass, int messageId, byte[] payload) {}
+    /** UBX 동기·길이·Checksum 검사를 통과한 한 개의 수신 메시지다. */
+    public record UbxFrame(
+            /** UBX 메시지 Class의 unsigned 8-bit 값이다. 예: RXM은 {@code 0x02}. */
+            int messageClass,
+            /** 해당 Class 안의 메시지 ID다. 예: RAWX는 {@code 0x15}. */
+            int messageId,
+            /** UBX 헤더와 Checksum을 제외한 메시지 본문 바이트다. */
+            byte[] payload) {}
 
     public synchronized List<UbxFrame> push(byte[] bytes, int length) {
         byte[] joined = Arrays.copyOf(pending, pending.length + length); System.arraycopy(bytes, 0, joined, pending.length, length); pending = joined;

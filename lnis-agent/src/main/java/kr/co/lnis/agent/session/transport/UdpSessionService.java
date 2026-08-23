@@ -31,20 +31,115 @@ import static kr.co.lnis.protocol.codec.AfsPacketCodec.*;
 public final class UdpSessionService implements AutoCloseable {
     /** Redis 상세 증거 보관 상한과 동일한 Agent 전송 상한이다. */
     private static final int MAX_EVIDENCE_FRAMES = 500;
-    public record SessionCommand(String senderAgentId, String receiverAgentId, UUID inputId, TransportSettings transport, TestOptions options) {}
-    private record Manifest(UUID testId, int protocolVersion, int prn, int customMessageType, long sourceLength, String sourceSha256,
-                            int recordCount, int frameCount, int startWeek, int startIntervalOfWeek, int startTimeOfInterval,
-                            double simulatedDropRatePercent, int simulatedDropSeed, long simulatedDroppedDatagrams,
-                            TestType testType, int errorCount, int errorSeed, int syncDamageInterval, int injectedFrameCount) {}
-    private record WireResult(Verdict verdict, IntegrityResult integrity, long expectedFrames, long receivedFrames,
-                              long receivedDatagrams, long duplicates, long corrupt,
-                              long invalidDatagrams, long decodeFailedFrames,
-                              long injectedBitCount, long syncRejectedFrames, long decodedFrames,
-                              long fullyDecodedFrames,
-                              long sb2ValidFrames, long sb3ValidFrames, long sb4ValidFrames, long correctedSymbols,
-                              long recoveredSyncFrames, String error) {}
-    private record Key(Kind kind, long sequence) {}
-    private record ReceivedFrame(long sequence, int toi, byte[] payload) {}
+    /** 서버가 두 Agent에 공통으로 전달하는 세션 실행 명령이다. */
+    public record SessionCommand(
+            /** AFS 프레임을 송신할 Agent ID다. */
+            String senderAgentId,
+            /** AFS 프레임을 수신·복호화할 Agent ID다. */
+            String receiverAgentId,
+            /** 원본 GRAW가 저장된 서버 입력 버퍼 UUID다. */
+            UUID inputId,
+            /** UDP 주소·포트·반복·타임아웃 설정이다. */
+            TransportSettings transport,
+            /** Test A~E 오류 주입과 판정 설정이다. */
+            TestOptions options) {}
+
+    /** Sender가 SESSION_START UDP payload로 Receiver에 전달하는 원본·시험 조건 manifest다. */
+    private record Manifest(
+            /** 시험 세션 UUID다. */
+            UUID testId,
+            /** SESSION UDP payload 계약 버전이다. */
+            int protocolVersion,
+            /** AFS 인코딩에 사용한 PRN 식별값이다. */
+            int prn,
+            /** GRAW 조각을 담는 AFS Custom Message Type 값이다. */
+            int customMessageType,
+            /** Sender 원본 GRAW 크기이며 단위는 byte다. */
+            long sourceLength,
+            /** Sender 원본 GRAW 전체 바이트의 SHA-256이다. */
+            String sourceSha256,
+            /** 원본 GRAW 레코드 개수다. */
+            int recordCount,
+            /** Sender가 준비한 논리 AFS 프레임 개수다. */
+            int frameCount,
+            /** 첫 프레임의 GPS week다. */
+            int startWeek,
+            /** 첫 프레임의 GPS week 내부 1,200초 구간 번호다. */
+            int startIntervalOfWeek,
+            /** 첫 프레임의 0~99 범위 TOI다. */
+            int startTimeOfInterval,
+            /** Test E에 설정한 미전송 확률이며 단위는 percent다. */
+            double simulatedDropRatePercent,
+            /** Test E Drop 재현용 Seed다. */
+            int simulatedDropSeed,
+            /** Sender가 실제로 미전송하기로 결정한 복제 데이터그램 수다. */
+            long simulatedDroppedDatagrams,
+            /** 실행 중인 Test A~E 유형이다. */
+            TestType testType,
+            /** 오류 대상 프레임 하나당 주입할 비트 개수다. */
+            int errorCount,
+            /** 오류 위치 재현용 Seed다. */
+            int errorSeed,
+            /** Test D 동기 손상 프레임 선택 간격이다. */
+            int syncDamageInterval,
+            /** 오류가 하나 이상 주입된 논리 프레임 개수다. */
+            int injectedFrameCount) {}
+    /** Receiver가 UDP RESULT payload로 Sender에 돌려주는 압축 결과다. */
+    private record WireResult(
+            /** Receiver 관점 최종 판정이다. */
+            Verdict verdict,
+            /** 원본과 재조립 GRAW의 무결성 비교 결과다. */
+            IntegrityResult integrity,
+            /** Sender가 준비했다고 선언한 논리 프레임 수다. */
+            long expectedFrames,
+            /** Receiver가 중복 제거 후 채택한 논리 프레임 수다. */
+            long receivedFrames,
+            /** Receiver가 받은 전체 시험 UDP 데이터그램 수다. */
+            long receivedDatagrams,
+            /** 동일 kind·sequence라 제외한 반복 데이터그램 수다. */
+            long duplicates,
+            /** 하위 호환용 UDP 해석 실패 수다. */
+            long corrupt,
+            /** 패킷 구조 또는 CRC를 해석하지 못한 UDP 데이터그램 수다. */
+            long invalidDatagrams,
+            /** Decoder 예외 또는 하나 이상의 SB CRC가 실패한 프레임 수다. */
+            long decodeFailedFrames,
+            /** Test B/C/D에서 의도적으로 반전한 전체 비트 수다. */
+            long injectedBitCount,
+            /** Test D에서 동기 손상으로 제외한 프레임 수다. */
+            long syncRejectedFrames,
+            /** Native Decoder가 예외 없이 처리한 프레임 수다. */
+            long decodedFrames,
+            /** SB2·SB3·SB4 CRC를 모두 통과한 완전 복호 프레임 수다. */
+            long fullyDecodedFrames,
+            /** SB2 CRC 정상 프레임 수다. */
+            long sb2ValidFrames,
+            /** SB3 CRC 정상 프레임 수다. */
+            long sb3ValidFrames,
+            /** SB4 CRC 정상 프레임 수다. */
+            long sb4ValidFrames,
+            /** 모든 블록의 LDPC 내부 판정 변경량 합계다. 주입 오류 수가 아니다. */
+            long correctedSymbols,
+            /** Test D 동기 재탐색에서 정상 후보로 복구한 프레임 수다. */
+            long recoveredSyncFrames,
+            /** FAIL 또는 내부 오류의 대표 설명이며 정상일 때는 {@code null}이다. */
+            String error) {}
+
+    /** 반복 UDP 데이터그램의 중복 제거에 사용하는 패킷 종류와 논리 순번 조합이다. */
+    private record Key(
+            /** UDP 패킷 종류다. */
+            Kind kind,
+            /** 같은 종류 안의 논리 sequence다. */
+            long sequence) {}
+
+    /** Receiver가 중복 제거 후 메모리에 채택한 한 개의 AFS FRAME payload다. */
+    private record ReceivedFrame(
+            /** 0부터 시작하는 논리 AFS 프레임 순번이다. */
+            long sequence,
+            /** Native Decoder에 전달할 0~99 범위 TOI다. */
+            int toi,
+            /** UDP payload에서 꺼낸 750 byte AFSFrame이다. */
+            byte[] payload) {}
 
     private final NativeAfsCodec codec; private final ObjectMapper json = new ObjectMapper().findAndRegisterModules();
     private final ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor(); private final AtomicBoolean cancelled = new AtomicBoolean();
@@ -829,15 +924,25 @@ public final class UdpSessionService implements AutoCloseable {
 
     /** Receiver가 프레임 하나를 처리하며 얻은 블록별 CRC와 GRAW 사용 여부다. */
     private record FrameDecodeDiagnostic(
+            /** Native Decoder가 예외 없이 반환했는지 여부다. */
             boolean decoderCompleted,
+            /** SB2·SB3·SB4 CRC가 모두 정상인지 여부다. */
             boolean fullyDecoded,
+            /** SB2 CRC 정상 여부다. */
             boolean sb2Valid,
+            /** SB3 CRC 정상 여부다. */
             boolean sb3Valid,
+            /** SB4 CRC 정상 여부다. */
             boolean sb4Valid,
+            /** SB2 LDPC 내부 판정 변경량이다. */
             int sb2DecisionChanges,
+            /** SB3 LDPC 내부 판정 변경량이다. */
             int sb3DecisionChanges,
+            /** SB4 LDPC 내부 판정 변경량이다. */
             int sb4DecisionChanges,
+            /** SB3·SB4 조각을 GRAW 재조립기에 전달했는지 여부다. */
             boolean usedForGrawReassembly,
+            /** 실패한 CRC 블록 또는 Decoder 예외 설명이다. */
             String failureReason) {
     }
 

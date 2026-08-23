@@ -18,9 +18,37 @@ import java.util.function.Consumer;
  * close 시 포트를 닫고 가능한 경우 u-blox 임시 설정을 원래 값으로 복원한다.
  */
 public final class SerialCaptureService implements AutoCloseable {
-    public record Settings(String portName, int baudRate, String protocolId, String sessionName, String receiverModel,
-                           String firmwareVersion, boolean dtrEnabled, boolean rtsEnabled) {}
-    public record CaptureChunk(long index, byte[] rawSerial, byte[] canonical, long bytesRead, long records) {}
+    /** 서버의 수집 명령에서 전달받아 실제 Windows 직렬 포트에 적용하는 설정이다. */
+    public record Settings(
+            /** 열어야 할 Windows 직렬 포트 이름이다. */
+            String portName,
+            /** GNSS 장비와 통신할 전송 속도이며 단위는 baud다. */
+            int baudRate,
+            /** {@code ubx}, {@code raw-only}, {@code lnis-canonical-v1} 중 수집 해석 방식이다. */
+            String protocolId,
+            /** GRAW 수신기 메타데이터에 기록할 사용자 지정 수집 이름이다. */
+            String sessionName,
+            /** GRAW 메타데이터에 기록할 수신기 모델명이다. */
+            String receiverModel,
+            /** GRAW 메타데이터에 기록할 수신기 펌웨어 버전이다. */
+            String firmwareVersion,
+            /** 포트를 연 뒤 DTR 제어선을 활성화할지 여부다. */
+            boolean dtrEnabled,
+            /** 포트를 연 뒤 RTS 제어선을 활성화할지 여부다. */
+            boolean rtsEnabled) {}
+
+    /** 메모리 상한을 위해 수집 데이터를 약 1 MiB 단위로 서버에 전달하는 청크다. */
+    public record CaptureChunk(
+            /** 0부터 시작하며 서버가 Redis 청크 키 순서를 결정하는 번호다. */
+            long index,
+            /** COM 포트에서 그대로 읽은 원시 직렬 바이트다. */
+            byte[] rawSerial,
+            /** 시험 입력으로 사용할 길이-prefix canonical GRAW 바이트다. */
+            byte[] canonical,
+            /** 수집 시작 후 COM 포트에서 읽은 원시 바이트의 누적 합계다. */
+            long bytesRead,
+            /** canonical GRAW로 변환해 생성한 레코드 누적 합계다. */
+            long records) {}
     private final AtomicBoolean running = new AtomicBoolean(); private volatile SerialPort port; private volatile Thread worker;
     private final List<byte[]> restoreCommands = new ArrayList<>();
 

@@ -42,5 +42,12 @@ final class GrawStreamingValidator {
         return new Result(size, records, Hashing.hex(sha.digest()));
     }
 
-    record Result(long size, long records, String sha256) {}
+    /** 입력 청크 전체를 순서대로 검증한 뒤 완료 처리에 전달하는 결과다. */
+    record Result(
+            /** 검증한 전체 입력 크기이며 단위는 byte다. */
+            long size,
+            /** 길이-prefix, 내부 구조와 CRC 검사를 통과한 GRAW 레코드 수다. */
+            long records,
+            /** 모든 입력 청크를 연결한 전체 바이트의 SHA-256이다. */
+            String sha256) {}
 }

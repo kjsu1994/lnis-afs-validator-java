@@ -35,8 +35,26 @@ public final class NativeAfsCodec implements AutoCloseable {
         public int sb2Corrections, sb3Corrections, sb4Corrections;
     }
 
-    public record Decoded(byte[] sb2, byte[] sb3, byte[] sb4, boolean sb2Valid, boolean sb3Valid,
-                          boolean sb4Valid, int sb2Corrections, int sb3Corrections, int sb4Corrections) {}
+    /** Native Decoder가 반환한 서브블록 원문과 블록별 CRC·내부 판정 정보를 묶는다. */
+    public record Decoded(
+            /** 복호화된 SB2의 0/1 bit 배열이며 길이는 1,176이다. */
+            byte[] sb2,
+            /** 복호화된 SB3의 0/1 bit 배열이며 길이는 846이다. */
+            byte[] sb3,
+            /** 복호화된 SB4의 0/1 bit 배열이며 길이는 846이다. */
+            byte[] sb4,
+            /** SB2 데이터에 포함된 CRC 검사 결과다. */
+            boolean sb2Valid,
+            /** SB3 데이터에 포함된 CRC 검사 결과다. */
+            boolean sb3Valid,
+            /** SB4 데이터에 포함된 CRC 검사 결과다. */
+            boolean sb4Valid,
+            /** SB2 LDPC 처리 중 내부 판정이 변경된 횟수이며 실제 주입 오류 수가 아니다. */
+            int sb2Corrections,
+            /** SB3 LDPC 처리 중 내부 판정이 변경된 횟수다. */
+            int sb3Corrections,
+            /** SB4 LDPC 처리 중 내부 판정이 변경된 횟수다. */
+            int sb4Corrections) {}
 
     private NativeAfsCodec(Api api) {
         this.api = api;

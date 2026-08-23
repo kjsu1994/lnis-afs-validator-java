@@ -16,12 +16,24 @@ import java.util.*;
  * 계산해 기존 WPF 시험과 반복 실행 결과가 같도록 유지한다.
  */
 public final class AfsFrameBuilder {
-    public record Frame(int week, int intervalOfWeek, int timeOfInterval, byte[] payload) {}
+    /** Native Codec으로 인코딩한 논리 AFS 프레임과 시간 좌표다. */
+    public record Frame(
+            /** GPS week 번호다. */
+            int week,
+            /** 해당 GPS week를 1,200초 단위로 나눈 구간 번호다. */
+            int intervalOfWeek,
+            /** 1,200초 구간 안의 AFS TOI 값이며 범위는 0~99다. */
+            int timeOfInterval,
+            /** 750 byte, 즉 6,000 bit로 구성된 AFSFrame 원문이다. */
+            byte[] payload) {}
 
     /** 시험 오류가 주입된 프레임과 실제 비트 위치를 화면 로그에 전달하기 위한 상세 정보다. */
     public record InjectionDetail(
+            /** 오류가 주입된 0부터 시작하는 논리 프레임 번호다. */
             int frameIndex,
+            /** RANDOM_BIT_ERROR, BURST_BIT_ERROR 또는 SYNC_DAMAGE 오류 방식이다. */
             String mode,
+            /** 실제로 반전한 0~5,999 범위의 프레임 비트 위치 목록이다. */
             List<Integer> bitPositions) {
         public InjectionDetail {
             bitPositions = List.copyOf(bitPositions);
@@ -30,10 +42,15 @@ public final class AfsFrameBuilder {
 
     /** 조립된 프레임과 프레임별 오류 주입 내역을 함께 보관한다. */
     public record Prepared(
+            /** 시험 오류를 넣기 전 비교 기준 프레임 목록이다. */
             List<Frame> referenceFrames,
+            /** 시험 오류를 적용해 실제 UDP로 전송할 프레임 목록이다. */
             List<Frame> frames,
+            /** 오류가 하나 이상 주입된 논리 프레임 개수다. 주입 비트 총합과는 다르다. */
             int injectedFrameCount,
+            /** 이 프레임 묶음을 만들 때 사용한 원본 GRAW 레코드 개수다. */
             long recordCount,
+            /** 프레임별 오류 방식과 실제 반전 위치를 담은 진단 목록이다. */
             List<InjectionDetail> injections) {
         public Prepared {
             referenceFrames = List.copyOf(referenceFrames);

@@ -41,8 +41,27 @@ public final class AfsPacketCodec {
      *
      * <p>payload 배열은 생성 시 복사해 호출자가 나중에 원본 배열을 변경해도 packet 내용이 변하지 않는다.
      */
-    public record Packet(Kind kind, UUID testId, long sequence, int copyIndex, int prn,
-                         int week, int intervalOfWeek, int timeOfInterval, long sentUtcTicks, byte[] payload) {
+    public record Packet(
+            /** SESSION_START, FRAME, RESULT 등 UDP 패킷의 용도다. */
+            Kind kind,
+            /** 패킷이 속한 시험 세션 UUID다. */
+            UUID testId,
+            /** 같은 종류 안에서 논리 패킷을 식별하는 unsigned 32-bit 순번이다. */
+            long sequence,
+            /** 반복 송신된 동일 논리 패킷 중 0부터 시작하는 복제본 번호다. */
+            int copyIndex,
+            /** AFS 신호 구성에 사용한 PRN 식별값이다. */
+            int prn,
+            /** 프레임의 GPS week 번호다. */
+            int week,
+            /** GPS week를 1,200초 단위로 나눈 구간 번호다. */
+            int intervalOfWeek,
+            /** 해당 구간 안 AFS TOI 값이며 범위는 0~99다. */
+            int timeOfInterval,
+            /** 패킷 송신 시각을 .NET UTC tick 단위로 기록한 값이다. */
+            long sentUtcTicks,
+            /** 패킷 종류별 application 데이터이며 최대 1,200 byte다. */
+            byte[] payload) {
         public Packet { payload = payload == null ? new byte[0] : payload.clone(); }
     }
 

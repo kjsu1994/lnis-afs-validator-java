@@ -39,23 +39,93 @@ public final class GrawCodec {
         public static Constellation fromUblox(int value) { for (var x : values()) if (x.wire == value) return x; return UNKNOWN; }
     }
     public sealed interface Message permits ObservationEpoch, NavigationUpdate, ReceiverMetadata { MessageType type(); }
-    public record Observation(double pseudorangeMeters, double carrierPhaseCycles, float dopplerHz, int constellationId,
-                              int satelliteId, int signalId, int frequencyId, int lockTimeMilliseconds,
-                              int carrierToNoiseDbHz, int pseudorangeStdDev, int carrierPhaseStdDev,
-                              int dopplerStdDev, int trackingStatus) {}
-    public record ObservationEpoch(double receiverTowSeconds, int week, int leapSeconds, int receiverStatus,
-                                   int rawxVersion, List<Observation> observations) implements Message {
+    /** 한 위성·신호에 대한 u-blox RAWX 원시 관측값이다. */
+    public record Observation(
+            /** 수신기와 위성 사이의 의사거리이며 단위는 meter다. */
+            double pseudorangeMeters,
+            /** 반송파 위상 누적값이며 단위는 cycle다. */
+            double carrierPhaseCycles,
+            /** 반송파 Doppler 측정값이며 단위는 Hz다. */
+            float dopplerHz,
+            /** GPS, Galileo 등 GNSS Constellation의 wire 식별값이다. */
+            int constellationId,
+            /** Constellation 내부 위성 식별 번호다. */
+            int satelliteId,
+            /** 위성에서 송신한 신호 종류 식별 번호다. */
+            int signalId,
+            /** GLONASS 등에서 사용하는 주파수 채널 식별값이다. */
+            int frequencyId,
+            /** 수신기가 해당 신호를 연속 추적한 시간이며 단위는 millisecond다. */
+            int lockTimeMilliseconds,
+            /** 반송파 대 잡음비(C/N0)이며 단위는 dB-Hz다. */
+            int carrierToNoiseDbHz,
+            /** u-blox 형식의 의사거리 표준편차 코드값이다. */
+            int pseudorangeStdDev,
+            /** u-blox 형식의 반송파 위상 표준편차 코드값이다. */
+            int carrierPhaseStdDev,
+            /** u-blox 형식의 Doppler 표준편차 코드값이다. */
+            int dopplerStdDev,
+            /** 측정 유효성·Cycle Slip 등 u-blox tracking status bit mask다. */
+            int trackingStatus) {}
+
+    /** 동일 GNSS 측정 Epoch에 속하는 위성별 원시 관측값 묶음이다. */
+    public record ObservationEpoch(
+            /** GPS week 시작부터 수신기 측정 시각까지의 시간이며 단위는 second다. */
+            double receiverTowSeconds,
+            /** 측정 시각의 GPS week 번호다. */
+            int week,
+            /** 수신기가 보고한 GPS-UTC Leap Second 값이다. */
+            int leapSeconds,
+            /** 시각·Leap Second 유효성 등을 나타내는 수신기 상태 bit mask다. */
+            int receiverStatus,
+            /** 원본 UBX-RXM-RAWX payload의 메시지 버전이다. */
+            int rawxVersion,
+            /** 이 Epoch에 포함된 위성·신호별 관측값 목록이다. */
+            List<Observation> observations) implements Message {
         @Override public MessageType type() { return MessageType.OBSERVATION_EPOCH; }
     }
-    public record NavigationUpdate(int constellationId, int satelliteId, int signalId, int frequencyId,
-                                   int sfrbxVersion, List<Long> words) implements Message {
+    /** 한 위성에서 수신한 UBX-SFRBX 항법 데이터 word 묶음이다. */
+    public record NavigationUpdate(
+            /** GNSS Constellation wire 식별값이다. */
+            int constellationId,
+            /** Constellation 내부 위성 식별 번호다. */
+            int satelliteId,
+            /** 항법 데이터를 수신한 신호 종류 식별 번호다. */
+            int signalId,
+            /** GLONASS 등의 주파수 채널 식별값이다. */
+            int frequencyId,
+            /** 원본 UBX-RXM-SFRBX payload의 메시지 버전이다. */
+            int sfrbxVersion,
+            /** 수신한 unsigned 32-bit 항법 데이터 word 목록이다. */
+            List<Long> words) implements Message {
         @Override public MessageType type() { return MessageType.NAVIGATION_UPDATE; }
     }
-    public record ReceiverMetadata(String receiverModel, String firmwareVersion, String portName,
-                                   int baudRate, String sessionName) implements Message {
+    /** GNSS 수집 환경을 결과와 함께 추적하기 위한 수신기 메타데이터다. */
+    public record ReceiverMetadata(
+            /** 사용자가 입력한 GNSS 수신기 모델명이다. */
+            String receiverModel,
+            /** 수신기에 설치된 펌웨어 버전 문자열이다. */
+            String firmwareVersion,
+            /** 데이터를 수집한 Windows COM 포트 이름이다. */
+            String portName,
+            /** 수집 당시 직렬 포트 속도이며 단위는 baud다. */
+            int baudRate,
+            /** 사용자가 지정한 수집 세션 표시 이름이다. */
+            String sessionName) implements Message {
         @Override public MessageType type() { return MessageType.RECEIVER_METADATA; }
     }
-    public record Envelope(UUID testId, UUID messageId, long sequence, Instant capturedAt, Message message) {}
+    /** 모든 canonical GRAW 메시지에 공통 식별자와 수집 시각을 부여하는 envelope다. */
+    public record Envelope(
+            /** 같은 GNSS 수집에서 생성된 레코드를 묶는 UUID다. */
+            UUID testId,
+            /** 개별 GRAW 레코드의 중복 없는 UUID다. */
+            UUID messageId,
+            /** 수집 안에서 0부터 증가하는 레코드 순번이다. */
+            long sequence,
+            /** Agent가 해당 GNSS 메시지를 수집한 UTC 시각이다. */
+            Instant capturedAt,
+            /** Observation, Navigation 또는 Receiver Metadata 본문이다. */
+            Message message) {}
 
     /** canonical GRAW 레코드 한 개를 binary wire representation으로 직렬화한다. */
     public static byte[] encode(Envelope envelope) {

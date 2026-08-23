@@ -9,10 +9,15 @@ import static kr.co.lnis.protocol.model.LnisModels.AgentRole;
 
 /** 환경 변수, 시스템 속성 또는 properties 파일에서 Agent 실행 설정을 읽는다. */
 public record AgentConfig(
+        /** 서버와 브라우저에서 Agent를 식별할 고유 문자열이다. */
         String agentId,
+        /** 이 프로세스가 수행할 고정 Sender 또는 Receiver 역할이다. */
         AgentRole role,
+        /** 중앙 서버의 Agent 전용 WebSocket URI다. */
         URI serverUri,
+        /** WebSocket 연결 시 서버와 공유하는 인증 토큰이다. */
         String token,
+        /** 운영체제별 Native AFS Codec DLL 또는 SO 파일이 위치한 디렉터리다. */
         Path nativeDirectory) {
     public static AgentConfig load(String[] args) {
         Properties file = new Properties();

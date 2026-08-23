@@ -16,8 +16,22 @@ import java.util.List;
 public final class AfsRawFragmentCodec {
     public static final int BLOCK_BYTES = 105, HEADER_BYTES = 19, PAYLOAD_BYTES = 86;
     private AfsRawFragmentCodec() {}
-    public record Fragment(long recordSequence, int fragmentIndex, int fragmentCount, long recordLength,
-                           int payloadLength, long recordCrc32, byte[] payload) {}
+    /** 하나의 GRAW 레코드를 SB3 또는 SB4에 실을 수 있게 분할한 105 byte 블록의 해석 결과다. */
+    public record Fragment(
+            /** 원본 GRAW 레코드의 0부터 시작하는 순번이다. */
+            long recordSequence,
+            /** 같은 레코드 안에서 이 조각의 0부터 시작하는 번호다. */
+            int fragmentIndex,
+            /** 원본 레코드를 완성하는 데 필요한 전체 조각 개수다. */
+            int fragmentCount,
+            /** 조각으로 나누기 전 원본 GRAW 레코드 크기이며 단위는 byte다. */
+            long recordLength,
+            /** 이 조각의 {@link #payload()}에 실제로 사용된 크기이며 최대 86 byte다. */
+            int payloadLength,
+            /** 모든 조각이 공유하는 원본 GRAW 레코드의 unsigned CRC32 값이다. */
+            long recordCrc32,
+            /** 현재 조각에 담긴 원본 GRAW 데이터 부분이다. */
+            byte[] payload) {}
 
     public static List<byte[]> fragment(long sequence, byte[] record) {
         if (record.length == 0) throw new IllegalArgumentException("Empty GRAW record");
