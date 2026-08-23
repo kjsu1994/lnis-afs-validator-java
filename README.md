@@ -516,7 +516,7 @@ COM 연결 실패 시 다른 GNSS 도구가 같은 포트를 점유하고 있지
 
 | 설정 | 기본값 | 설명 |
 |---|---:|---|
-| 목적지 주소 | `255.255.255.255` | Broadcast 또는 Receiver 유니캐스트 IPv4 |
+| 목적지 주소 | `127.0.0.1` | 동일 PC 시험은 loopback, 분리 PC 시험은 Receiver IPv4 |
 | 데이터 포트 | `45821` | Sender에서 Receiver로 AFS 데이터 전송 |
 | 결과 포트 | `45822` | Receiver에서 Sender로 결과 반환 |
 | 반복 송신 | `3` | 각 논리 프레임의 datagram 중복 전송 수 |
@@ -542,6 +542,15 @@ AFS 기본값은 PRN `8`, Custom Message Type `63`입니다.
 판정값은 `PASS`, `FAIL`, `INCONCLUSIVE`입니다.
 
 Receiver는 복원 결과의 byte 길이, record 수, SHA-256 및 미완성 fragment 여부를 원본 manifest와 비교합니다. Test D는 손상되지 않은 프레임의 복호화 수와 재동기 프레임 조건을 별도로 평가합니다.
+
+Receiver는 세션 시작 패킷 또는 다음 패킷을 제한 시간 안에 받지 못하면 자동으로
+`INCONCLUSIVE` 결과를 보내고 수신 socket을 종료합니다. 중앙 서버도 Agent 결과 유실에
+대비한 watchdog을 실행하며, 입력 크기와 결과 제한 시간을 기준으로 만료된 시험을 자동
+취소하고 Redis 활성 시험 잠금을 해제합니다.
+
+Sender 화면은 `GET /lnis/api/v1/sessions/active`로 현재 시험을 주기적으로 확인합니다.
+따라서 페이지를 새로 열어도 `진행 중 시험 취소` 버튼이 다시 활성화되며 사용자가 세션 ID나
+Redis 잠금을 직접 찾을 필요가 없습니다.
 
 ## 9. 결과 파일
 
@@ -717,11 +726,14 @@ POST /lnis/api/v1/sessions
 조회 및 취소:
 
 ```http
+GET /lnis/api/v1/sessions/active
 GET /lnis/api/v1/sessions/{sessionId}
 POST /lnis/api/v1/sessions/{sessionId}/cancel
 ```
 
-세션 조회 응답에는 상태, 진행률, 메시지, 최종 판정, TX 결과 및 RX 결과가 포함됩니다.
+활성 세션이 없으면 `/active`는 `204 No Content`를 반환합니다. 개별 세션 조회 응답에는 상태,
+진행률, 메시지, 최종 판정, TX 결과 및 RX 결과가 포함됩니다. 취소는 한쪽 Agent가 이미
+오프라인이어도 중앙 상태와 Redis 잠금을 우선 정리하고 연결된 나머지 Agent에 계속 전달됩니다.
 
 ### 11.5 결과 다운로드
 

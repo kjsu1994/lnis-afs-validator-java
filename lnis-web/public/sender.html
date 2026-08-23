@@ -116,8 +116,8 @@
           </select>
         </label>
         <label>
-          Broadcast/Receiver 주소
-          <input id="broadcast-address" value="255.255.255.255">
+          Receiver 주소 (동일 PC: 127.0.0.1)
+          <input id="broadcast-address" value="127.0.0.1">
         </label>
         <label>
           데이터 포트
@@ -158,7 +158,7 @@
       </div>
       <div class="actions">
         <button id="test-start" class="primary" disabled>시험 시작</button>
-        <button id="test-cancel" disabled>취소</button>
+        <button id="test-cancel" disabled>진행 중 시험 취소</button>
       </div>
     </section>
   </div>
@@ -175,6 +175,6 @@
     <div id="downloads" class="downloads hidden"></div>
   </section>
 </main>
-<script type="module" src="/lnis/assets/sender.js?v=20260823-ux1"></script>
+<script type="module" src="/lnis/assets/sender.js?v=20260823-session2"></script>
 </body>
 </html>

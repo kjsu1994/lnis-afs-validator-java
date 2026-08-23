@@ -10,8 +10,13 @@ import kr.co.lnis.server.realtime.service.EventService;
 import kr.co.lnis.server.session.dto.CreateSessionRequest;
 import kr.co.lnis.server.session.entity.TestSessionEntity;
 import kr.co.lnis.server.session.repository.SessionRepository;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.data.redis.core.StringRedisTemplate;
+import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
+import java.util.ArrayList;
+import java.util.Optional;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.UUID;
@@ -25,6 +30,7 @@ import java.util.UUID;
  * 시험이 영구적으로 막히지 않게 한다.
  */
 public class SessionService {
+    private static final Logger log = LoggerFactory.getLogger(SessionService.class);
     private static final String ACTIVE_LOCK = "lnis:lock:active-test";
     private final SessionRepository sessions; private final AgentRepository agents; private final InputBufferService inputs;
     private final AgentCommandService commands; private final EventService events; private final StringRedisTemplate redis; private final ObjectMapper json;
@@ -89,10 +95,27 @@ public class SessionService {
     }
 
     /** 양쪽 Agent에 취소 명령을 보내고 중앙 세션 상태와 활성 lock을 정리한다. */
-    public TestSessionEntity cancel(UUID id) {
+    public synchronized TestSessionEntity cancel(UUID id) {
+        return cancelInternal(id, "사용자가 시험을 취소했습니다.");
+    }
+
+    /**
+     * 일부 Agent가 이미 오프라인이어도 나머지 Agent와 중앙 잠금 정리는 계속 수행한다.
+     * 취소 API가 한 Agent의 전송 실패 때문에 다시 409 상태를 만들지 않게 하는 것이 목적이다.
+     */
+    private TestSessionEntity cancelInternal(UUID id, String reason) {
         var current = get(id);
-        commands.command(current.senderAgentId(), id, CommandType.CANCEL_SESSION, null);
-        commands.command(current.receiverAgentId(), id, CommandType.CANCEL_SESSION, null);
+        if (terminal(current.state())) {
+            release(id);
+            return current;
+        }
+
+        var commandErrors = new ArrayList<String>();
+        cancelAgent(current.senderAgentId(), id, commandErrors);
+        cancelAgent(current.receiverAgentId(), id, commandErrors);
+        String message = commandErrors.isEmpty()
+                ? reason
+                : reason + " 일부 Agent 취소 명령 실패: " + String.join(", ", commandErrors);
         var cancelled = new TestSessionEntity(
                 id,
                 SessionState.CANCELLED,
@@ -101,7 +124,7 @@ public class SessionService {
                 current.receiverAgentId(),
                 current.inputId(),
                 current.progress(),
-                "사용자가 시험을 취소했습니다.",
+                message,
                 Verdict.INCONCLUSIVE,
                 current.requestJson(),
                 current.createdAt(),
@@ -115,6 +138,72 @@ public class SessionService {
                 id,
                 cancelled);
         return cancelled;
+    }
+
+    private void cancelAgent(String agentId, UUID sessionId, ArrayList<String> errors) {
+        try {
+            commands.command(agentId, sessionId, CommandType.CANCEL_SESSION, null);
+        } catch (RuntimeException error) {
+            errors.add(agentId + " (" + error.getMessage() + ")");
+        }
+    }
+
+    /** Redis 잠금이 가리키는 현재 시험을 반환하며, 손상된 잠금은 자동으로 제거한다. */
+    public Optional<SessionSnapshot> activeSnapshot() {
+        String value = redis.opsForValue().get(ACTIVE_LOCK);
+        if (value == null || value.isBlank()) {
+            return Optional.empty();
+        }
+        try {
+            UUID id = UUID.fromString(value);
+            var session = sessions.find(id);
+            if (session.isEmpty() || terminal(session.get().state())) {
+                release(id);
+                return Optional.empty();
+            }
+            return Optional.of(snapshot(id));
+        } catch (IllegalArgumentException error) {
+            redis.delete(ACTIVE_LOCK);
+            return Optional.empty();
+        }
+    }
+
+    /**
+     * Agent 결과가 유실되거나 프로세스가 비정상 종료돼도 시험 잠금이 장시간 남지 않게 한다.
+     * 기본 30초 시험은 입력 전송 여유를 포함해 약 60초 후 중앙에서 자동 취소한다.
+     */
+    @Scheduled(fixedDelayString = "${lnis.session-watchdog-delay-ms:5000}")
+    public synchronized void cancelExpiredSession() {
+        activeSnapshot().ifPresent(snapshot -> {
+            var current = get(snapshot.sessionId());
+            if (Instant.now().isBefore(current.createdAt().plus(sessionMaximumDuration(current)))) {
+                return;
+            }
+            log.warn("Automatically cancelling expired LNIS session {}", current.sessionId());
+            cancelInternal(current.sessionId(), "응답 제한 시간을 초과하여 시험이 자동 취소되었습니다.");
+        });
+    }
+
+    private Duration sessionMaximumDuration(TestSessionEntity session) {
+        try {
+            CreateSessionRequest request = json.readValue(
+                    session.requestJson(),
+                    CreateSessionRequest.class);
+            long inputMegabytes = Math.max(
+                    1,
+                    (inputs.get(session.inputId()).receivedSize() + 1_048_575) / 1_048_576);
+            long transferAllowanceSeconds = Math.min(600, Math.max(15, inputMegabytes * 2));
+            long graceSeconds = Math.max(
+                    1,
+                    (request.transport().endGraceMilliseconds() + 999L) / 1000L);
+            long totalSeconds = request.transport().resultTimeoutSeconds()
+                    + graceSeconds
+                    + transferAllowanceSeconds;
+            return Duration.ofSeconds(Math.max(60, totalSeconds));
+        } catch (Exception error) {
+            log.warn("Unable to calculate session timeout for {}; using fallback", session.sessionId(), error);
+            return Duration.ofMinutes(2);
+        }
     }
 
     /** Redis의 세션 메타데이터와 현재 TX/RX 결과를 하나의 조회 응답으로 결합한다. */
@@ -137,8 +226,12 @@ public class SessionService {
     }
 
     /** TX와 RX 결과가 모두 도착한 시점에 더 보수적인 판정으로 최종 상태를 계산한다. */
-    public void onResult(UUID id) {
+    public synchronized void onResult(UUID id) {
         var current = get(id);
+        if (terminal(current.state())) {
+            release(id);
+            return;
+        }
         var tx = sessions.result(id, AgentRole.SENDER);
         var rx = sessions.result(id, AgentRole.RECEIVER);
         if (tx.isEmpty() || rx.isEmpty()) {
@@ -185,6 +278,13 @@ public class SessionService {
         if (id.toString().equals(current)) {
             redis.delete(ACTIVE_LOCK);
         }
+    }
+
+    private static boolean terminal(SessionState state) {
+        return state == SessionState.COMPLETED
+                || state == SessionState.CANCELLED
+                || state == SessionState.FAILED
+                || state == SessionState.INCONCLUSIVE;
     }
 
     /** 입력 완료 여부, Agent 역할, 포트, 반복 횟수와 시험별 오류 범위를 검증한다. */

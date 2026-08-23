@@ -5,6 +5,7 @@ import kr.co.lnis.protocol.model.LnisModels.SessionSnapshot;
 import kr.co.lnis.server.session.dto.CreateSessionRequest;
 import kr.co.lnis.server.session.entity.TestSessionEntity;
 import kr.co.lnis.server.session.service.SessionService;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import java.util.UUID;
 
@@ -17,6 +18,14 @@ public class SessionController {
     @PostMapping
     public TestSessionEntity create(@Valid @RequestBody CreateSessionRequest request) {
         return sessions.create(request);
+    }
+
+    /** 페이지를 새로 열어도 현재 시험을 복원하고 취소할 수 있도록 활성 세션을 반환한다. */
+    @GetMapping("/active")
+    public ResponseEntity<SessionSnapshot> active() {
+        return sessions.activeSnapshot()
+                .map(ResponseEntity::ok)
+                .orElseGet(() -> ResponseEntity.noContent().build());
     }
 
     @GetMapping("/{sessionId}")

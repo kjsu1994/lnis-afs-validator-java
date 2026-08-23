@@ -250,6 +250,12 @@ public final class UdpSessionService implements AutoCloseable {
             long datagrams = 0;
             long duplicates = 0;
             long corrupt = 0;
+            Instant lastPacketAt = started;
+            Duration armTimeout = Duration.ofSeconds(Math.max(
+                    30,
+                    command.transport().resultTimeoutSeconds() + 10L));
+            Duration packetTimeout = Duration.ofSeconds(
+                    command.transport().resultTimeoutSeconds());
             while (!cancelled.get()) {
                 try {
                     DatagramPacket datagram = new DatagramPacket(new byte[1500], 1500);
@@ -263,6 +269,7 @@ public final class UdpSessionService implements AutoCloseable {
                         corrupt++;
                         continue;
                     }
+                    lastPacketAt = Instant.now();
                     if (!accepted.add(new Key(packet.kind(), packet.sequence()))) {
                         duplicates++;
                         continue;
@@ -299,8 +306,16 @@ public final class UdpSessionService implements AutoCloseable {
                         Thread.sleep(command.transport().endGraceMilliseconds());
                         break;
                     }
-                } catch (SocketTimeoutException ignored) {
-                    // 취소 여부를 주기적으로 확인하기 위한 정상 timeout이다.
+                } catch (SocketTimeoutException timeout) {
+                    // 짧은 socket timeout은 취소 확인에 사용하되, 전체 무수신 상태는 자동 종료한다.
+                    Instant deadline = manifest == null
+                            ? started.plus(armTimeout)
+                            : lastPacketAt.plus(packetTimeout);
+                    if (Instant.now().isAfter(deadline)) {
+                        throw new SocketTimeoutException(manifest == null
+                                ? "Receiver timed out waiting for session data"
+                                : "Receiver timed out waiting for the next packet");
+                    }
                 }
             }
             if (manifest == null || senderAddress == null) {

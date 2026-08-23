@@ -18,6 +18,13 @@ let captureRunning = false;
 let sessionRunning = false;
 let agentCache = [];
 
+const TERMINAL_SESSION_STATES = new Set([
+    'COMPLETED',
+    'CANCELLED',
+    'FAILED',
+    'INCONCLUSIVE',
+]);
+
 /**
  * 지정한 선택 상자의 Agent ID를 반환한다.
  *
@@ -67,6 +74,9 @@ function friendlyError(error) {
     if (/portname|must not be blank/i.test(message)) {
         return '수집에 사용할 COM 포트를 선택하세요.';
     }
+    if (/another test session is active/i.test(message)) {
+        return '이미 진행 중인 시험이 있습니다. 아래 취소 버튼으로 기존 시험을 종료하세요.';
+    }
     return message;
 }
 
@@ -94,6 +104,27 @@ function updateControls() {
     $('capture-stop').disabled = !captureRunning;
     $('test-start').disabled = !inputId || !senderReady || !receiverReady || sessionRunning;
     $('test-cancel').disabled = !sessionRunning;
+}
+
+/** 활성 세션 유무를 화면 상태와 취소 버튼에 동일하게 반영한다. */
+function applyActiveSession(session) {
+    if (session && !TERMINAL_SESSION_STATES.has(session.state)) {
+        sessionId = session.sessionId;
+        sessionRunning = true;
+        setPill($('session-state'), `${session.state} · 취소 가능`, 'warning');
+    } else {
+        sessionId = null;
+        sessionRunning = false;
+        setPill($('session-state'), '대기', '');
+    }
+    updateControls();
+}
+
+/** 페이지 새로고침 후에도 Redis 활성 잠금의 세션 ID를 다시 가져온다. */
+async function refreshActiveSession() {
+    const active = await request('/sessions/active');
+    applyActiveSession(active);
+    return active;
 }
 
 /** 서버가 보관한 Agent 상태를 다시 읽고 역할별 선택 목록을 갱신한다. */
@@ -338,22 +369,33 @@ $('test-start').onclick = async () => {
         });
         sessionId = session.sessionId;
         sessionRunning = true;
+        setPill($('session-state'), '시험 진행 중 · 취소 가능', 'warning');
         log(eventLog, `시험 ${sessionId} 시작`);
         showNotice('success', '시험 시작', `시험 ${sessionId} 명령을 양쪽 Agent에 전송했습니다.`);
         updateControls();
     } catch (error) {
         reportError('시험 시작', error);
+        refreshActiveSession().catch((refreshError) => {
+            log(eventLog, `활성 시험 확인 실패: ${refreshError.message}`);
+        });
     }
 };
 
 $('test-cancel').onclick = async () => {
     if (!sessionId) {
+        showNotice('info', '진행 중인 시험 없음', '현재 취소할 시험이 없습니다.');
         return;
     }
-    await request(`/sessions/${sessionId}/cancel`, { method: 'POST' });
-    sessionRunning = false;
-    showNotice('info', '시험 취소', `시험 ${sessionId} 취소 명령을 전송했습니다.`);
-    updateControls();
+    const cancellingSessionId = sessionId;
+    $('test-cancel').disabled = true;
+    try {
+        await request(`/sessions/${cancellingSessionId}/cancel`, { method: 'POST' });
+        showNotice('info', '시험 취소 완료', `시험 ${cancellingSessionId}을 종료했습니다.`);
+        await refreshActiveSession();
+    } catch (error) {
+        reportError('시험 취소', error);
+        await refreshActiveSession().catch(() => {});
+    }
 };
 
 statusSocket(
@@ -383,6 +425,21 @@ statusSocket(
 
         const payload = event.payload || {};
         log(eventLog, `${event.type}: ${payload.message || payload.stage || ''}`);
+        if (event.type === 'SESSION_STATUS') {
+            if (TERMINAL_SESSION_STATES.has(payload.state)) {
+                applyActiveSession(null);
+                showNotice(
+                    payload.state === 'CANCELLED' ? 'info' : 'success',
+                    payload.state === 'CANCELLED' ? '시험 취소 완료' : '시험 종료',
+                    payload.message || `시험 상태: ${payload.state}`,
+                );
+            } else {
+                sessionId = event.sessionId;
+                sessionRunning = true;
+                setPill($('session-state'), `${payload.state} · 취소 가능`, 'warning');
+                updateControls();
+            }
+        }
         if (Number.isFinite(payload.percent)) {
             $('session-progress').value = payload.percent;
             $('progress-label').textContent = `${payload.percent}%`;
@@ -397,8 +454,8 @@ statusSocket(
                 event.sessionId,
                 event.role === 'SENDER' ? 'tx' : 'rx',
             );
-            sessionRunning = false;
-            updateControls();
+            // 한쪽 RESULT만으로는 시험이 끝난 것이 아니므로 서버의 활성 상태를 다시 확인한다.
+            refreshActiveSession().catch((error) => log(eventLog, error.message));
         }
     },
     (online) => setPill(
@@ -410,4 +467,8 @@ statusSocket(
 
 updateControls();
 refreshAgents().catch((error) => log(eventLog, error.message));
-setInterval(() => refreshAgents().catch(() => {}), 5000);
+refreshActiveSession().catch((error) => log(eventLog, error.message));
+setInterval(() => {
+    refreshAgents().catch(() => {});
+    refreshActiveSession().catch(() => {});
+}, 5000);
