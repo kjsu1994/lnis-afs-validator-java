@@ -1,0 +1,33 @@
+server:
+  port: 8080
+  forward-headers-strategy: framework
+  tomcat:
+    max-swallow-size: 2MB
+spring:
+  application:
+    name: lnis-server
+  data:
+    redis:
+      host: ${REDIS_HOST:redis}
+      port: ${REDIS_PORT:6379}
+      timeout: 5s
+  jackson:
+    default-property-inclusion: non_null
+    serialization:
+      write-dates-as-timestamps: false
+  servlet:
+    multipart:
+      enabled: false
+lnis:
+  agent-tokens: ${LNIS_AGENT_TOKENS:sender-1=change-me-sender,receiver-1=change-me-receiver}
+management:
+  endpoints:
+    web:
+      base-path: /lnis/api/v1/actuator
+      exposure:
+        include: health,info
+  endpoint:
+    health:
+      probes:
+        enabled: true
+

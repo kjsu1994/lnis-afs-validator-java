@@ -1,0 +1,6 @@
+lnis.agent.id=sender-1
+lnis.agent.role=SENDER
+lnis.server.ws=ws://localhost:8088/lnis/agent/ws
+lnis.agent.token=change-me-sender
+lnis.native.dir=native
+

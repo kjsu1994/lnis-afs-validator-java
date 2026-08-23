@@ -1,0 +1,14 @@
+package kr.co.lnis.agent.gnss;
+
+import org.junit.jupiter.api.Test;
+import static org.junit.jupiter.api.Assertions.*;
+
+class UbloxParserTest {
+    @Test void parsesSplitCheckedFrame() {
+        byte[] frame = UbloxParser.command(0x0A, 0x04, new byte[]{1,2,3,4}); UbloxParser parser = new UbloxParser();
+        assertTrue(parser.push(frame, 3).isEmpty());
+        byte[] rest = java.util.Arrays.copyOfRange(frame, 3, frame.length); var parsed = parser.push(rest, rest.length);
+        assertEquals(1, parsed.size()); assertEquals(0x0A, parsed.getFirst().messageClass()); assertArrayEquals(new byte[]{1,2,3,4}, parsed.getFirst().payload());
+    }
+}
+
