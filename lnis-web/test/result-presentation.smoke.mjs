@@ -112,18 +112,36 @@ const syncRecoveryResult = {
 const syncPresentation = buildResultPresentation(syncRecoveryResult);
 const syncMetrics = syncPresentation.groups.flatMap((group) => group.metrics);
 
-assert.match(syncPresentation.summary.title, /동기를 다시 찾아/);
+assert.match(syncPresentation.summary.title, /다음 정상 동기부터 CRC 복호화/);
 assert.deepEqual(
     syncPresentation.groups.map((group) => group.title),
-    ['1. 동기 복구 판정', '2. GRAW 부분 복원 범위', '3. 전송 및 오류 처리 현황'],
+    ['1. 손상 프레임 제외 후 재동기 판정', '2. GRAW 부분 복원 범위', '3. 전송 및 오류 처리 현황'],
 );
 assert.equal(
     syncMetrics.find((metric) => metric.name === '전체 데이터 동일 여부')?.status.text,
     '예상 결과',
 );
 assert.equal(
-    syncMetrics.find((metric) => metric.name === '다음 동기 패턴 복구')?.value,
+    syncMetrics.find((metric) => metric.name === '연속 정상 SP 재획득')?.value,
     '3 / 3 frame',
+);
+assert.equal(
+    syncMetrics.find((metric) => metric.name === 'CRC 통과 완전 복호')?.value,
+    '3 / 3 frame',
+);
+
+// Decoder 호출이 끝났더라도 SB2·SB3·SB4 CRC를 모두 통과하지 못하면 Test D 핵심 검사가 실패해야 한다.
+const incompleteCrcPresentation = buildResultPresentation({
+    ...syncRecoveryResult,
+    verdict: 'FAIL',
+    metrics: syncRecoveryResult.metrics.map((metric) => (
+        metric.name === 'FullyDecodedFrames' ? { ...metric, value: 2 } : metric
+    )),
+});
+assert.equal(
+    incompleteCrcPresentation.summary.checks
+        .find((check) => check.label === '다음 정상 SP 재획득 및 CRC 완전 복호')?.ok,
+    false,
 );
 assert.equal(
     syncMetrics.find((metric) => metric.name === '시험에서 주입한 오류')?.value,

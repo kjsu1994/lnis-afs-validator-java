@@ -6,8 +6,8 @@ import {
     setPill,
     downloads,
     renderMetrics,
-} from './api.js?v=20260823-frame5';
-import { formatEventLog } from './event-log.js?v=20260823-frame5';
+} from './api.js?v=20260823-frame7';
+import { formatEventLog } from './event-log.js?v=20260823-frame7';
 import { renderFrameEvidence } from './frame-evidence.js?v=20260823-frame6';
 
 const $ = (id) => document.getElementById(id);
@@ -333,7 +333,7 @@ function conditions() {
         errorCount.min = '1';
         errorCount.max = '68';
         errorCount.value = String(Math.min(68, Math.max(1, Number(errorCount.value) || 1)));
-        errorCount.dataset.tooltip = '68비트 AFS 동기 패턴 안에서 반전할 비트 수입니다. 1비트만 달라도 현재 동기는 거부되며 다음 정상 동기를 찾습니다.';
+        errorCount.dataset.tooltip = '68심볼 AFS SP 안에서 반전할 bit 수입니다. PocketSDR-AFS 방식은 1bit만 달라도 현재 동기를 거부하며, 6,000심볼 간격의 연속 정상 SP를 다시 찾습니다. 손상 프레임 자체는 복구하지 않습니다.';
         errorCount.title = errorCount.dataset.tooltip;
         document.querySelectorAll('.conditional.error,.conditional.sync')
             .forEach((item) => item.classList.remove('hidden'));

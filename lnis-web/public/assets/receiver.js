@@ -5,12 +5,12 @@ import {
     setPill,
     downloads,
     renderMetrics,
-} from './api.js?v=20260823-frame5';
+} from './api.js?v=20260823-frame7';
 import {
     formatEventLog,
     describeTestType,
     describeTestCondition,
-} from './event-log.js?v=20260823-frame5';
+} from './event-log.js?v=20260823-frame7';
 import { renderFrameEvidence } from './frame-evidence.js?v=20260823-frame6';
 
 const $ = (id) => document.getElementById(id);

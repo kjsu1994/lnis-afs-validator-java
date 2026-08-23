@@ -630,12 +630,17 @@ public final class UdpSessionService implements AutoCloseable {
                     manifest.recordCount,
                     records.size(),
                     integrityOk ? "RAW comparison completed." : "RAW comparison failed.");
+            long expectedRecoveredFrames = manifest.frameCount
+                    - manifest.injectedFrameCount;
+
+            // PocketSDR-AFS는 68심볼 SP를 오차 없이 확인한 뒤 AFS 프레임을 복호화한다.
+            // Test D는 손상 프레임 자체의 복구 시험이 아니므로 해당 프레임은 제외한다.
+            // 나머지 프레임은 동기 재획득뿐 아니라 SB2·SB3·SB4 CRC까지 모두 통과해야 PASS다.
             boolean passed = manifest.testType == TestType.TEST_D_SYNC_RECOVERY
                     ? frames.size() == manifest.frameCount
-                            && aggregate.recoveredSyncFrames
-                                    == manifest.frameCount - manifest.injectedFrameCount
-                            && aggregate.decodedFrames
-                                    == manifest.frameCount - manifest.injectedFrameCount
+                            && aggregate.recoveredSyncFrames == expectedRecoveredFrames
+                            && aggregate.decodedFrames == expectedRecoveredFrames
+                            && aggregate.fullyDecodedFrames == expectedRecoveredFrames
                     : integrityOk;
             WireResult wire = new WireResult(
                     passed ? Verdict.PASS : Verdict.FAIL,
@@ -746,7 +751,14 @@ public final class UdpSessionService implements AutoCloseable {
         }
     }
 
-    /** Test D는 bit stream에서 sync를 다시 탐색하고, 나머지 시험은 frame 경계를 그대로 사용한다. */
+    /**
+     * Test D는 수신 프레임을 연속 bit stream으로 연결한 뒤 SP를 다시 탐색한다.
+     *
+     * <p>PocketSDR-AFS 수신기는 68심볼 SP 두 개가 6,000심볼 간격으로 완전히 일치할 때
+     * 프레임 동기를 인정한다. 이 오프라인 검증기는 유한한 stream의 마지막 프레임도 검증할 수
+     * 있도록 앞 또는 뒤의 정상 SP와 쌍을 이루는 SP를 채택한다. 나머지 시험은 UDP가 제공한
+     * 논리 frame 경계를 그대로 사용한다.</p>
+     */
     private DecodeAggregate decodeFrames(
             Collection<ReceivedFrame> input,
             TestType type) {
@@ -761,7 +773,7 @@ public final class UdpSessionService implements AutoCloseable {
                             (output, value) -> output.write(value),
                             (left, right) -> left.writeBytes(right.toByteArray()))
                     .toByteArray();
-            List<Long> offsets = findSync(joined);
+            List<Long> offsets = findConfirmedSyncOffsets(joined);
             List<ReceivedFrame> ordered = new ArrayList<>(input);
             total.recoveredSyncFrames = offsets.size();
             for (long offset : offsets) {
@@ -873,11 +885,31 @@ public final class UdpSessionService implements AutoCloseable {
                 ? null
                 : String.join(", ", failed);
     }
-    private static final byte[] SYNC={(byte)0xCC,0x63,(byte)0xF7,0x45,0x36,(byte)0xF4,(byte)0x9E,0x04,(byte)0xA0};
-    private static List<Long> findSync(byte[] bytes) {
-        List<Long> offsets = new ArrayList<>();
+    /** AFS Data Frame의 고정 68심볼 동기 패턴이다. 마지막 byte의 하위 4bit는 사용하지 않는다. */
+    private static final byte[] SYNC = {
+            (byte) 0xCC,
+            0x63,
+            (byte) 0xF7,
+            0x45,
+            0x36,
+            (byte) 0xF4,
+            (byte) 0x9E,
+            0x04,
+            (byte) 0xA0
+    };
+
+    /**
+     * PocketSDR-AFS의 동기 판정을 본떠 68심볼 완전 일치 후보를 먼저 찾고, 서로 정확히
+     * 6,000심볼 떨어진 후보끼리만 확정한다. 단독으로 우연히 나타난 동일 bit열은 프레임
+     * 동기로 채택하지 않는다.
+     *
+     * <p>실시간 수신기는 현재 SP와 다음 SP를 함께 본다. 이 메서드는 저장이 끝난 유한한
+     * 시험 stream을 다루므로 마지막 프레임에 한해 직전 SP와의 쌍도 인정한다.</p>
+     */
+    static List<Long> findConfirmedSyncOffsets(byte[] bytes) {
+        List<Long> candidates = new ArrayList<>();
         long bits = (long) bytes.length * 8;
-        for (long offset = 0; offset + 68 <= bits; offset++) {
+        for (long offset = 0; offset + 6000 <= bits; offset++) {
             boolean matched = true;
             for (int index = 0; index < 68; index++) {
                 if (bit(bytes, offset + index) != bit(SYNC, index)) {
@@ -886,11 +918,16 @@ public final class UdpSessionService implements AutoCloseable {
                 }
             }
             if (matched) {
-                offsets.add(offset);
+                candidates.add(offset);
                 offset += 67;
             }
         }
-        return offsets;
+
+        var candidateSet = new java.util.HashSet<>(candidates);
+        return candidates.stream()
+                .filter(offset -> candidateSet.contains(offset - 6000)
+                        || candidateSet.contains(offset + 6000))
+                .toList();
     }
 
     private static byte[] extract(byte[] bytes, long offset) {

@@ -166,6 +166,7 @@ function resultSummary(result, context = {}) {
 
     if (testType === 'TEST_D_SYNC_RECOVERY') {
         const decoded = metricValue(result, 'DecodedFrames');
+        const fullyDecoded = metricValue(result, 'FullyDecodedFrames');
         const recoveredSync = metricValue(result, 'RecoveredSyncFrames');
         const injected = Number(context.injectedFrameCount ?? counters.injectedFrameCount ?? 0);
         const recoveryTarget = hasValue(counters.expectedLogicalFrames)
@@ -173,20 +174,21 @@ function resultSummary(result, context = {}) {
             : undefined;
         const recoveredExpectedFrames = hasValue(recoveryTarget)
             && decoded === recoveryTarget
+            && fullyDecoded === recoveryTarget
             && recoveredSync === recoveryTarget;
 
         return {
             passed,
             title: passed
-                ? '손상 프레임 다음에서 동기를 다시 찾아 정상 처리했습니다.'
+                ? '손상 프레임을 제외하고 다음 정상 동기부터 CRC 복호화했습니다.'
                 : '동기 손상 이후의 재동기화 결과를 확인해야 합니다.',
             description: passed
-                ? `Test D는 동기 패턴을 손상한 ${displayNumber(injected)}개 프레임을 의도적으로 버리고, 나머지 프레임을 다시 찾는 시험입니다. 따라서 GRAW 전체가 같지 않아도 정상입니다.`
+                ? `Test D는 손상 프레임 자체를 복구하는 시험이 아닙니다. 동기 패턴을 손상한 ${displayNumber(injected)}개 프레임을 제외하고, 연속된 정상 SP를 다시 확인해 나머지 프레임의 SB2·SB3·SB4 CRC를 검증합니다.`
                 : result?.error || integrity.detail || '아래 동기 복구 항목에서 목표 수치와 실제 수치를 비교하세요.',
             checks: [
                 { label: 'AFS 논리 프레임 모두 도착', ok: frameComplete },
                 { label: `손상 ${displayNumber(injected)}개 의도적 제외`, ok: injected > 0 },
-                { label: '다음 프레임 재동기화', ok: recoveredExpectedFrames },
+                { label: '다음 정상 SP 재획득 및 CRC 완전 복호', ok: recoveredExpectedFrames },
             ],
         };
     }
@@ -270,6 +272,7 @@ function syncRecoveryCards(result, context = {}) {
     const injected = Number(context.injectedFrameCount ?? counters.injectedFrameCount ?? 0);
     const recoveryTarget = hasValue(expected) ? Math.max(0, expected - injected) : undefined;
     const decoded = metricValue(result, 'DecodedFrames');
+    const fullyDecoded = metricValue(result, 'FullyDecodedFrames');
     const recoveredSync = metricValue(result, 'RecoveredSyncFrames');
 
     return [
@@ -288,17 +291,24 @@ function syncRecoveryCards(result, context = {}) {
             'frame',
         ) : null,
         hasValue(recoveredSync) && hasValue(recoveryTarget) ? card(
-            '다음 동기 패턴 복구',
+            '연속 정상 SP 재획득',
             `${displayNumber(recoveredSync)} / ${displayNumber(recoveryTarget)}`,
-            '손상 프레임 뒤에서 다시 찾아야 하는 정상 동기 패턴 수와 실제 복구 수입니다.',
-            status(recoveredSync === recoveryTarget, '복구 성공'),
+            'PocketSDR-AFS 방식처럼 68심볼 SP가 완전히 일치하고, 6,000심볼 간격의 이웃 SP와 쌍을 이루는지 확인한 수입니다.',
+            status(recoveredSync === recoveryTarget, '재획득 성공'),
             'frame',
         ) : null,
         hasValue(decoded) && hasValue(recoveryTarget) ? card(
-            '복구 프레임 복호화',
+            'Decoder 처리 프레임',
             `${displayNumber(decoded)} / ${displayNumber(recoveryTarget)}`,
-            '의도적으로 제외한 프레임을 뺀 나머지가 모두 복호화되었는지 확인합니다.',
-            status(decoded === recoveryTarget, '모두 복호화'),
+            '동기를 재획득한 뒤 Native AFS Decoder가 처리를 완료한 수입니다. CRC 완전 통과 여부는 다음 항목에서 별도로 확인합니다.',
+            status(decoded === recoveryTarget, '처리 완료'),
+            'frame',
+        ) : null,
+        hasValue(fullyDecoded) && hasValue(recoveryTarget) ? card(
+            'CRC 통과 완전 복호',
+            `${displayNumber(fullyDecoded)} / ${displayNumber(recoveryTarget)}`,
+            '동기를 재획득한 모든 프레임에서 SB2·SB3·SB4 CRC-24Q가 전부 정상인지 확인합니다. Test D PASS의 필수 조건입니다.',
+            status(fullyDecoded === recoveryTarget, '모두 정상'),
             'frame',
         ) : null,
     ].filter(Boolean);
@@ -544,8 +554,8 @@ export function buildResultPresentation(result, context = {}) {
         summary: resultSummary(result, context),
         groups: syncRecovery ? [
             {
-                title: '1. 동기 복구 판정',
-                description: 'Test D의 PASS 여부를 결정하는 핵심 수치입니다. 손상 프레임은 제외하고 그 다음 정상 프레임을 다시 찾았는지 확인합니다.',
+                title: '1. 손상 프레임 제외 후 재동기 판정',
+                description: '손상 프레임 자체의 복구 시험이 아닙니다. 68심볼 SP가 손상된 프레임을 제외하고, 다음 연속 정상 SP를 다시 확인한 뒤 SB2·SB3·SB4 CRC까지 모두 통과했는지 판정합니다.',
                 metrics: syncRecoveryCards(result, context),
             },
             {

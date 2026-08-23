@@ -2,7 +2,7 @@ const TEST_NAMES = {
     TEST_A_NORMAL: 'Test A 정상 전송',
     TEST_B_RANDOM_ERRORS: 'Test B 임의 비트 오류',
     TEST_C_BURST_ERRORS: 'Test C 연속 비트 오류',
-    TEST_D_SYNC_RECOVERY: 'Test D 동기 복구',
+    TEST_D_SYNC_RECOVERY: 'Test D 손상 프레임 제외 후 재동기',
     TEST_E_UDP_DROP: 'Test E UDP 복제본 손실',
 };
 
@@ -24,7 +24,7 @@ const METRIC_NAMES = {
     Sb3CrcValidFrames: 'SB3 CRC 정상 프레임',
     Sb4CrcValidFrames: 'SB4 CRC 정상 프레임',
     CorrectedSymbols: 'LDPC 내부 판정 변경량',
-    RecoveredSyncFrames: '동기 복구 프레임',
+    RecoveredSyncFrames: '연속 정상 SP 재획득 프레임',
 };
 
 const METRIC_STATUSES = {
@@ -93,8 +93,9 @@ export function describeTestCondition(details) {
             return `각 AFS 프레임 데이터 영역에 연속 비트 ${number(details.errorCount)}개 손상`
                 + ` (Seed ${number(details.errorSeed)})`;
         case 'TEST_D_SYNC_RECOVERY':
-            return `0번 프레임부터 ${number(details.syncDamageInterval)}프레임마다 동기 패턴 비트 `
-                + `${number(details.errorCount)}개 손상 (총 ${number(details.injectedFrameCount)}프레임)`;
+            return `0번 프레임부터 ${number(details.syncDamageInterval)}프레임마다 68심볼 SP의 bit `
+                + `${number(details.errorCount)}개 손상 후 해당 프레임 제외·다음 연속 정상 SP 재획득 `
+                + `(총 ${number(details.injectedFrameCount)}프레임 제외)`;
         case 'TEST_E_UDP_DROP':
             return `각 UDP 복제본 미전송 확률 ${number(details.dropRatePercent)}%`
                 + ` (Seed ${number(details.dropSeed)}, 예정 ${number(details.plannedDroppedDatagrams)}개)`;

@@ -507,7 +507,7 @@ COM 연결 실패 시 다른 GNSS 도구가 같은 포트를 점유하고 있지
 | `TEST_A_NORMAL` | 오류를 주입하지 않는 정상 송수신 | 기본값 사용 |
 | `TEST_B_RANDOM_ERRORS` | Seed 기반 임의 비트 오류 | `errorCount`, `errorSeed` |
 | `TEST_C_BURST_ERRORS` | 연속 비트 오류 | `errorCount`, `errorSeed` |
-| `TEST_D_SYNC_RECOVERY` | 동기 패턴 손상 후 재동기 성능 확인 | `errorCount`, `errorSeed`, `syncDamageInterval` |
+| `TEST_D_SYNC_RECOVERY` | SP 손상 프레임 제외 후 다음 연속 정상 SP 재획득 확인 | `errorCount`, `errorSeed`, `syncDamageInterval` |
 | `TEST_E_UDP_DROP` | 결정론적으로 UDP 복제본을 미전송하는 손실 모의시험 | `dropRatePercent`, `dropSeed` |
 
 동일 입력과 동일 Seed를 사용하면 오류 위치와 UDP 복제본 미전송 위치를 재현할 수 있습니다.
@@ -541,7 +541,22 @@ AFS 기본값은 PRN `8`, Custom Message Type `63`입니다.
 
 판정값은 `PASS`, `FAIL`, `INCONCLUSIVE`입니다.
 
-Receiver는 복원 결과의 byte 길이, record 수, SHA-256 및 미완성 fragment 여부를 원본 manifest와 비교합니다. Test D는 손상되지 않은 프레임의 복호화 수와 재동기 프레임 조건을 별도로 평가합니다.
+Receiver는 복원 결과의 byte 길이, record 수, SHA-256 및 미완성 fragment 여부를 원본 manifest와 비교합니다. Test D는 손상되지 않은 프레임의 동기 재획득 수와 SB2·SB3·SB4 CRC 완전 복호 수를 별도로 평가합니다.
+
+#### Test D의 오픈소스 근거와 범위
+
+원본 WPF의 Native Codec은 프로젝트에 포함된 `LANS-AFS-SIM`과 `PocketSDR-AFS` 코드를 사용합니다.
+두 오픈소스를 대조하면 AFS Data Frame은 `SP 68 + SB1 52 + SB2 2400 + SB3 1740 + SB4 1740 = 6000 symbols`로 구성됩니다.
+SP 값은 `CC 63 F7 45 36 F4 9E 04 A`이며 마지막 byte는 상위 4bit만 사용합니다.
+
+PocketSDR-AFS의 `sync_frame()`은 허용 오류 수를 `0`으로 호출해 68심볼 SP를 완전 일치시키고,
+현재 SP와 6,000심볼 뒤의 다음 SP가 모두 일치할 때 프레임 동기를 인정합니다. 따라서 Test D에서
+SP를 1bit만 손상해도 그 프레임을 정상 동기로 인정하지 않는 동작은 원본 오픈소스 설계와
+일치합니다. 이것은 LDPC가 보호하는 SB2·SB3·SB4 데이터 영역의 오류 정정과 별개입니다.
+
+웹 Validator는 저장이 끝난 유한한 시험 stream을 검사하므로 마지막 정상 프레임은 다음 SP가
+존재하지 않습니다. 이 경계에서는 직전 SP와 정확히 6,000심볼 간격의 쌍을 이루는 경우에도
+정상 SP로 인정합니다. 단독으로 우연히 나타난 SP 동일 bit열은 동기로 채택하지 않습니다.
 
 Test D는 다른 시험과 PASS 기준이 다릅니다. 동기 패턴을 손상한 현재 프레임은 Receiver가
 정상 프레임으로 오인하지 않고 버려야 하며, 그 다음 정상 동기 패턴부터 다시 찾아 복호화를
@@ -550,8 +565,9 @@ PASS입니다.
 
 1. Sender가 준비한 UDP 논리 프레임이 Receiver까지 모두 도착합니다.
 2. 의도적으로 동기를 손상한 프레임 수가 시험 조건과 같습니다.
-3. `복호화 프레임 = 전체 프레임 - 동기 손상 프레임`입니다.
-4. `동기 복구 프레임 = 전체 프레임 - 동기 손상 프레임`입니다.
+3. `연속 정상 SP 재획득 프레임 = 전체 프레임 - 동기 손상 프레임`입니다.
+4. `Decoder 처리 프레임 = 전체 프레임 - 동기 손상 프레임`입니다.
+5. `SB2·SB3·SB4 CRC 완전 복호 프레임 = 전체 프레임 - 동기 손상 프레임`입니다.
 
 예를 들어 `dummy-capture.graw`는 464 byte, 4 record이고 이 입력에서는 record 한 개가
 116 byte입니다. 첫 프레임 한 개의 동기를 손상하면 Receiver는 UDP 논리 프레임 4개를 모두
