@@ -5,12 +5,12 @@ import {
     setPill,
     downloads,
     renderMetrics,
-} from './api.js?v=20260823-result3';
+} from './api.js?v=20260823-final1';
 import {
     formatEventLog,
     describeTestType,
     describeTestCondition,
-} from './event-log.js?v=20260823-detail2';
+} from './event-log.js?v=20260823-final1';
 
 const $ = (id) => document.getElementById(id);
 const eventLog = $('event-log');

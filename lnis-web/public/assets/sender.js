@@ -6,8 +6,8 @@ import {
     setPill,
     downloads,
     renderMetrics,
-} from './api.js?v=20260823-result3';
-import { formatEventLog } from './event-log.js?v=20260823-detail2';
+} from './api.js?v=20260823-final1';
+import { formatEventLog } from './event-log.js?v=20260823-final1';
 
 const $ = (id) => document.getElementById(id);
 const eventLog = $('event-log');
@@ -313,13 +313,27 @@ $('capture-stop').onclick = async () => {
 /** 선택한 시험 종류에 필요한 조건 입력만 화면에 노출한다. */
 function conditions() {
     const type = $('test-type').value;
+    const errorCount = $('error-count');
+    const errorCountLabel = $('error-count-label');
     document.querySelectorAll('.conditional').forEach((item) => item.classList.add('hidden'));
 
     if (type === 'TEST_B_RANDOM_ERRORS' || type === 'TEST_C_BURST_ERRORS') {
+        errorCountLabel.textContent = '프레임당 손상 비트 수';
+        errorCount.min = '1';
+        errorCount.max = '5880';
+        errorCount.value = String(Math.min(5880, Math.max(1, Number(errorCount.value) || 1)));
+        errorCount.dataset.tooltip = '각 대상 AFS 프레임의 데이터 영역에서 반전할 비트 수입니다. 허용 범위는 1~5,880입니다.';
+        errorCount.title = errorCount.dataset.tooltip;
         document.querySelectorAll('.conditional.error')
             .forEach((item) => item.classList.remove('hidden'));
     }
     if (type === 'TEST_D_SYNC_RECOVERY') {
+        errorCountLabel.textContent = '동기 패턴 손상 비트 수';
+        errorCount.min = '1';
+        errorCount.max = '68';
+        errorCount.value = String(Math.min(68, Math.max(1, Number(errorCount.value) || 1)));
+        errorCount.dataset.tooltip = '68비트 AFS 동기 패턴 안에서 반전할 비트 수입니다. 1비트만 달라도 현재 동기는 거부되며 다음 정상 동기를 찾습니다.';
+        errorCount.title = errorCount.dataset.tooltip;
         document.querySelectorAll('.conditional.error,.conditional.sync')
             .forEach((item) => item.classList.remove('hidden'));
     }
@@ -331,6 +345,32 @@ function conditions() {
 
 $('test-type').onchange = conditions;
 conditions();
+
+/** 서버 요청 전에 시험별 허용 범위를 일반 사용자가 이해할 수 있는 문장으로 검증한다. */
+function validateTestSettings(options, transport) {
+    if (transport.repeatCount < 1 || transport.repeatCount > 20) {
+        return 'UDP 반복 송신 횟수는 1~20 범위로 입력하세요.';
+    }
+    if (transport.resultTimeoutSeconds < 1) {
+        return '결과 대기 시간은 1초 이상으로 입력하세요.';
+    }
+    if (['TEST_B_RANDOM_ERRORS', 'TEST_C_BURST_ERRORS'].includes(options.testType)
+        && (options.errorCount < 1 || options.errorCount > 5880)) {
+        return 'Test B/C의 프레임당 손상 비트 수는 1~5,880 범위로 입력하세요.';
+    }
+    if (options.testType === 'TEST_D_SYNC_RECOVERY'
+        && (options.errorCount < 1 || options.errorCount > 68)) {
+        return 'Test D의 동기 패턴 손상 비트 수는 1~68 범위로 입력하세요.';
+    }
+    if (options.testType === 'TEST_D_SYNC_RECOVERY' && options.syncDamageInterval < 1) {
+        return 'Test D의 동기 손상 간격은 1 frame 이상으로 입력하세요.';
+    }
+    if (options.testType === 'TEST_E_UDP_DROP'
+        && (options.dropRatePercent < 0 || options.dropRatePercent > 100)) {
+        return 'Test E의 UDP 복제본 미전송 확률은 0~100% 범위로 입력하세요.';
+    }
+    return null;
+}
 
 $('test-start').onclick = async () => {
     if (!inputId) {
@@ -364,6 +404,11 @@ $('test-start').onclick = async () => {
                 thresholds: {},
             },
         };
+        const validationMessage = validateTestSettings(body.options, body.transport);
+        if (validationMessage) {
+            showNotice('warning', '시험 조건 확인', validationMessage);
+            return;
+        }
 
         const session = await request('/sessions', {
             method: 'POST',

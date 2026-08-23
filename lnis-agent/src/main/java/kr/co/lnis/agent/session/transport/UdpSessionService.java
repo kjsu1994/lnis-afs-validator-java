@@ -34,7 +34,9 @@ public final class UdpSessionService implements AutoCloseable {
                             double simulatedDropRatePercent, int simulatedDropSeed, long simulatedDroppedDatagrams,
                             TestType testType, int errorCount, int errorSeed, int syncDamageInterval, int injectedFrameCount) {}
     private record WireResult(Verdict verdict, IntegrityResult integrity, long expectedFrames, long receivedFrames,
-                              long receivedDatagrams, long duplicates, long corrupt, long decodedFrames,
+                              long receivedDatagrams, long duplicates, long corrupt,
+                              long invalidDatagrams, long decodeFailedFrames,
+                              long injectedBitCount, long syncRejectedFrames, long decodedFrames,
                               long sb2ValidFrames, long sb3ValidFrames, long sb4ValidFrames, long correctedSymbols,
                               long recoveredSyncFrames, String error) {}
     private record Key(Kind kind, long sequence) {}
@@ -262,7 +264,11 @@ public final class UdpSessionService implements AutoCloseable {
                             Duration.between(started, Instant.now()),
                             List.of(),
                             plannedDrops,
-                            dropRate);
+                            dropRate,
+                            wire.invalidDatagrams,
+                            wire.decodeFailedFrames,
+                            wire.injectedBitCount,
+                            wire.syncRejectedFrames);
                     RoleResult result = new RoleResult(
                             1,
                             id,
@@ -382,6 +388,7 @@ public final class UdpSessionService implements AutoCloseable {
                         frameDetails.put("expectedFrames", manifest.frameCount);
                         frameDetails.put("receivedDatagrams", datagrams);
                         frameDetails.put("duplicateDatagrams", duplicates);
+                        frameDetails.put("invalidDatagrams", corrupt);
                         frameDetails.put("corruptDatagrams", corrupt);
                         event.accept(EventType.RX_STATUS, frameDetails);
                         continue;
@@ -414,6 +421,7 @@ public final class UdpSessionService implements AutoCloseable {
                     "expectedFrames", manifest.frameCount,
                     "receivedDatagrams", datagrams,
                     "duplicateDatagrams", duplicates,
+                    "invalidDatagrams", corrupt,
                     "corruptDatagrams", corrupt));
 
             DecodeAggregate aggregate = decodeFrames(frames.values(), manifest.testType);
@@ -456,6 +464,12 @@ public final class UdpSessionService implements AutoCloseable {
                     datagrams,
                     duplicates,
                     corrupt + aggregate.corruptFrames,
+                    corrupt,
+                    aggregate.corruptFrames,
+                    (long) manifest.errorCount * manifest.injectedFrameCount,
+                    manifest.testType == TestType.TEST_D_SYNC_RECOVERY
+                            ? frames.size() - aggregate.recoveredSyncFrames
+                            : 0,
                     aggregate.decodedFrames,
                     aggregate.sb2Valid,
                     aggregate.sb3Valid,
@@ -477,7 +491,13 @@ public final class UdpSessionService implements AutoCloseable {
                     Duration.between(started, Instant.now()),
                     List.of(),
                     manifest.simulatedDroppedDatagrams,
-                    manifest.simulatedDropRatePercent);
+                    manifest.simulatedDropRatePercent,
+                    corrupt,
+                    aggregate.corruptFrames,
+                    (long) manifest.errorCount * manifest.injectedFrameCount,
+                    manifest.testType == TestType.TEST_D_SYNC_RECOVERY
+                            ? frames.size() - aggregate.recoveredSyncFrames
+                            : 0);
             RoleResult result = new RoleResult(
                     1,
                     manifest.testId,
@@ -654,7 +674,15 @@ public final class UdpSessionService implements AutoCloseable {
         metrics.add(metric("Sb2CrcValidFrames", result.sb2ValidFrames, "frame"));
         metrics.add(metric("Sb3CrcValidFrames", result.sb3ValidFrames, "frame"));
         metrics.add(metric("Sb4CrcValidFrames", result.sb4ValidFrames, "frame"));
-        metrics.add(metric("CorrectedSymbols", result.correctedSymbols, "symbol"));
+        metrics.add(new Metric(
+                MetricCategory.DATA_INTEGRITY,
+                "CorrectedSymbols",
+                "LDPC decoder internal decision changes; not the injected error count",
+                "bit",
+                (double) result.correctedSymbols,
+                MetricStatus.MEASURED,
+                null,
+                null));
         if (result.recoveredSyncFrames > 0) {
             metrics.add(metric(
                     "RecoveredSyncFrames", result.recoveredSyncFrames, "frame"));
@@ -684,7 +712,8 @@ public final class UdpSessionService implements AutoCloseable {
         IntegrityResult integrity = new IntegrityResult(
                 false, 0, 0, "", "", 0, 0, safe(error));
         NetworkCounters counters = new NetworkCounters(
-                0, 0, 0, 0, 0, 0, 0, 0, 0, Duration.ZERO, List.of(), 0, 0);
+                0, 0, 0, 0, 0, 0, 0, 0, 0, Duration.ZERO, List.of(), 0, 0,
+                0, 0, 0, 0);
         return new RoleResult(
                 1,
                 id,

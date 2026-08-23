@@ -20,6 +20,10 @@ const result = {
         receivedDatagrams: 16,
         duplicateDatagrams: 10,
         corruptDatagrams: 0,
+        invalidDatagrams: 0,
+        decodeFailedFrames: 0,
+        injectedBitCount: 0,
+        syncRejectedFrames: 0,
         simulatedDroppedDatagrams: 0,
         rawBytes: 464,
     },
@@ -37,7 +41,7 @@ assert.equal(presentation.summary.passed, true);
 assert.match(presentation.summary.title, /정상적으로 복원/);
 assert.deepEqual(
     presentation.groups.map((group) => group.title),
-    ['1. 원본 복원 결과', '2. 프레임 처리 결과', '3. 네트워크 전송 현황'],
+    ['1. 원본 복원 결과', '2. 프레임 처리 결과', '3. 전송 및 오류 처리 현황'],
 );
 
 const allMetrics = presentation.groups.flatMap((group) => group.metrics);
@@ -53,6 +57,15 @@ assert.match(
     allMetrics.find((metric) => metric.name === 'Receiver 전체 UDP 수신')?.description,
     /제어 패킷도 포함/,
 );
+assert.equal(
+    allMetrics.find((metric) => metric.name === 'UDP 패킷 해석 실패')?.value,
+    '0 datagram',
+);
+assert.equal(
+    allMetrics.find((metric) => metric.name === 'AFS 복호화 실패')?.value,
+    '0 frame',
+);
+assert.equal(allMetrics.some((metric) => metric.name === '손상 패킷'), false);
 
 const ldpc = presentation.diagnostics.find(
     (metric) => metric.name === 'LDPC 내부 판정 변경량',
@@ -77,6 +90,8 @@ const syncRecoveryResult = {
         ...result.counters,
         testType: 'TEST_D_SYNC_RECOVERY',
         injectedFrameCount: 1,
+        injectedBitCount: 1,
+        syncRejectedFrames: 1,
         rawBytes: 348,
     },
     metrics: [
@@ -90,7 +105,7 @@ const syncMetrics = syncPresentation.groups.flatMap((group) => group.metrics);
 assert.match(syncPresentation.summary.title, /동기를 다시 찾아/);
 assert.deepEqual(
     syncPresentation.groups.map((group) => group.title),
-    ['1. 동기 복구 판정', '2. GRAW 부분 복원 범위', '3. 네트워크 전송 현황'],
+    ['1. 동기 복구 판정', '2. GRAW 부분 복원 범위', '3. 전송 및 오류 처리 현황'],
 );
 assert.equal(
     syncMetrics.find((metric) => metric.name === '전체 데이터 동일 여부')?.status.text,
@@ -99,6 +114,47 @@ assert.equal(
 assert.equal(
     syncMetrics.find((metric) => metric.name === '다음 동기 패턴 복구')?.value,
     '3 / 3 frame',
+);
+assert.equal(
+    syncMetrics.find((metric) => metric.name === '시험에서 주입한 오류')?.value,
+    '1 bit',
+);
+assert.equal(
+    syncMetrics.find((metric) => metric.name === '동기 손상으로 제외')?.value,
+    '1 frame',
+);
+assert.equal(
+    syncMetrics.some((metric) => metric.name === 'Sender가 실제로 미전송'),
+    false,
+);
+
+const dropResult = {
+    ...result,
+    counters: {
+        ...result.counters,
+        testType: 'TEST_E_UDP_DROP',
+        configuredDropRatePercent: 30,
+        simulatedDroppedDatagrams: 3,
+    },
+};
+const dropMetrics = buildResultPresentation(dropResult)
+    .groups
+    .flatMap((group) => group.metrics);
+assert.equal(
+    dropMetrics.find((metric) => metric.name === '설정한 미전송 확률')?.value,
+    '30%',
+);
+assert.equal(
+    dropMetrics.find((metric) => metric.name === 'Sender가 실제로 미전송')?.value,
+    '3 datagram',
+);
+assert.equal(
+    dropMetrics.some((metric) => metric.name === '동기 손상으로 제외'),
+    false,
+);
+assert.equal(
+    dropMetrics.some((metric) => metric.name === '시험에서 주입한 오류'),
+    false,
 );
 
 console.log('result-presentation smoke test passed');

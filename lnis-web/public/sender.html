@@ -66,7 +66,7 @@
             </div>
           </label>
           <label>
-            Baud
+            통신 속도 (Baud)
             <select id="baud">
               <option>9600</option>
               <option>38400</option>
@@ -108,11 +108,11 @@
         <label>
           시험 종류
           <select id="test-type">
-            <option value="TEST_A_NORMAL">Test A · 정상</option>
-            <option value="TEST_B_RANDOM_ERRORS">Test B · Random 오류</option>
-            <option value="TEST_C_BURST_ERRORS">Test C · Burst 오류</option>
-            <option value="TEST_D_SYNC_RECOVERY">Test D · Sync 복구</option>
-            <option value="TEST_E_UDP_DROP">Test E · UDP Drop</option>
+            <option value="TEST_A_NORMAL">Test A · 정상 전송</option>
+            <option value="TEST_B_RANDOM_ERRORS">Test B · 임의 비트 오류</option>
+            <option value="TEST_C_BURST_ERRORS">Test C · 연속 비트 오류</option>
+            <option value="TEST_D_SYNC_RECOVERY">Test D · 동기 복구</option>
+            <option value="TEST_E_UDP_DROP">Test E · UDP 복제본 손실</option>
           </select>
         </label>
         <label>
@@ -128,7 +128,7 @@
           <input id="result-port" type="number" value="45822">
         </label>
         <label>
-          중복 송신
+          UDP 반복 송신 횟수
           <input id="repeat-count" type="number" value="3" min="1" max="20">
         </label>
         <label>
@@ -136,23 +136,23 @@
           <input id="result-timeout" type="number" value="30">
         </label>
         <label class="conditional error">
-          오류 심볼 수
-          <input id="error-count" type="number" value="1">
+          <span id="error-count-label">프레임당 손상 비트 수</span>
+          <input id="error-count" type="number" value="1" min="1" max="5880">
         </label>
         <label class="conditional error">
-          오류 Seed
+          오류 위치 재현 Seed
           <input id="error-seed" type="number" value="1">
         </label>
         <label class="conditional sync">
-          SP 손상 간격
-          <input id="sync-interval" type="number" value="10">
+          동기 손상 간격 (frame)
+          <input id="sync-interval" type="number" value="10" min="1">
         </label>
         <label class="conditional drop">
-          Drop Rate %
-          <input id="drop-rate" type="number" value="10" step="0.1">
+          UDP 복제본 미전송 확률 (%)
+          <input id="drop-rate" type="number" value="10" min="0" max="100" step="0.1">
         </label>
         <label class="conditional drop">
-          Drop Seed
+          미전송 위치 재현 Seed
           <input id="drop-seed" type="number" value="1">
         </label>
       </div>
@@ -175,7 +175,7 @@
     <div id="downloads" class="downloads hidden"></div>
   </section>
 </main>
-<script defer src="/lnis/assets/help.js?v=20260823-detail1"></script>
-<script type="module" src="/lnis/assets/sender.js?v=20260823-result4"></script>
+<script defer src="/lnis/assets/help.js?v=20260823-final1"></script>
+<script type="module" src="/lnis/assets/sender.js?v=20260823-final1"></script>
 </body>
 </html>

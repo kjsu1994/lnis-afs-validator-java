@@ -3,7 +3,7 @@ const TEST_NAMES = {
     TEST_B_RANDOM_ERRORS: 'Test B 임의 비트 오류',
     TEST_C_BURST_ERRORS: 'Test C 연속 비트 오류',
     TEST_D_SYNC_RECOVERY: 'Test D 동기 복구',
-    TEST_E_UDP_DROP: 'Test E UDP 손실',
+    TEST_E_UDP_DROP: 'Test E UDP 복제본 손실',
 };
 
 const SESSION_STATES = {
@@ -22,8 +22,15 @@ const METRIC_NAMES = {
     Sb2CrcValidFrames: 'SB2 CRC 정상 프레임',
     Sb3CrcValidFrames: 'SB3 CRC 정상 프레임',
     Sb4CrcValidFrames: 'SB4 CRC 정상 프레임',
-    CorrectedSymbols: '오류 정정 심볼',
+    CorrectedSymbols: 'LDPC 내부 판정 변경량',
     RecoveredSyncFrames: '동기 복구 프레임',
+};
+
+const METRIC_STATUSES = {
+    PASS: '정상',
+    FAIL: '실패',
+    MEASURED: '측정',
+    NOT_APPLICABLE: '해당 없음',
 };
 
 const testTypeBySession = new Map();
@@ -79,16 +86,16 @@ export function describeTestCondition(details) {
         case 'TEST_A_NORMAL':
             return '오류나 패킷 손실을 주입하지 않고 원본과 수신 결과를 비교';
         case 'TEST_B_RANDOM_ERRORS':
-            return `각 대상 프레임에 임의 비트 ${number(details.errorCount)}개 손상`
+            return `각 AFS 프레임 데이터 영역에 임의 비트 ${number(details.errorCount)}개 손상`
                 + ` (Seed ${number(details.errorSeed)})`;
         case 'TEST_C_BURST_ERRORS':
-            return `각 대상 프레임에 연속 비트 ${number(details.errorCount)}개 손상`
+            return `각 AFS 프레임 데이터 영역에 연속 비트 ${number(details.errorCount)}개 손상`
                 + ` (Seed ${number(details.errorSeed)})`;
         case 'TEST_D_SYNC_RECOVERY':
-            return `매 ${number(details.syncDamageInterval)}프레임 간격으로 동기 영역 비트 `
+            return `0번 프레임부터 ${number(details.syncDamageInterval)}프레임마다 동기 패턴 비트 `
                 + `${number(details.errorCount)}개 손상 (총 ${number(details.injectedFrameCount)}프레임)`;
         case 'TEST_E_UDP_DROP':
-            return `UDP 복제본 ${number(details.dropRatePercent)}% 손실 시뮬레이션`
+            return `각 UDP 복제본 미전송 확률 ${number(details.dropRatePercent)}%`
                 + ` (Seed ${number(details.dropSeed)}, 예정 ${number(details.plannedDroppedDatagrams)}개)`;
         default:
             return '시험 조건 정보 없음';
@@ -138,7 +145,7 @@ function formatTransmitting(details) {
     ];
 
     if (dropped.length > 0) {
-        parts.push(`의도적 Drop 복제본 #${compactList(dropped, (copy) => number(copy) + 1)}`);
+        parts.push(`Sender 미전송 복제본 #${compactList(dropped, (copy) => number(copy) + 1)}`);
     }
     if (Array.isArray(details.injectedBitPositions)) {
         parts.push(
@@ -170,16 +177,18 @@ function formatRxStatus(event, details) {
         ].join('\n    ');
     }
     if (details.receivedFrames !== undefined && details.frameIndex !== undefined) {
+        const invalidDatagrams = details.invalidDatagrams ?? details.corruptDatagrams;
         return `RX ${percent(details)} · 프레임 #${number(details.frameIndex)} 수신`
             + ` · 누적 ${number(details.receivedFrames)}/${number(details.expectedFrames)} frames`
             + ` · datagram ${number(details.receivedDatagrams)}개`
-            + ` (중복 ${number(details.duplicateDatagrams)}, 손상 ${number(details.corruptDatagrams)})`;
+            + ` (중복 ${number(details.duplicateDatagrams)}, UDP 해석 실패 ${number(invalidDatagrams)})`;
     }
     if (details.stage === 'Evaluating') {
+        const invalidDatagrams = details.invalidDatagrams ?? details.corruptDatagrams;
         return `RX ${percent(details)} · 프레임 재조립 및 복호화 중`
             + ` · ${number(details.receivedFrames)}/${number(details.expectedFrames)} frames`
             + ` · datagram ${number(details.receivedDatagrams)}개`
-            + ` (중복 ${number(details.duplicateDatagrams)}, 손상 ${number(details.corruptDatagrams)})`;
+            + ` (중복 ${number(details.duplicateDatagrams)}, UDP 해석 실패 ${number(invalidDatagrams)})`;
     }
     if (details.stage === 'Verifying') {
         if (testType === 'TEST_D_SYNC_RECOVERY' && !details.integritySuccess) {
@@ -205,7 +214,8 @@ function formatMetrics(metrics) {
         const value = metric.value === null || metric.value === undefined
             ? metric.status
             : `${metric.value}${metric.unit ? ` ${metric.unit}` : ''}`;
-        return `${name} ${value}${metric.status ? ` (${metric.status})` : ''}`;
+        const statusText = METRIC_STATUSES[metric.status] || metric.status;
+        return `${name} ${value}${statusText ? ` (${statusText})` : ''}`;
     }).join(', ');
 }
 
@@ -214,13 +224,31 @@ function formatResult(event, result) {
     const role = result.role || event.role || 'UNKNOWN';
     const counters = isObject(result.counters) ? result.counters : {};
     const integrity = isObject(result.integrity) ? result.integrity : {};
+    const splitCountersAvailable = counters.invalidDatagrams !== undefined
+        || counters.decodeFailedFrames !== undefined;
+    const invalidDatagrams = splitCountersAvailable
+        ? number(counters.invalidDatagrams)
+        : number(counters.corruptDatagrams);
+    const decodeFailedFrames = splitCountersAvailable
+        ? number(counters.decodeFailedFrames)
+        : undefined;
     const lines = [
         `RESULT · ${role} 최종 판정 ${result.verdict || '미확인'}`,
         `프레임 ${number(counters.receivedLogicalFrames)}/${number(counters.expectedLogicalFrames)}`
             + ` · datagram 송신 ${number(counters.sentDatagrams)}, 수신 ${number(counters.receivedDatagrams)}`
-            + ` · 중복 ${number(counters.duplicateDatagrams)}, 손상 ${number(counters.corruptDatagrams)}`
-            + ` · 의도적 Drop ${number(counters.simulatedDroppedDatagrams)}`,
+            + ` · 중복 ${number(counters.duplicateDatagrams)}, UDP 해석 실패 ${invalidDatagrams}`
+            + (decodeFailedFrames === undefined ? '' : ` · AFS 복호화 실패 ${decodeFailedFrames}`)
+            + ` · Sender 미전송 ${number(counters.simulatedDroppedDatagrams)} datagram`,
     ];
+
+    if (counters.injectedBitCount > 0
+        || ['TEST_B_RANDOM_ERRORS', 'TEST_C_BURST_ERRORS', 'TEST_D_SYNC_RECOVERY'].includes(testType)) {
+        const injectionParts = [`시험 주입 오류 ${number(counters.injectedBitCount)} bit`];
+        if (testType === 'TEST_D_SYNC_RECOVERY' || counters.syncRejectedFrames > 0) {
+            injectionParts.push(`동기 손상 제외 ${number(counters.syncRejectedFrames)} frame`);
+        }
+        lines.push(injectionParts.join(' · '));
+    }
 
     if (Object.keys(integrity).length > 0) {
         const integrityLabel = testType === 'TEST_D_SYNC_RECOVERY' && !integrity.success

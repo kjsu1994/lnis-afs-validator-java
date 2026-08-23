@@ -117,7 +117,14 @@ public final class LnisModels {
             MetricThreshold threshold,
             String detail) {}
 
-    /** 논리 frame, 실제 datagram, 중복/손상/Drop 및 전송 시간 카운터다. */
+    /**
+     * 논리 frame, 실제 datagram, 중복/손상/Drop 및 전송 시간 카운터다.
+     *
+     * <p>{@code corruptDatagrams}는 구버전 JSON 호환을 위해 유지하는 합계 필드다. 새 화면과
+     * 산출물에서는 UDP 계층의 {@code invalidDatagrams}, AFS 계층의
+     * {@code decodeFailedFrames}, 시험에서 의도한 {@code injectedBitCount}와
+     * {@code syncRejectedFrames}를 각각 사용해야 단위가 섞이지 않는다.
+     */
     public record NetworkCounters(
             long expectedLogicalFrames,
             long receivedLogicalFrames,
@@ -131,7 +138,11 @@ public final class LnisModels {
             Duration transferDuration,
             List<Double> oneWayLatencyMilliseconds,
             long simulatedDroppedDatagrams,
-            double configuredDropRatePercent) {
+            double configuredDropRatePercent,
+            long invalidDatagrams,
+            long decodeFailedFrames,
+            long injectedBitCount,
+            long syncRejectedFrames) {
         public NetworkCounters {
             transferDuration = transferDuration == null ? Duration.ZERO : transferDuration;
             oneWayLatencyMilliseconds = oneWayLatencyMilliseconds == null ? List.of() : List.copyOf(oneWayLatencyMilliseconds);

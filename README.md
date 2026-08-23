@@ -505,12 +505,12 @@ COM 연결 실패 시 다른 GNSS 도구가 같은 포트를 점유하고 있지
 | 시험 ID | 화면 의미 | 주요 옵션 |
 |---|---|---|
 | `TEST_A_NORMAL` | 오류를 주입하지 않는 정상 송수신 | 기본값 사용 |
-| `TEST_B_RANDOM_ERRORS` | Seed 기반 임의 symbol 오류 | `errorCount`, `errorSeed` |
-| `TEST_C_BURST_ERRORS` | 연속 symbol 오류 | `errorCount`, `errorSeed` |
+| `TEST_B_RANDOM_ERRORS` | Seed 기반 임의 비트 오류 | `errorCount`, `errorSeed` |
+| `TEST_C_BURST_ERRORS` | 연속 비트 오류 | `errorCount`, `errorSeed` |
 | `TEST_D_SYNC_RECOVERY` | 동기 패턴 손상 후 재동기 성능 확인 | `errorCount`, `errorSeed`, `syncDamageInterval` |
-| `TEST_E_UDP_DROP` | 결정론적 UDP datagram Drop | `dropRatePercent`, `dropSeed` |
+| `TEST_E_UDP_DROP` | 결정론적으로 UDP 복제본을 미전송하는 손실 모의시험 | `dropRatePercent`, `dropSeed` |
 
-동일 입력과 동일 Seed를 사용하면 오류/Drop 위치를 재현할 수 있습니다.
+동일 입력과 동일 Seed를 사용하면 오류 위치와 UDP 복제본 미전송 위치를 재현할 수 있습니다.
 
 ### 8.4 전송 기본값
 
@@ -588,22 +588,38 @@ Agent 진행 이벤트의 `percent`와 중앙 서버 세션 이벤트의 `progre
 - 송신 준비: 원본 byte 수, GRAW record 수, AFS frame 수, 목적지 IP·포트와 반복 횟수
 - Test B/C: 손상된 프레임 번호, Random/Burst 구분과 실제 AFS frame bit 위치
 - Test D: 동기 손상 프레임 번호, 동기 영역의 실제 bit 위치와 복구 프레임 수
-- Test E: 프레임별 실제 송신 복제본 수와 의도적으로 Drop한 복제본 번호
+- Test E: 프레임별 실제 송신 복제본 수와 Sender가 의도적으로 보내지 않은 복제본 번호
 - 수신: 현재/예상 frame 수, 수신 datagram 수, 중복 및 손상 datagram 수
 - 검증: 원본/복원 byte와 record 수, SHA-256 일치 여부
 - 최종 결과: TX/RX 판정, 네트워크 카운터와 복호화·CRC·오류 정정 측정값
 
-결과 카드에도 예상/수신 프레임, 송수신·중복·손상·Drop 데이터그램, 처리 byte,
+결과 카드에도 예상/수신 프레임, 송수신·중복, UDP 해석 실패, AFS 복호화 실패,
+주입 비트와 Sender 미전송 데이터그램, 처리 byte,
 원본/복원 크기와 record 수 및 SHA-256 비교 결과가 각각 표시됩니다. 화면 로그가 너무
 커지지 않도록 한 프레임에서 오류 위치가 40개를 넘으면 앞의 40개와 나머지 개수를 표시하지만,
 Agent 이벤트에는 해당 프레임의 전체 위치 목록이 구조화된 값으로 전달됩니다.
+
+오류 관련 수치는 전송 계층과 AFS 계층을 섞지 않고 다음과 같이 분리합니다.
+
+| 화면 항목 | 단위 | 의미 |
+|---|---|---|
+| 시험에서 주입한 오류 | bit | Test B/C/D 조건에 따라 Sender가 AFS 프레임 내부에서 반전한 비트 총합 |
+| 동기 손상으로 제외 | frame | Test D에서 손상된 동기를 정상 동기로 오인하지 않고 제외한 AFS 프레임 수 |
+| UDP 패킷 해석 실패 | datagram | LNIS UDP 패킷 구조 또는 패킷 CRC를 해석하지 못해 폐기한 데이터그램 수 |
+| AFS 복호화 실패 | frame | 동기를 찾았지만 디코더 예외 또는 SB3/SB4 CRC 실패로 재조립하지 못한 프레임 수 |
+
+예를 들어 Test D에서 `1 bit`를 주입하고 해당 동기 프레임을 정상적으로 제외했다면
+`시험에서 주입한 오류 1 bit`, `동기 손상으로 제외 1 frame`, `UDP 패킷 해석 실패
+0 datagram`, `AFS 복호화 실패 0 frame`이 정상입니다. 이전의 `손상 패킷` 표현은 서로 다른
+단위가 섞여 오해를 만들기 때문에 화면에서 사용하지 않습니다. JSON의 `corruptDatagrams`는
+기존 결과 소비자와의 호환을 위해서만 유지하며 새 화면은 분리된 카운터를 사용합니다.
 
 결과 화면은 단순 수치 나열 대신 다음 순서로 표시합니다.
 
 1. 시험 결과 해석: PASS/FAIL 이유와 프레임·크기·레코드·SHA-256 핵심 확인표
 2. 원본 복원 결과: 복원값/원본값을 한 카드에서 직접 비교
 3. 프레임 처리 결과: 수신값/예상값과 복호화값/수신값을 직접 비교
-4. 네트워크 전송 현황: 데이터 FRAME 송신과 제어 패킷을 포함한 전체 수신을 구분
+4. 전송 및 오류 처리 현황: 주입 비트, 동기 제외 frame, UDP 해석 실패 datagram과 AFS 복호화 실패 frame을 구분
 5. 전문 진단 지표: SB2/SB3/SB4 CRC 및 LDPC 내부 값은 접힌 영역에서 필요할 때 확인
 
 `CorrectedSymbols` 원시 값은 화면에서 `LDPC 내부 판정 변경량`으로 표시합니다. 이 값은
@@ -649,12 +665,12 @@ Set-Location 'C:\Users\honeybadger\Desktop\Lins Java'
 - 공통: 세션 `COMPLETED`, TX/RX/최종 `PASS`, 논리 프레임 `4/4`, 손상 datagram `0`
 - Test A/B/C: 복호화 `4/4`, record `4/4`, byte `464/464`, SHA-256 일치
 - Test D: 복호화·재동기 `3/3`, record `3/4`, byte `348/464`, SHA-256 불일치가 예상 결과인지 확인
-- Test E: 실제 의도적 Drop이 1건 이상 발생하고도 `4/4`, `464/464`, SHA-256 일치인지 확인
+- Test E: Sender가 실제로 미전송한 복제본이 1건 이상이면서도 `4/4`, `464/464`, SHA-256 일치인지 확인
 
 2026-08-23 로컬 loopback 실측에서는 A/B/C/E가 모두 `4/4 record`, `464/464 byte`,
 SHA-256 일치로 PASS했습니다. Test D는 설계대로 `3/4 record`, `348/464 byte`, SHA-256
-불일치이면서 재동기·복호화 `3/3`으로 PASS했습니다. Test E는 반복 송신 5회, Drop 30%,
-Seed 1 조건에서 복제 datagram 3건이 실제로 제외되었지만 원본을 완전히 복원했습니다.
+불일치이면서 재동기·복호화 `3/3`으로 PASS했습니다. Test E는 반복 송신 5회, 복제본
+미전송 확률 30%, Seed 1 조건에서 3개 복제본을 실제로 보내지 않았지만 원본을 완전히 복원했습니다.
 
 ## 9. 결과 파일
 

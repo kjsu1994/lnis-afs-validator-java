@@ -108,6 +108,9 @@ function metricValue(result, name) {
 
 function formatValue(value, unit = '') {
     const formatted = typeof value === 'number' ? displayNumber(value) : value;
+    if (unit === '%') {
+        return `${formatted}%`;
+    }
     return `${formatted}${unit ? ` ${unit}` : ''}`;
 }
 
@@ -170,7 +173,7 @@ function resultSummary(result, context = {}) {
                 ? `Test D는 동기 패턴을 손상한 ${displayNumber(injected)}개 프레임을 의도적으로 버리고, 나머지 프레임을 다시 찾는 시험입니다. 따라서 GRAW 전체가 같지 않아도 정상입니다.`
                 : result?.error || integrity.detail || '아래 동기 복구 항목에서 목표 수치와 실제 수치를 비교하세요.',
             checks: [
-                { label: '전체 UDP 논리 프레임 수신', ok: frameComplete },
+                { label: 'AFS 논리 프레임 모두 도착', ok: frameComplete },
                 { label: `손상 ${displayNumber(injected)}개 의도적 제외`, ok: injected > 0 },
                 { label: '다음 프레임 재동기화', ok: recoveredExpectedFrames },
             ],
@@ -267,9 +270,9 @@ function syncRecoveryCards(result, context = {}) {
             'frame',
         ),
         hasValue(received) && hasValue(expected) ? card(
-            '전체 UDP 논리 프레임 수신',
+            'AFS 논리 프레임 도착',
             `${displayNumber(received)} / ${displayNumber(expected)}`,
-            '동기가 손상되었어도 UDP 패킷 자체가 모두 Receiver에 도착했는지 확인합니다.',
+            '동기 패턴의 정상 여부와 별개로, 중복을 제거한 AFS FRAME 패킷이 모두 Receiver에 도착했는지 확인합니다.',
             status(received === expected, '모두 도착'),
             'frame',
         ) : null,
@@ -316,9 +319,37 @@ function frameCards(result) {
     ].filter(Boolean);
 }
 
-function networkCards(result) {
+function networkCards(result, context = {}) {
     const counters = result?.counters || {};
+    const testType = context.testType || counters.testType;
+    const splitCountersAvailable = hasValue(counters.invalidDatagrams)
+        || hasValue(counters.decodeFailedFrames);
+    const invalidDatagrams = splitCountersAvailable
+        ? counters.invalidDatagrams
+        : counters.corruptDatagrams;
+    const decodeFailedFrames = splitCountersAvailable
+        ? counters.decodeFailedFrames
+        : undefined;
     return [
+        testType !== 'TEST_E_UDP_DROP' ? card(
+            '시험에서 주입한 오류',
+            counters.injectedBitCount,
+            'Sender가 시험 조건에 따라 AFS 프레임 내부에 의도적으로 반전한 비트의 총합입니다. UDP 패킷 전송 실패 수가 아닙니다.',
+            counters.injectedBitCount > 0
+                ? { tone: 'warning', text: '시험 조건' }
+                : status(true, '주입 없음'),
+            'bit',
+        ) : null,
+        hasValue(counters.syncRejectedFrames)
+            && (testType === 'TEST_D_SYNC_RECOVERY' || counters.syncRejectedFrames > 0) ? card(
+            '동기 손상으로 제외',
+            counters.syncRejectedFrames,
+            'Test D에서 손상된 동기 패턴 때문에 현재 AFS 프레임을 정상 프레임으로 인식하지 않고 제외한 수입니다.',
+            counters.syncRejectedFrames > 0
+                ? { tone: 'warning', text: '의도적 제외' }
+                : status(true, '제외 없음'),
+            'frame',
+        ) : null,
         card(
             '데이터 프레임 UDP 송신',
             counters.sentDatagrams,
@@ -341,27 +372,56 @@ function networkCards(result) {
             'datagram',
         ),
         card(
-            '손상 패킷',
-            counters.corruptDatagrams,
-            '패킷 구조, CRC 또는 AFS 복호화 검사에 실패한 수입니다. 0이면 손상 패킷이 없다는 뜻입니다.',
-            status(counters.corruptDatagrams === 0, '없음'),
+            'UDP 패킷 해석 실패',
+            invalidDatagrams,
+            '수신한 UDP 데이터그램 중 LNIS 패킷 구조나 패킷 CRC를 해석하지 못해 버린 수입니다. AFS 내부 오류 비트와는 별개입니다.',
+            status(invalidDatagrams === 0, '없음'),
             'datagram',
         ),
         card(
-            '시험에서 의도한 Drop',
+            'AFS 복호화 실패',
+            decodeFailedFrames,
+            'Receiver가 복호화를 시도한 AFS 프레임 중 디코더 예외 또는 SB3/SB4 CRC 실패로 GRAW 재조립에 사용하지 못한 수입니다.',
+            status(decodeFailedFrames === 0, '없음'),
+            'frame',
+        ),
+        testType === 'TEST_E_UDP_DROP' || counters.simulatedDroppedDatagrams > 0 ? card(
+            '설정한 미전송 확률',
+            counters.configuredDropRatePercent,
+            '각 AFS FRAME UDP 복제본을 Sender가 보내지 않을 확률입니다. 복제본 수가 적으면 실제 비율은 설정값과 다를 수 있습니다.',
+            { tone: 'warning', text: '시험 조건' },
+            '%',
+        ) : null,
+        testType === 'TEST_E_UDP_DROP' || counters.simulatedDroppedDatagrams > 0 ? card(
+            'Sender가 실제로 미전송',
             counters.simulatedDroppedDatagrams,
-            'Test E에서 시험 조건에 따라 Sender가 일부러 보내지 않은 복제본 수입니다. 다른 시험에서는 0이 정상입니다.',
-            status(undefined),
+            'Test E의 확률과 Seed로 결정되어 Sender가 실제로 보내지 않은 AFS FRAME 복제본 수입니다. UDP 전송 후 네트워크에서 유실된 수가 아닙니다.',
+            counters.simulatedDroppedDatagrams > 0
+                ? { tone: 'warning', text: '시험 조건' }
+                : status(true, '미전송 없음'),
             'datagram',
-        ),
+        ) : null,
         card(
-            '복원된 GRAW 데이터',
+            result?.role === 'SENDER' ? 'Sender 원본 GRAW' : 'Receiver 복원 GRAW',
             counters.rawBytes,
-            'Receiver가 프레임에서 재조립한 최종 GRAW 데이터 크기입니다.',
+            result?.role === 'SENDER'
+                ? 'Sender가 시험 입력으로 사용한 원본 GRAW 데이터 크기입니다.'
+                : 'Receiver가 정상 프레임에서 재조립한 GRAW 데이터 크기입니다.',
             status(undefined),
             'byte',
         ),
     ].filter(Boolean);
+}
+
+/** 시험 종류에 맞는 전송/오류 그룹 설명만 노출해 관련 없는 계층을 먼저 떠올리지 않게 한다. */
+function transmissionGroupDescription(testType) {
+    if (testType === 'TEST_E_UDP_DROP') {
+        return 'UDP 반복 송신과 Sender 미전송 복제본, UDP 해석 실패와 AFS 복호화 실패를 구분합니다.';
+    }
+    if (['TEST_B_RANDOM_ERRORS', 'TEST_C_BURST_ERRORS', 'TEST_D_SYNC_RECOVERY'].includes(testType)) {
+        return 'AFS 주입 비트와 프레임 처리, UDP 해석 실패와 AFS 복호화 실패를 단위별로 구분합니다.';
+    }
+    return 'UDP 데이터그램 송수신과 AFS 프레임 복호화 결과를 단위별로 구분합니다.';
 }
 
 function diagnosticCards(result) {
@@ -474,9 +534,9 @@ export function buildResultPresentation(result, context = {}) {
                 metrics: integrityCards(result, { expectedPartial: true }),
             },
             {
-                title: '3. 네트워크 전송 현황',
-                description: '반복 송신, 제어 패킷, 중복과 손실을 구분해 보여줍니다.',
-                metrics: networkCards(result),
+                title: '3. 전송 및 오류 처리 현황',
+                description: transmissionGroupDescription(testType),
+                metrics: networkCards(result, context),
             },
         ] : [
             {
@@ -490,9 +550,9 @@ export function buildResultPresentation(result, context = {}) {
                 metrics: frameCards(result),
             },
             {
-                title: '3. 네트워크 전송 현황',
-                description: '반복 송신, 제어 패킷, 중복과 손실을 구분해 보여줍니다.',
-                metrics: networkCards(result),
+                title: '3. 전송 및 오류 처리 현황',
+                description: transmissionGroupDescription(testType),
+                metrics: networkCards(result, context),
             },
         ],
         diagnostics: diagnosticCards(result),
