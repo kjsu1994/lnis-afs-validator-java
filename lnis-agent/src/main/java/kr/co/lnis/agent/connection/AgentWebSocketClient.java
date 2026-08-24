@@ -4,12 +4,20 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import kr.co.lnis.agent.config.AgentConfig;
 import kr.co.lnis.agent.runtime.AgentRuntime;
 import kr.co.lnis.protocol.model.AgentProtocol.*;
+import java.net.Inet4Address;
+import java.net.NetworkInterface;
+import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.WebSocket;
+import java.net.http.WebSocketHandshakeException;
 import java.time.Duration;
-import java.util.Map;
+import java.util.*;
 import java.util.concurrent.*;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.atomic.AtomicReference;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * 중앙 서버 연결, 재연결, HELLO 및 heartbeat 전송을 관리한다.
@@ -18,20 +26,26 @@ import java.util.concurrent.atomic.AtomicLong;
  * 종료 시 5초 뒤 재접속하고, 연결 중에는 5초마다 현재 AgentState와 증가 sequence를 전송한다.
  */
 public final class AgentWebSocketClient implements WebSocket.Listener, AutoCloseable {
+    private static final Logger log = LoggerFactory.getLogger(AgentWebSocketClient.class);
     private final AgentConfig config;
     private final AgentRuntime runtime;
+    private final ServerDiscovery discovery = new ServerDiscovery();
     private final ObjectMapper json = new ObjectMapper().findAndRegisterModules();
     private final ScheduledExecutorService scheduler = Executors.newSingleThreadScheduledExecutor(
             runnable -> new Thread(runnable, "lnis-agent-heartbeat"));
     private final AtomicLong heartbeat = new AtomicLong();
+    private final AtomicReference<URI> serverUri;
+    private final AtomicBoolean recovering = new AtomicBoolean();
     private final StringBuilder text = new StringBuilder();
     /** Java WebSocket은 동시에 두 sendText를 허용하지 않으므로 모든 송신을 직렬화한다. */
     private final Object sendLock = new Object();
     private volatile WebSocket socket;
+    private volatile boolean closed;
 
     public AgentWebSocketClient(AgentConfig config, AgentRuntime runtime) {
         this.config = config;
         this.runtime = runtime;
+        this.serverUri = new AtomicReference<>(config.serverUri());
         runtime.outbound(this::send);
     }
 
@@ -43,17 +57,65 @@ public final class AgentWebSocketClient implements WebSocket.Listener, AutoClose
 
     /** 비동기 handshake 실패를 scheduler 기반 재시도로 전환한다. */
     private void connect() {
+        if (closed) {
+            return;
+        }
+        URI target = serverUri.get();
+        log.info("Connecting LNIS Agent {} to {}", config.agentId(), target);
         HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(10)).build().newWebSocketBuilder()
                 .header("Authorization", "Bearer " + config.token())
                 .header("X-LNIS-Agent-Id", config.agentId())
-                .buildAsync(config.serverUri(), this)
+                .buildAsync(target, this)
                 .whenComplete((webSocket, error) -> {
                     if (error != null) {
-                        scheduler.schedule(this::connect, 5, TimeUnit.SECONDS);
+                        recoverConnection(target, error);
                     } else {
                         socket = webSocket;
                     }
                 });
+    }
+
+    private void recoverConnection(URI failedTarget, Throwable error) {
+        socket = null;
+        if (closed || !recovering.compareAndSet(false, true)) {
+            return;
+        }
+        scheduler.execute(() -> {
+            long retryDelaySeconds = 5;
+            try {
+                Throwable cause = error instanceof CompletionException
+                        && error.getCause() != null
+                        ? error.getCause()
+                        : error;
+                if (cause instanceof WebSocketHandshakeException handshake
+                        && (handshake.getResponse().statusCode() == 401
+                        || handshake.getResponse().statusCode() == 403)) {
+                    log.error("LNIS Agent authentication failed for {}", failedTarget);
+                    return;
+                }
+                log.warn("Unable to connect to {}; discovering LNIS server on LAN", failedTarget);
+                Optional<URI> discovered = discovery.discover(discoveryPort(failedTarget));
+                if (discovered.isPresent()) {
+                    serverUri.set(discovered.get());
+                    if (!discovered.get().equals(failedTarget)) {
+                        retryDelaySeconds = 0;
+                    }
+                    log.info("Discovered LNIS server at {}", discovered.get());
+                }
+            } finally {
+                recovering.set(false);
+                if (!closed) {
+                    scheduler.schedule(this::connect, retryDelaySeconds, TimeUnit.SECONDS);
+                }
+            }
+        });
+    }
+
+    private static int discoveryPort(URI configured) {
+        if (configured.getPort() > 0) {
+            return configured.getPort();
+        }
+        return "wss".equalsIgnoreCase(configured.getScheme()) ? 443 : 80;
     }
 
     @Override
@@ -64,7 +126,8 @@ public final class AgentWebSocketClient implements WebSocket.Listener, AutoClose
                 1,
                 System.getProperty("os.name"),
                 System.getProperty("os.arch"),
-                Map.of("com", config.role().name().equals("SENDER"), "udp", true));
+                Map.of("com", config.role().name().equals("SENDER"), "udp", true),
+                localIpv4Addresses());
         send(Envelope.of(
                 MessageType.HELLO,
                 config.agentId(),
@@ -92,15 +155,41 @@ public final class AgentWebSocketClient implements WebSocket.Listener, AutoClose
 
     @Override
     public void onError(WebSocket webSocket, Throwable error) {
-        socket = null;
-        scheduler.schedule(this::connect, 5, TimeUnit.SECONDS);
+        recoverConnection(serverUri.get(), error);
     }
 
     @Override
     public CompletionStage<?> onClose(WebSocket webSocket, int statusCode, String reason) {
-        socket = null;
-        scheduler.schedule(this::connect, 5, TimeUnit.SECONDS);
+        recoverConnection(serverUri.get(), new IllegalStateException(reason));
         return CompletableFuture.completedFuture(null);
+    }
+
+    static List<String> localIpv4Addresses() {
+        try {
+            return NetworkInterface.networkInterfaces()
+                    .filter(network -> {
+                        try {
+                            return network.isUp()
+                                    && !network.isLoopback()
+                                    && !network.isVirtual();
+                        } catch (Exception ignored) {
+                            return false;
+                        }
+                    })
+                    .flatMap(NetworkInterface::inetAddresses)
+                    .filter(Inet4Address.class::isInstance)
+                    .map(Inet4Address.class::cast)
+                    .filter(address -> !address.isLoopbackAddress()
+                            && !address.isLinkLocalAddress())
+                    .sorted(Comparator
+                            .comparing((Inet4Address address) -> !address.isSiteLocalAddress())
+                            .thenComparing(Inet4Address::getHostAddress))
+                    .map(Inet4Address::getHostAddress)
+                    .distinct()
+                    .toList();
+        } catch (Exception ignored) {
+            return List.of();
+        }
     }
 
     private void heartbeat() {
@@ -135,6 +224,7 @@ public final class AgentWebSocketClient implements WebSocket.Listener, AutoClose
 
     @Override
     public void close() {
+        closed = true;
         scheduler.shutdownNow();
         if (socket != null) {
             socket.sendClose(WebSocket.NORMAL_CLOSURE, "shutdown");

@@ -1,6 +1,7 @@
 package kr.co.lnis.server.agent.entity;
 
 import java.time.Instant;
+import java.util.List;
 import kr.co.lnis.protocol.model.LnisModels.AgentRole;
 import kr.co.lnis.protocol.model.LnisModels.AgentState;
 
@@ -26,5 +27,6 @@ public record AgentEntity(
         String os,
         /** Agent JVM의 CPU 아키텍처다. 예: {@code amd64}. */
         String architecture,
+        List<String> ipv4Addresses,
         /** 연결 또는 Agent 처리 오류 설명이며, 정상 상태에서는 {@code null}이다. */
         String error) {}

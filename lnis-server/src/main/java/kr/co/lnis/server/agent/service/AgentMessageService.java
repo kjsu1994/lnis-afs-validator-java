@@ -13,6 +13,7 @@ import kr.co.lnis.server.session.service.SessionService;
 import org.springframework.stereotype.Service;
 import java.time.Instant;
 import java.util.Base64;
+import java.util.List;
 
 @Service
 /**
@@ -125,6 +126,7 @@ public class AgentMessageService {
                 hello.codecAbiVersion(),
                 hello.os(),
                 hello.architecture(),
+                normalizeAddresses(hello.ipv4Addresses()),
                 null));
         events.publish(
                 EventType.AGENT_STATUS,
@@ -145,6 +147,7 @@ public class AgentMessageService {
                 0,
                 "unknown",
                 "unknown",
+                List.of(),
                 null));
         agents.save(new AgentEntity(
                 old.agentId(),
@@ -155,6 +158,16 @@ public class AgentMessageService {
                 old.codecAbiVersion(),
                 old.os(),
                 old.architecture(),
+                old.ipv4Addresses(),
                 old.error()));
+    }
+
+    private static List<String> normalizeAddresses(List<String> addresses) {
+        return addresses == null
+                ? List.of()
+                : addresses.stream()
+                        .filter(address -> address != null && !address.isBlank())
+                        .distinct()
+                        .toList();
     }
 }

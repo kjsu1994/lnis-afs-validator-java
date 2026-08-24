@@ -37,6 +37,7 @@ public class AgentHealthService {
                     agent.codecAbiVersion(),
                     agent.os(),
                     agent.architecture(),
+                    agent.ipv4Addresses(),
                     "Heartbeat timeout");
             agents.save(offline);
             events.publish(

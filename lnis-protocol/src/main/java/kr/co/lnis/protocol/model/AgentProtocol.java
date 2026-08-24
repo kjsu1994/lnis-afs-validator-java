@@ -77,7 +77,8 @@ public final class AgentProtocol {
             /** Agent JVM의 CPU 아키텍처 문자열이다. */
             String architecture,
             /** GNSS 수집 등 기능 이름별 지원 여부를 담은 확장 가능한 맵이다. */
-            Map<String, Boolean> capabilities) {}
+            Map<String, Boolean> capabilities,
+            List<String> ipv4Addresses) {}
 
     /** Agent 생존 여부와 현재 작업 상태를 5초 주기로 알리는 payload다. */
     public record Heartbeat(

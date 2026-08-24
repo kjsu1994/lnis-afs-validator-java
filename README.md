@@ -352,9 +352,13 @@ lnis.native.dir=native
 ```
 
 각 스크립트는 `conf\agent-sender.properties` 또는 `conf\agent-receiver.properties`를
-자동 선택합니다. Sender와 Receiver를 서로 다른 PC에 배치하면 각 배포본의 설정 파일에서
-`localhost`를 중앙 서버 PC의 실제 IPv4 주소로 변경합니다. 화면의 Agent 상태가 `READY`로
-바뀌면 중앙 서버 인증 및 WebSocket 연결이 정상입니다. 종료는 각 창에서 `Ctrl+C`입니다.
+자동 선택합니다. 설정된 서버에 연결할 수 없으면 Agent는 같은 LAN의 IPv4 /24 대역에서
+LNIS 식별 API를 찾아 중앙 서버 WebSocket 주소를 자동 갱신합니다. 따라서 기본
+`localhost` 설정을 유지해도 중앙 서버, Sender, Receiver를 서로 다른 PC에서 실행할 수 있습니다.
+라우터로 분리된 다른 서브넷에서는 `lnis.server.ws`에 중앙 서버 주소를 직접 지정합니다.
+화면의 Agent 상태가 `READY`로 바뀌면 중앙 서버 인증 및 WebSocket 연결이 정상입니다.
+Sender 화면의 Receiver 주소도 선택된 Receiver Agent가 보고한 LAN IP로 자동 설정됩니다.
+종료는 각 창에서 `Ctrl+C`입니다.
 
 백그라운드로 실행한 로컬 Agent 두 개를 종료할 때는 다음 스크립트를 사용합니다. 다른 Java
 프로세스는 건드리지 않고 현재 배포본의 Java 21로 실행된 LNIS Agent만 종료합니다.

@@ -53,6 +53,29 @@ function addEmptyOption(select, roleName) {
     select.add(option);
 }
 
+/** 선택한 Receiver Agent의 LAN 주소를 UDP 목적지에 자동 반영한다. */
+function applyReceiverAddress() {
+    const input = $('broadcast-address');
+    const receiver = agentCache.find(
+        (agent) => agent.agentId === $('receiver-agent').value
+            && agent.role === 'RECEIVER',
+    );
+    const address = receiver?.ipv4Addresses?.find(
+        (value) => typeof value === 'string' && value.trim(),
+    );
+    const current = input.value.trim();
+    const previousAutomatic = input.dataset.automaticAddress || '';
+    const mayReplace = !current
+        || current === '127.0.0.1'
+        || current.toLowerCase() === 'localhost'
+        || current === previousAutomatic;
+
+    if (address && mayReplace) {
+        input.value = address;
+        input.dataset.automaticAddress = address;
+    }
+}
+
 /** 팝업을 사용하지 않고 현재 작업 문맥을 유지한 채 결과를 안내한다. */
 function showNotice(level, title, message) {
     const notice = $('page-notice');
@@ -155,6 +178,7 @@ async function refreshAgents() {
         }
     }
 
+    applyReceiverAddress();
     paintAgents();
     updateControls();
 }
@@ -235,6 +259,10 @@ $('capture-agent').onchange = () => {
 };
 
 $('com-port').onchange = updateControls;
+$('receiver-agent').onchange = () => {
+    applyReceiverAddress();
+    updateControls();
+};
 
 $('refresh-ports').onclick = async () => {
     try {

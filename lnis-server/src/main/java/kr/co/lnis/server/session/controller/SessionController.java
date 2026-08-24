@@ -14,6 +14,7 @@ import java.util.UUID;
 /** Sender/Receiver 시험 세션의 생성, 조회 및 취소 API를 제공한다. */
 public class SessionController {
     private final SessionService sessions;
+
     public SessionController(SessionService sessions) { this.sessions = sessions; }
     @PostMapping
     public TestSessionEntity create(@Valid @RequestBody CreateSessionRequest request) {

@@ -24,7 +24,7 @@ const HELP_TEXT = new Map([
     ['#sender-agent', '시험 데이터를 UDP로 전송할 Sender Agent를 선택합니다.'],
     ['#receiver-agent', '시험 데이터를 수신하고 무결성을 판정할 Receiver Agent를 선택합니다.'],
     ['#test-type', '수행할 시험 시나리오입니다. Test D는 동기 손상 프레임 자체를 복구하지 않고 제외한 뒤, 다음 연속 정상 SP를 재획득하는지 확인합니다.'],
-    ['#broadcast-address', 'Receiver Agent가 실행되는 PC의 IP 주소입니다. 같은 PC라면 127.0.0.1을 사용합니다.'],
+    ['#broadcast-address', '선택한 Receiver Agent가 보고한 LAN IPv4 주소를 자동으로 사용합니다. 여러 네트워크 카드에서는 실제 수신 PC 주소로 직접 변경할 수 있습니다.'],
     ['#data-port', 'Sender가 시험 데이터 패킷을 보내고 Receiver가 수신하는 UDP 포트입니다.'],
     ['#result-port', 'Receiver가 계산한 시험 결과를 Sender에게 돌려주는 UDP 포트입니다.'],
     ['#repeat-count', 'SESSION_START, 각 AFS 데이터 프레임과 SESSION_END를 UDP로 반복 전송하는 횟수입니다. Receiver는 같은 종류와 순번의 복제본을 하나만 처리합니다.'],
