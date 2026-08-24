@@ -31,7 +31,7 @@
 /* 최종 결과는 핵심 판정부터 전문 진단까지 정보 중요도 순서로 보여준다. */
 .result-details {
     display: grid;
-    gap: 18px;
+    gap: 14px;
     margin: 18px 0;
 }
 
@@ -130,14 +130,16 @@
 
 .result-metric-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
-    gap: 10px;
+    grid-template-columns: repeat(auto-fit, minmax(185px, 1fr));
+    gap: 8px;
 }
 
 .result-details .metric {
-    min-height: 148px;
+    min-height: 78px;
+    padding: 10px 12px;
     border-left: 4px solid #b9c9cf;
     background: #fbfcfc;
+    cursor: help;
 }
 
 .result-details .metric-pass {
@@ -160,14 +162,8 @@
 }
 
 .result-details .metric strong {
+    margin-top: 7px;
     font-size: 21px;
-}
-
-.result-details .metric > p {
-    margin: 8px 0 0;
-    color: var(--muted);
-    font-size: 12px;
-    line-height: 1.55;
 }
 
 .result-diagnostics {

@@ -495,7 +495,6 @@ function createMetricCard(metric) {
     const name = document.createElement('span');
     const badge = document.createElement('em');
     const value = document.createElement('strong');
-    const explanation = document.createElement('p');
 
     box.className = `metric metric-${metric.status.tone}`;
     box.dataset.tooltip = metric.description;
@@ -506,9 +505,8 @@ function createMetricCard(metric) {
     badge.className = `metric-status ${metric.status.tone}`;
     badge.textContent = metric.status.text;
     value.textContent = metric.value;
-    explanation.textContent = metric.description;
     heading.append(name, badge);
-    box.append(heading, value, explanation);
+    box.append(heading, value);
     return box;
 }
 
