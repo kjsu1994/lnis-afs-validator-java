@@ -60,9 +60,16 @@ function applyReceiverAddress() {
         (agent) => agent.agentId === $('receiver-agent').value
             && agent.role === 'RECEIVER',
     );
-    const address = receiver?.ipv4Addresses?.find(
+    const addresses = receiver?.ipv4Addresses?.filter(
         (value) => typeof value === 'string' && value.trim(),
-    );
+    ) || [];
+    const serverOctets = location.hostname.split('.');
+    const serverPrefix = serverOctets.length === 4
+        ? `${serverOctets.slice(0, 3).join('.')}.`
+        : '';
+    const address = addresses.find(
+        (value) => serverPrefix && value.startsWith(serverPrefix),
+    ) || addresses[0];
     const current = input.value.trim();
     const previousAutomatic = input.dataset.automaticAddress || '';
     const mayReplace = !current

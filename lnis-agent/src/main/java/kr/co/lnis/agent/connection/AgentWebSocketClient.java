@@ -5,6 +5,8 @@ import kr.co.lnis.agent.config.AgentConfig;
 import kr.co.lnis.agent.runtime.AgentRuntime;
 import kr.co.lnis.protocol.model.AgentProtocol.*;
 import java.net.Inet4Address;
+import java.net.DatagramSocket;
+import java.net.InetAddress;
 import java.net.NetworkInterface;
 import java.net.URI;
 import java.net.http.HttpClient;
@@ -127,7 +129,7 @@ public final class AgentWebSocketClient implements WebSocket.Listener, AutoClose
                 System.getProperty("os.name"),
                 System.getProperty("os.arch"),
                 Map.of("com", config.role().name().equals("SENDER"), "udp", true),
-                localIpv4Addresses());
+                localIpv4Addresses(serverUri.get()));
         send(Envelope.of(
                 MessageType.HELLO,
                 config.agentId(),
@@ -164,9 +166,11 @@ public final class AgentWebSocketClient implements WebSocket.Listener, AutoClose
         return CompletableFuture.completedFuture(null);
     }
 
-    static List<String> localIpv4Addresses() {
+    static List<String> localIpv4Addresses(URI server) {
+        LinkedHashSet<String> addresses = new LinkedHashSet<>();
+        preferredRouteAddress(server).ifPresent(addresses::add);
         try {
-            return NetworkInterface.networkInterfaces()
+            NetworkInterface.networkInterfaces()
                     .filter(network -> {
                         try {
                             return network.isUp()
@@ -186,10 +190,27 @@ public final class AgentWebSocketClient implements WebSocket.Listener, AutoClose
                             .thenComparing(Inet4Address::getHostAddress))
                     .map(Inet4Address::getHostAddress)
                     .distinct()
-                    .toList();
+                    .forEach(addresses::add);
         } catch (Exception ignored) {
-            return List.of();
+            // Keep the preferred route address when interface enumeration fails.
         }
+        return List.copyOf(addresses);
+    }
+
+    private static Optional<String> preferredRouteAddress(URI server) {
+        try (DatagramSocket socket = new DatagramSocket()) {
+            InetAddress target = InetAddress.getByName(server.getHost());
+            socket.connect(target, discoveryPort(server));
+            InetAddress local = socket.getLocalAddress();
+            if (local instanceof Inet4Address
+                    && !local.isAnyLocalAddress()
+                    && !local.isLoopbackAddress()) {
+                return Optional.of(local.getHostAddress());
+            }
+        } catch (Exception ignored) {
+            // Interface enumeration below supplies fallback addresses.
+        }
+        return Optional.empty();
     }
 
     private void heartbeat() {
