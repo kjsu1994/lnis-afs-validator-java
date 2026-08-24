@@ -306,6 +306,17 @@ export function selectInitialFrameIndex(summaries, sessionVerdict) {
         ?? fallback;
 }
 
+/** 내부 0-base index를 숨기고 사용자가 읽는 1-base 프레임 번호만 표시한다. */
+export function frameOptionLabel(summary) {
+    const state = summary.decodeSucceeded
+        && summary.referenceToReencodedDifferences === 0
+        ? '완전 복구'
+        : summary.intentionalSyncRejection
+            ? '의도적 동기 제외'
+            : summary.decoderCompleted ? 'CRC 실패' : 'Decoder 실패';
+    return `${summary.frameIndex + 1}번 프레임 · ${state}`;
+}
+
 /** 전체 시험과 현재 선택한 단일 프레임의 판정 범위를 나란히 보여준다. */
 function updateScopeSummary(
     container,
@@ -369,6 +380,13 @@ export async function renderFrameEvidence(
             <label title="보관된 AFS 프레임 중 점자형 지도로 비교할 프레임을 선택합니다.">확인할 프레임 <select class="frame-selector" aria-label="확인할 AFS 프레임" title="확인할 AFS 프레임을 선택합니다."></select></label>
         </div>
         <p class="frame-retention-note">최대 500프레임의 상세 원문을 Redis에 24시간 보관합니다. 500프레임을 넘으면 처음 250개와 마지막 250개를 보관합니다.</p>
+        <aside class="frame-comparison-guide" aria-label="프레임 단계 비교 기준">
+            <span>Test A <code>1=2=3=4</code></span>
+            <span>Test B/C <code>1≠2, 2=3, 복구 성공 시 1=4</code></span>
+            <span>Test D <code>1≠2</code> 후 다음 프레임 재동기화 확인</span>
+            <span>네트워크 이상 <code>2≠3</code></span>
+            <span>복호화 실패 <code>1≠4</code> 또는 SB2·SB3·SB4 CRC 실패</span>
+        </aside>
         <div class="frame-scope-summary" aria-live="polite"></div>
         <div class="frame-evidence-content" aria-live="polite">프레임 증거를 불러오는 중입니다.</div>`;
     try {
@@ -389,14 +407,8 @@ export async function renderFrameEvidence(
         }
         const selector = container.querySelector('.frame-selector');
         summaries.forEach((summary) => {
-            const state = summary.decodeSucceeded
-                && summary.referenceToReencodedDifferences === 0
-                ? '완전 복구'
-                : summary.intentionalSyncRejection
-                    ? '의도적 동기 제외'
-                    : summary.decoderCompleted ? 'CRC 실패' : 'Decoder 실패';
             selector.add(new Option(
-                `${summary.frameIndex + 1}번 (index ${summary.frameIndex}) · ${state}`,
+                frameOptionLabel(summary),
                 summary.frameIndex,
             ));
         });

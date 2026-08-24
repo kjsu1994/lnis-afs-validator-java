@@ -1,5 +1,8 @@
 import assert from 'node:assert/strict';
-import { selectInitialFrameIndex } from '../public/assets/frame-evidence.js';
+import {
+    frameOptionLabel,
+    selectInitialFrameIndex,
+} from '../public/assets/frame-evidence.js';
 
 const summaries = [
     {
@@ -28,5 +31,14 @@ assert.equal(selectInitialFrameIndex(summaries, null), 0);
 
 // 실패 시험이라도 모든 프레임이 완전히 복구됐다면 안전하게 첫 프레임으로 돌아간다.
 assert.equal(selectInitialFrameIndex([summaries[0]], 'FAIL'), 0);
+
+assert.equal(
+    frameOptionLabel(summaries[0]),
+    '1번 프레임 · 완전 복구',
+);
+assert.equal(
+    frameOptionLabel({ ...summaries[1], decoderCompleted: true }),
+    '2번 프레임 · CRC 실패',
+);
 
 console.log('frame-evidence selection smoke test passed');
