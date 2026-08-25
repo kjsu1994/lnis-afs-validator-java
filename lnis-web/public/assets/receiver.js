@@ -5,7 +5,7 @@ import {
     setPill,
     downloads,
     renderMetrics,
-} from './api.js?v=20260824-compact-results';
+} from './api.js?v=20260824-integrated-report';
 import {
     formatEventLog,
     describeTestType,

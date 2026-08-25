@@ -112,8 +112,19 @@
     padding-top: 2px;
 }
 
+.result-group:not(.result-diagnostics) {
+    display: grid;
+    grid-template-columns: minmax(220px, .72fr) minmax(0, 3fr);
+    align-items: center;
+    gap: 12px;
+}
+
 .result-group-heading {
     margin-bottom: 10px;
+}
+
+.result-group:not(.result-diagnostics) .result-group-heading {
+    margin-bottom: 0;
 }
 
 .result-group-heading h3 {
@@ -130,12 +141,16 @@
 
 .result-metric-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(185px, 1fr));
+    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
     gap: 8px;
 }
 
 .result-details .metric {
-    min-height: 78px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    min-height: 56px;
     padding: 10px 12px;
     border-left: 4px solid #b9c9cf;
     background: #fbfcfc;
@@ -156,14 +171,21 @@
 
 .metric-heading {
     display: flex;
-    align-items: flex-start;
+    align-items: center;
     justify-content: space-between;
     gap: 8px;
 }
 
+.result-details .metric .metric-heading {
+    flex: 1 1 auto;
+    min-width: 0;
+}
+
 .result-details .metric strong {
-    margin-top: 7px;
-    font-size: 21px;
+    flex: 0 0 auto;
+    margin-top: 0;
+    font-size: 17px;
+    white-space: nowrap;
 }
 
 .result-diagnostics {
@@ -186,6 +208,16 @@
     margin-top: 12px;
 }
 
+@media(max-width: 1000px) {
+    .result-group:not(.result-diagnostics) {
+        grid-template-columns: 1fr;
+    }
+
+    .result-group:not(.result-diagnostics) .result-group-heading {
+        margin-bottom: 8px;
+    }
+}
+
 @media(max-width: 600px) {
     .result-metric-grid {
         grid-template-columns: 1fr;
@@ -193,6 +225,10 @@
 
     .result-overview > strong {
         font-size: 18px;
+    }
+
+    .result-details .metric {
+        min-height: 52px;
     }
 }
 

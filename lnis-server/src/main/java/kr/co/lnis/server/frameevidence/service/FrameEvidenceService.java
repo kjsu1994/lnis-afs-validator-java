@@ -74,13 +74,17 @@ public class FrameEvidenceService {
 
     public byte[] jsonArtifact(UUID sessionId) {
         try {
-            List<FrameEvidenceDetail> details = summaries(sessionId).stream()
-                    .map(item -> detail(sessionId, item.frameIndex()))
-                    .toList();
-            return json.writerWithDefaultPrettyPrinter().writeValueAsBytes(details);
+            return json.writerWithDefaultPrettyPrinter()
+                    .writeValueAsBytes(details(sessionId));
         } catch (java.io.IOException error) {
             throw new IllegalStateException("프레임 증거 JSON 생성에 실패했습니다.", error);
         }
+    }
+
+    public List<FrameEvidenceDetail> details(UUID sessionId) {
+        return summaries(sessionId).stream()
+                .map(item -> detail(sessionId, item.frameIndex()))
+                .toList();
     }
 
     public byte[] csvArtifact(UUID sessionId) {

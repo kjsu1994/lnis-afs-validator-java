@@ -76,29 +76,27 @@ export function setPill(element, text, state = '') {
 }
 
 /** Redis 결과를 요청 시점에 JSON/CSV 실제 파일로 내려받는 링크를 만든다. */
-export function downloads(container, sessionId, role) {
+export function downloads(container, sessionId) {
     container.classList.remove('hidden');
     container.replaceChildren();
 
-    for (const name of [
-        'result.json',
-        'metrics-summary.csv',
-        'metrics-timeseries.csv',
-    ]) {
+    const files = [
+        {
+            name: 'lnis-report.xlsx',
+            label: '통합 결과 Excel',
+            title: '요약, 지표, 시계열, 프레임 비교를 시트별로 묶어 내려받습니다.',
+        },
+        {
+            name: 'lnis-report.json',
+            label: '통합 결과 JSON',
+            title: 'Sender, Receiver와 프레임 증거 전체를 하나의 JSON으로 내려받습니다.',
+        },
+    ];
+    for (const file of files) {
         const link = document.createElement('a');
-        link.textContent = `${role.toUpperCase()} ${name}`;
-        link.href = `${API}/sessions/${sessionId}/artifacts/${role}/${name}`;
-        container.append(link);
-    }
-
-    // Sender/Receiver 양쪽을 병합한 6,000비트 프레임 증거 산출물이다.
-    for (const name of ['frame-evidence.json', 'frame-diff-summary.csv']) {
-        const link = document.createElement('a');
-        link.textContent = `AFS ${name}`;
-        link.href = `${API}/sessions/${sessionId}/frame-evidence/artifacts/${name}`;
-        link.title = name.endsWith('.json')
-            ? '프레임별 네 단계 6,000비트 원문과 차이 위치를 JSON 파일로 저장합니다.'
-            : '프레임별 비트 차이 수와 SHA-256 요약을 CSV 파일로 저장합니다.';
+        link.textContent = file.label;
+        link.href = `${API}/sessions/${sessionId}/artifacts/${file.name}`;
+        link.title = file.title;
         container.append(link);
     }
 }

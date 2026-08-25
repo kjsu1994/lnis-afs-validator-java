@@ -2,6 +2,7 @@ package kr.co.lnis.server.artifact.controller;
 
 import kr.co.lnis.protocol.model.LnisModels.AgentRole;
 import kr.co.lnis.server.artifact.service.ArtifactService;
+import kr.co.lnis.server.artifact.service.CombinedArtifactService;
 import org.springframework.http.*;
 import org.springframework.web.bind.annotation.*;
 import java.util.Locale;
@@ -11,10 +12,37 @@ import java.util.UUID;
 @RequestMapping("/lnis/api/v1/sessions")
 /** Redis에 저장된 역할별 결과를 실제 다운로드 파일로 변환한다. */
 public class ArtifactController {
+    private static final MediaType XLSX = MediaType.parseMediaType(
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
     private final ArtifactService artifacts;
+    private final CombinedArtifactService combinedArtifacts;
 
-    public ArtifactController(ArtifactService artifacts) {
+    public ArtifactController(
+            ArtifactService artifacts,
+            CombinedArtifactService combinedArtifacts) {
         this.artifacts = artifacts;
+        this.combinedArtifacts = combinedArtifacts;
+    }
+
+    @GetMapping("/{sessionId}/artifacts/{fileName}")
+    public ResponseEntity<byte[]> downloadCombined(
+            @PathVariable UUID sessionId,
+            @PathVariable String fileName) {
+        MediaType mediaType = switch (fileName) {
+            case "lnis-report.json" -> MediaType.APPLICATION_JSON;
+            case "lnis-report.xlsx" -> XLSX;
+            default -> throw new IllegalArgumentException(
+                    "지원하지 않는 통합 산출물입니다: " + fileName);
+        };
+        return ResponseEntity.ok()
+                .contentType(mediaType)
+                .header(
+                        HttpHeaders.CONTENT_DISPOSITION,
+                        ContentDisposition.attachment()
+                                .filename(sessionId + "-" + fileName)
+                                .build()
+                                .toString())
+                .body(combinedArtifacts.create(sessionId, fileName));
     }
 
     @GetMapping("/{sessionId}/artifacts/{role}/{fileName}")

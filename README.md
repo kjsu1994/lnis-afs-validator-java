@@ -698,29 +698,25 @@ SHA-256 일치로 PASS했습니다. Test D는 설계대로 `3/4 record`, `348/46
 
 ## 9. 결과 파일
 
-TX와 RX 각각 다음 파일을 HTTP attachment로 내려받을 수 있습니다.
+웹 화면에서는 세션 전체 결과를 다음 두 파일로 통합해 내려받습니다.
 
 | 파일 | 내용 |
 |---|---|
-| `result.json` | 판정, 무결성 결과, 지표, 네트워크 카운터, 자원 샘플, 오류 정보 |
-| `metrics-summary.csv` | Role/Category/Name/Description/Value/Unit/Status 요약 |
-| `metrics-timeseries.csv` | Timestamp별 CPU 및 Working Set 메모리 |
-| `frame-evidence.json` | 보관된 프레임별 기준/송신/수신/재인코딩 6,000비트 원문, SHA-256, 차이 위치 |
-| `frame-diff-summary.csv` | 프레임별 오류 주입·전송 중 변화·최종 복구 비트 차이 수와 해시 요약 |
+| `lnis-report.xlsx` | 요약, 지표, 시계열, 프레임 비교를 네 개 시트로 구성한 Excel 통합 문서 |
+| `lnis-report.json` | Sender 결과, Receiver 결과와 보관된 프레임 증거 전체를 담은 통합 JSON |
 
-CSV는 Excel 한글 호환성을 위해 UTF-8 BOM을 포함합니다. 실제 다운로드 파일명에는 session ID와 `tx` 또는 `rx`가 포함됩니다.
+기존 역할별 JSON/CSV와 프레임 증거 JSON/CSV API는 외부 연동 호환성을 위해 유지하지만
+웹 화면에는 표시하지 않습니다.
 
 예:
 
 ```text
-<session-id>-tx-result.json
-<session-id>-rx-metrics-summary.csv
-<session-id>-rx-metrics-timeseries.csv
-<session-id>-frame-evidence.json
-<session-id>-frame-diff-summary.csv
+<session-id>-lnis-report.xlsx
+<session-id>-lnis-report.json
 ```
 
-결과 파일은 미리 서버 디스크에 생성하지 않습니다. 사용자가 다운로드할 때 Redis의 결과 객체를 CSV 또는 JSON byte stream으로 생성합니다. 현재 구현은 `reconstructed.graw` 파일을 산출하지 않습니다.
+결과 파일은 미리 서버 디스크에 생성하지 않습니다. 사용자가 다운로드할 때 Redis의 결과 객체를
+Excel 또는 JSON byte stream으로 생성합니다. 현재 구현은 `reconstructed.graw` 파일을 산출하지 않습니다.
 
 ### 9.1 AFS 6,000비트 점자형 지도 읽는 방법
 
@@ -933,6 +929,10 @@ POST /lnis/api/v1/sessions/{sessionId}/cancel
 오프라인이어도 중앙 상태와 Redis 잠금을 우선 정리하고 연결된 나머지 Agent에 계속 전달됩니다.
 
 ### 11.5 결과 다운로드
+
+기본 통합 다운로드는 `GET /lnis/api/v1/sessions/{sessionId}/artifacts/lnis-report.xlsx`와
+`GET /lnis/api/v1/sessions/{sessionId}/artifacts/lnis-report.json`입니다. 아래 역할별·프레임별
+엔드포인트는 기존 연동 호환용입니다.
 
 ```http
 GET /lnis/api/v1/sessions/{sessionId}/artifacts/tx/result.json
