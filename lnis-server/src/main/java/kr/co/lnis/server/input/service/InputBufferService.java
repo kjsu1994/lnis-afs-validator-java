@@ -55,6 +55,7 @@ public class InputBufferService {
         if (index != current.chunkCount()) {
             throw new IllegalArgumentException("Expected chunk " + current.chunkCount());
         }
+        // 바이너리를 먼저 저장한 뒤 메타데이터의 chunkCount를 올려 조회자가 없는 청크를 참조하지 않게 한다.
         repository.putChunk(id, index, bytes, INCOMPLETE_TTL);
         var updated = new InputBufferEntity(
                 id,
@@ -74,6 +75,7 @@ public class InputBufferService {
     /** 전체 청크를 순서대로 검증하고 완료 메타데이터와 24시간 TTL을 확정한다. */
     public synchronized InputBufferEntity complete(UUID id) {
         var current = get(id);
+        // 전체 파일을 한 배열로 합치지 않고 청크를 순차 공급해 큰 GRAW에서도 검증 메모리를 제한한다.
         GrawStreamingValidator validator = new GrawStreamingValidator();
         for (long i = 0; i < current.chunkCount(); i++) {
             byte[] chunk = repository.getChunk(id, i);
@@ -83,6 +85,7 @@ public class InputBufferService {
             validator.push(chunk);
         }
         var result = validator.finish();
+        // API에 선언된 파일 크기와 실제 wire record 검증 결과를 모두 통과해야 complete=true가 된다.
         if (current.declaredSize() > 0 && current.declaredSize() != result.size()) {
             throw new IllegalArgumentException("Uploaded size does not match declaration");
         }
@@ -99,6 +102,7 @@ public class InputBufferService {
                 current.createdAt(),
                 Instant.now());
         repository.save(complete, COMPLETE_TTL);
+        // 메타데이터만 먼저 만료돼 고아 청크가 남지 않도록 모든 청크 TTL도 같은 시점으로 연장한다.
         repository.touchChunks(id, current.chunkCount(), COMPLETE_TTL);
         return complete;
     }

@@ -32,6 +32,7 @@ public class CombinedArtifactService {
     }
 
     public byte[] create(UUID sessionId, String fileName) {
+        // 한 역할만 결과를 제출한 장애 상황도 분석할 수 있도록 null인 반대 역할을 허용한다.
         RoleResult sender = sessions.result(sessionId, AgentRole.SENDER).orElse(null);
         RoleResult receiver = sessions.result(sessionId, AgentRole.RECEIVER).orElse(null);
         if (sender == null && receiver == null) {
@@ -75,6 +76,7 @@ public class CombinedArtifactService {
     private byte[] excel(CombinedReport report) throws java.io.IOException {
         try (XSSFWorkbook book = new XSSFWorkbook();
              ByteArrayOutputStream output = new ByteArrayOutputStream()) {
+            // 개요, 판정 지표, 자원 시계열, 비트 수준 증거를 목적별 시트로 분리한다.
             Styles styles = styles(book);
             summarySheet(book, report, styles);
             metricsSheet(book, report, styles);
@@ -102,6 +104,7 @@ public class CombinedArtifactService {
         finish(sheet, row - 1, 2, 14, 42, 72);
     }
 
+    /** 중첩된 결과 객체를 {@code 역할 / 경로 / 값} 행으로 펼쳐 Excel 요약 시트에 기록한다. */
     @SuppressWarnings("unchecked")
     private int flattenResult(
             Sheet sheet,
@@ -330,6 +333,7 @@ public class CombinedArtifactService {
             int lastRow,
             int lastColumn,
             int... widths) {
+        // 모든 데이터 시트에 같은 탐색 규칙(헤더 고정, 필터, 명시 폭)을 적용한다.
         sheet.createFreezePane(0, 1);
         sheet.setAutoFilter(new CellRangeAddress(
                 0,

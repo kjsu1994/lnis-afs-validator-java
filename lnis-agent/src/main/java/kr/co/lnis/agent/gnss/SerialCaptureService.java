@@ -56,6 +56,7 @@ public final class SerialCaptureService implements AutoCloseable {
 
     public synchronized void start(Settings settings, Consumer<CaptureChunk> chunks, Consumer<Throwable> failure) {
         if (!running.compareAndSet(false, true)) throw new IllegalStateException("Capture is already running");
+        // 포트를 완전히 구성한 뒤 worker를 시작해 reader가 반쯤 적용된 직렬 설정을 보지 않게 한다.
         port = SerialPort.getCommPort(settings.portName); port.setBaudRate(settings.baudRate); port.setNumDataBits(8);
         port.setNumStopBits(SerialPort.ONE_STOP_BIT);
         port.setParity(SerialPort.NO_PARITY);
@@ -72,6 +73,7 @@ public final class SerialCaptureService implements AutoCloseable {
         UbloxParser ubx = new UbloxParser(); UUID testId = UUID.randomUUID(); long sequence = 0, bytesRead = 0, records = 0, chunkIndex = 0;
         ByteArrayOutputStream rawChunk = new ByteArrayOutputStream(1024 * 1024), canonicalChunk = new ByteArrayOutputStream(1024 * 1024);
         try {
+            // raw-only를 제외한 파일의 첫 record에는 나중에 수집 환경을 추적할 메타데이터를 넣는다.
             if (!"raw-only".equalsIgnoreCase(settings.protocolId)) {
                 byte[] metadata = GrawCodec.encode(new GrawCodec.Envelope(testId, UUID.randomUUID(), sequence++, Instant.now(),
                         new GrawCodec.ReceiverMetadata(
@@ -92,6 +94,7 @@ public final class SerialCaptureService implements AutoCloseable {
                     continue;
                 }
                 rawChunk.write(buffer, 0, count); bytesRead += count;
+                // ubx는 검증·변환하고 canonical-v1은 이미 변환된 입력이므로 그대로 누적한다.
                 if ("ubx".equalsIgnoreCase(settings.protocolId)) for (var frame : ubx.push(buffer, count)) {
                     var message = UbloxParser.toCanonical(frame);
                     if (message != null) {
@@ -106,6 +109,7 @@ public final class SerialCaptureService implements AutoCloseable {
                         records++;
                     }
                 } else if ("lnis-canonical-v1".equalsIgnoreCase(settings.protocolId)) canonicalChunk.write(buffer, 0, count);
+                // raw/canonical 중 하나라도 상한에 도달하면 둘을 함께 비워 같은 시점의 진단 자료를 전달한다.
                 if (rawChunk.size() >= 1024 * 1024 || canonicalChunk.size() >= 1024 * 1024)
                     chunks.accept(new CaptureChunk(chunkIndex++, drain(rawChunk), drain(canonicalChunk), bytesRead, records));
             }
@@ -129,6 +133,7 @@ public final class SerialCaptureService implements AutoCloseable {
     }
     private static byte[] drain(ByteArrayOutputStream out) { byte[] bytes = out.toByteArray(); out.reset(); return bytes; }
     public synchronized void stop() { running.set(false); }
+    /** RAWX/SFRBX 출력률을 임시 활성화하고 조회에 성공한 원래 설정은 종료 시 복원하도록 보관한다. */
     private void configureUbloxTemporarily() {
         restoreCommands.clear(); write(UbloxParser.command(0x0A,0x04,new byte[0]));
         for (int[] message : List.of(new int[]{0x02,0x15},new int[]{0x02,0x13})) {

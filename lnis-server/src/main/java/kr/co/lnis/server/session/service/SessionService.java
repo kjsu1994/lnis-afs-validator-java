@@ -47,11 +47,13 @@ public class SessionService {
 
     /** 요청 검증, 단일 시험 lock 획득, Receiver 준비 및 Sender 시작을 원자적인 흐름으로 수행한다. */
     public TestSessionEntity create(CreateSessionRequest request) {
+        // 1. Redis 잠금을 잡기 전에 요청을 검증해야 잘못된 요청이 활성 시험 자리를 차지하지 않는다.
         validate(request);
         UUID id = UUID.randomUUID();
         Boolean locked = redis.opsForValue().setIfAbsent(ACTIVE_LOCK, id.toString(), Duration.ofHours(2));
         if (!Boolean.TRUE.equals(locked)) throw new IllegalStateException("Another test session is active");
         try {
+            // 2. 이후 어느 Agent 명령에서 실패하더라도 추적할 수 있도록 세션을 먼저 영속화한다.
             Instant now = Instant.now();
             var session = new TestSessionEntity(
                     id,
@@ -67,7 +69,11 @@ public class SessionService {
                     now,
                     now);
             sessions.save(session);
+
+            // 3. Sender가 즉시 UDP를 보내 유실되는 일을 막기 위해 Receiver 소켓을 먼저 준비시킨다.
             commands.command(request.receiverAgentId(), id, CommandType.ARM_RECEIVER, request);
+
+            // 4. 서버 Redis의 GRAW 청크를 순서대로 Sender 메모리에 모두 전달한 뒤 완료 경계를 알린다.
             var input = inputs.get(request.inputId());
             for (long index = 0; index < input.chunkCount(); index++) {
                 commands.inputChunk(
@@ -77,10 +83,13 @@ public class SessionService {
                         inputs.chunk(request.inputId(), index));
             }
             commands.inputComplete(request.senderAgentId(), id);
+
+            // 5. 입력 전달이 끝난 후에만 실제 AFS 인코딩과 UDP 송신을 시작한다.
             commands.command(request.senderAgentId(), id, CommandType.START_SENDER, request);
             events.publish(kr.co.lnis.protocol.model.AgentProtocol.EventType.SESSION_STATUS, null, null, id, session);
             return session;
         } catch (Exception e) {
+            // 생성 중간 실패는 완료 이벤트가 오지 않으므로 여기서 잠금을 직접 해제한다.
             redis.delete(ACTIVE_LOCK);
             if (e instanceof RuntimeException runtime) {
                 throw runtime;
@@ -189,10 +198,12 @@ public class SessionService {
             CreateSessionRequest request = json.readValue(
                     session.requestJson(),
                     CreateSessionRequest.class);
+            // 대용량 GRAW를 WebSocket으로 옮기는 시간은 입력 크기에 비례해 별도 여유로 잡는다.
             long inputMegabytes = Math.max(
                     1,
                     (inputs.get(session.inputId()).receivedSize() + 1_048_575) / 1_048_576);
             long transferAllowanceSeconds = Math.min(600, Math.max(15, inputMegabytes * 2));
+            // END 뒤 늦게 도착한 반복 datagram을 받는 grace와 결과 대기 시간을 모두 포함한다.
             long graceSeconds = Math.max(
                     1,
                     (request.transport().endGraceMilliseconds() + 999L) / 1000L);
@@ -234,6 +245,7 @@ public class SessionService {
         }
         var tx = sessions.result(id, AgentRole.SENDER);
         var rx = sessions.result(id, AgentRole.RECEIVER);
+        // ROLE_RESULT는 양쪽 WebSocket에서 독립적으로 도착하므로 첫 결과만으로 세션을 끝내지 않는다.
         if (tx.isEmpty() || rx.isEmpty()) {
             return;
         }
@@ -275,6 +287,7 @@ public class SessionService {
 
     public void release(UUID id) {
         String current = redis.opsForValue().get(ACTIVE_LOCK);
+        // 늦게 도착한 이전 세션 결과가 새 세션의 잠금을 지우지 않도록 소유 ID를 확인한다.
         if (id.toString().equals(current)) {
             redis.delete(ACTIVE_LOCK);
         }

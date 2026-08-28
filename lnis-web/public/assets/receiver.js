@@ -111,6 +111,7 @@ statusSocket(
         }
 
         if (event.sessionId && activeSession && event.sessionId !== activeSession) {
+            // 새 세션의 조건에 이전 시험의 오류 수·Drop 비율이 섞이지 않도록 문맥을 초기화한다.
             resultContext = {};
         }
         if (event.sessionId) {
@@ -121,6 +122,7 @@ statusSocket(
         log(eventLog, formatEventLog(event));
 
         const progressDetails = payload.counters || payload;
+        // Agent Progress는 세부 조건을 counters 아래에, 세션 이벤트는 최상위에 담으므로 둘을 정규화한다.
         mergeResultContext(progressDetails);
         if (progressDetails.testType) {
             $('current-test').textContent = describeTestType(progressDetails.testType);
@@ -175,4 +177,5 @@ $('clear-log').onclick = () => {
 };
 
 refresh().catch((error) => log(eventLog, error.message));
+// WebSocket 이벤트가 없을 때도 Agent heartbeat가 갱신한 Redis 상태를 주기적으로 다시 읽는다.
 setInterval(() => refresh().catch(() => {}), 5000);

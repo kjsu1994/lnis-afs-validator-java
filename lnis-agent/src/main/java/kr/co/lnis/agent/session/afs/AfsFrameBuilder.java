@@ -65,6 +65,7 @@ public final class AfsFrameBuilder {
     public Prepared prepare(List<byte[]> records, TestOptions options) {
         if (records.isEmpty()) throw new IllegalArgumentException("capture.graw is empty");
         List<byte[]> blocks = new ArrayList<>();
+        // GRAW record 하나가 여러 86-byte payload 조각이 될 수 있으며 이후 프레임당 두 조각을 소비한다.
         for (int i = 0; i < records.size(); i++) blocks.addAll(AfsRawFragmentCodec.fragment(i, records.get(i)));
         int[] time = timeFrom(records);
         int totalFrames = (blocks.size() + 1) / 2;
@@ -73,6 +74,7 @@ public final class AfsFrameBuilder {
         List<Frame> referenceFrames = new ArrayList<>(totalFrames);
         List<InjectionDetail> injections = new ArrayList<>();
         for (int index = 0; index < blocks.size(); index += 2) {
+            // 조각 수가 홀수면 마지막 조각을 SB3/SB4 양쪽에 넣는다. 재조립기는 동일 조각 중복을 허용한다.
             byte[] second = index + 1 < blocks.size() ? blocks.get(index + 1) : blocks.get(index);
             byte[] encoded = codec.encode(
                     time[2],
@@ -81,6 +83,7 @@ public final class AfsFrameBuilder {
                     AfsRawFragmentCodec.toSbBits(second));
             byte[] reference = encoded.clone();
             int frameIndex = frames.size();
+            // 기준 프레임을 복사한 뒤 실제 송신본에만 Test B/C/D 비트 오류를 주입한다.
             int mode = mode(
                     options.testType(),
                     frameIndex,
@@ -154,6 +157,7 @@ public final class AfsFrameBuilder {
         }
     }
     private static int[] timeFrom(List<byte[]> records) {
+        // 실제 GNSS epoch가 있으면 그 GPS 시간을 우선 사용하고, 메타데이터뿐이면 수집 UTC에서 계산한다.
         for (byte[] record : records) {
             var envelope = GrawCodec.decode(record);
             if (envelope.message() instanceof GrawCodec.ObservationEpoch x) return nextTime(x.week(), x.receiverTowSeconds());

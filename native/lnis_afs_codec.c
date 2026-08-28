@@ -65,6 +65,7 @@ int32_t lnis_afs_encode_frame(uint8_t toi,
     if (!frame_bytes || !valid_bits(sb2, sb2_len) || !valid_bits(sb3, sb3_len) || !valid_bits(sb4, sb4_len))
         return fail("AFS inputs must contain unpacked 0/1 bits");
 
+    /* 6,000심볼 배치: SP 68 + SB1 52 + interleave(SB2 2,400 + SB3 1,740 + SB4 1,740). */
     unpack(sync_bytes, 68, frame);
     generate_BCH_AFS_SF1(frame + 68, 0, toi);
 
@@ -84,6 +85,7 @@ int32_t lnis_afs_encode_frame(uint8_t toi,
 static int decode_sb34(const uint8_t *source, uint8_t *output, int *corrections) {
     uint8_t received[4576], decoded[3696];
     int i, result;
+    /* 송신된 punctured 심볼 사이에 erasure를 되채워 upstream LDPC decoder의 전체 입력 크기를 맞춘다. */
     for (i = 0; i < 176; ++i) received[i] = ERASURE;
     memcpy(received + 176, source, 694);
     for (i = 0; i < 10; ++i) received[870 + i] = ERASURE;
@@ -110,9 +112,11 @@ int32_t lnis_afs_decode_frame(uint8_t toi,
         return fail("Invalid AFS decode argument");
     memset(status, 0, sizeof(*status));
     unpack(frame_bytes, 6000, frame); unpack(sync_bytes, 68, sync);
+    /* LDPC 처리 전에 SP와 TOI 종속 SB1을 검사해 잘못된 프레임 경계/시간을 조기에 거부한다. */
     if (memcmp(frame, sync, 68) != 0) return fail("AFS synchronization pattern mismatch");
     generate_BCH_AFS_SF1(sf1, 0, toi);
     if (memcmp(frame + 68, sf1, 52) != 0) return fail("AFS SB1/TOI mismatch");
+    /* encoder의 98열 x 60행 interleave를 역순회해 SB2/SB3/SB4 coded stream을 복원한다. */
     for (i = 0, k = 0; i < 60; ++i) for (j = 0; j < 98; ++j)
         deinterleaved[k++] = frame[j * 60 + i + 120];
 

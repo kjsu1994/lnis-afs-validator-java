@@ -30,6 +30,7 @@ public class EventService {
 
     /** 이벤트를 Redis에 먼저 기록한 뒤 현재 연결된 모든 브라우저 구독자에게 전송한다. */
     public BrowserEvent publish(EventType type, String agentId, AgentRole role, UUID sessionId, Object payload) {
+        // 모든 세션이 공유하는 sequence라 서로 다른 Agent 이벤트도 발생 순서대로 정렬할 수 있다.
         Long sequence = redis.opsForValue().increment("lnis:event:sequence");
         BrowserEvent event = new BrowserEvent(
                 sequence == null ? 0 : sequence,
@@ -40,6 +41,7 @@ public class EventService {
                 sessionId,
                 payload);
         String key = "lnis:events:" + (sessionId == null ? "agents" : sessionId);
+        // 세션 없는 Agent 상태는 공용 stream, 시험 이벤트는 세션별 stream에 분리해 저장한다.
         Map<String, String> fields = Map.of(
                 "sequence", Long.toString(event.sequence()),
                 "type", type.name(),

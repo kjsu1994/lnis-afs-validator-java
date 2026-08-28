@@ -32,6 +32,7 @@ public class AgentWebSocketHandler extends TextWebSocketHandler {
     protected void handleTextMessage(WebSocketSession session, TextMessage message)
             throws Exception {
         Envelope envelope = json.readValue(message.getPayload(), Envelope.class);
+        // 인증 header의 ID와 본문 ID를 다시 대조해 Agent가 다른 Agent로 가장하지 못하게 한다.
         if (!agentId(session).equals(envelope.agentId())) {
             throw new IllegalArgumentException("Agent identity mismatch");
         }
@@ -40,6 +41,7 @@ public class AgentWebSocketHandler extends TextWebSocketHandler {
 
     @Override
     public void afterConnectionClosed(WebSocketSession session, CloseStatus status) {
+        // 같은 ID가 이미 재접속했다면 Map의 값이 다르므로 새 연결은 제거되지 않는다.
         connections.remove(agentId(session), session);
     }
 

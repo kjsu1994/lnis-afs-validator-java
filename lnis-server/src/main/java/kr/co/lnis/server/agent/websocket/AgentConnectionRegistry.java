@@ -20,6 +20,7 @@ public class AgentConnectionRegistry {
     }
 
     public void register(String agentId, WebSocketSession session) {
+        // 동일 Agent가 재접속하면 이후 명령이 새 소켓으로 가도록 현재 연결을 교체한다.
         sessions.put(agentId, session);
     }
 
@@ -39,6 +40,7 @@ public class AgentConnectionRegistry {
             throw new IllegalStateException("Agent is offline: " + agentId);
         }
         try {
+            // Spring WebSocketSession의 동시 send를 피하려고 registry 수준에서 전송을 직렬화한다.
             session.sendMessage(new TextMessage(json.writeValueAsString(message)));
         } catch (Exception e) {
             throw new IllegalStateException("Unable to send agent command", e);

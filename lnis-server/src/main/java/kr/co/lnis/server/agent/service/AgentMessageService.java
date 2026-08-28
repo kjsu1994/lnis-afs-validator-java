@@ -51,6 +51,8 @@ public class AgentMessageService {
 
     /** envelope 종류에 따라 Agent 상태, 입력 청크, 진행률 또는 역할 결과 처리로 분기한다. */
     public void handle(Envelope envelope) throws Exception {
+        // 연결 정보(HELLO/HEARTBEAT), 입력, 진행 이벤트, 최종 결과를 각 도메인 서비스로 분배한다.
+        // WebSocket Handler는 인증과 역직렬화만 담당하고 업무 상태 변경은 이 계층에서 시작된다.
         switch (envelope.type()) {
             case HELLO -> handleHello(envelope);
             case HEARTBEAT -> handleHeartbeat(envelope);
@@ -77,6 +79,7 @@ public class AgentMessageService {
                         progress);
             }
             case INPUT_CHUNK -> {
+                // rawSerial은 장치 진단용이며 시험 입력에는 Agent가 변환한 canonical GRAW만 누적한다.
                 byte[] canonical = Base64.getDecoder().decode(
                         envelope.payload().path("canonicalBase64").asText());
                 if (canonical.length > 0) {
@@ -96,6 +99,7 @@ public class AgentMessageService {
                     json.treeToValue(envelope.payload(), FrameEvidenceMessage.class));
             case ROLE_RESULT -> {
                 RoleResult result = json.treeToValue(envelope.payload(), RoleResult.class);
+                // 조회 API가 즉시 결과를 볼 수 있도록 저장을 먼저 끝낸 뒤 브라우저에 알린다.
                 sessions.saveResult(result);
                 events.publish(
                         EventType.RESULT,
@@ -115,6 +119,7 @@ public class AgentMessageService {
         }
     }
 
+    /** 최초 접속 정보를 Agent 조회용 Redis 엔티티로 만들고 READY 이벤트를 방송한다. */
     private void handleHello(Envelope envelope) throws Exception {
         Hello hello = json.treeToValue(envelope.payload(), Hello.class);
         agents.save(new AgentEntity(
@@ -136,6 +141,7 @@ public class AgentMessageService {
                 "READY");
     }
 
+    /** heartbeat는 동적 상태와 마지막 확인 시각만 갱신하고 HELLO의 장치 정보는 보존한다. */
     private void handleHeartbeat(Envelope envelope) throws Exception {
         Heartbeat heartbeat = json.treeToValue(envelope.payload(), Heartbeat.class);
         AgentEntity old = agents.find(envelope.agentId()).orElse(new AgentEntity(

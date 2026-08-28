@@ -13,6 +13,7 @@ import { renderFrameEvidence } from './frame-evidence.js?v=20260824-frame-label'
 const $ = (id) => document.getElementById(id);
 const eventLog = $('event-log');
 
+// 다음 값들은 서버/Redis 원본이 아니라 현재 페이지의 버튼과 표시를 제어하는 UI 상태다.
 let inputId = null;
 let captureId = null;
 let sessionId = null;
@@ -216,6 +217,7 @@ for (const tab of document.querySelectorAll('.tab')) {
     };
 }
 
+// 업로드 흐름: 메타데이터 생성 → 1 MiB 순차 청크 전송 → 서버 전체 검증 및 완료 확정.
 $('upload-button').onclick = async () => {
     const file = $('graw-file').files[0];
     if (!file) {
@@ -322,6 +324,7 @@ $('capture-start').onclick = async () => {
     }
 };
 
+// stop 명령 뒤 마지막 Agent 청크가 WebSocket으로 도착할 시간을 준 다음 서버 검증을 완료한다.
 $('capture-stop').onclick = async () => {
     try {
         if (!captureId) {
@@ -485,6 +488,7 @@ $('test-cancel').onclick = async () => {
 
 statusSocket(
     (event) => {
+        // Agent 상태 이벤트는 시험 세션과 무관하므로 먼저 처리해 선택 목록을 최신 상태로 유지한다.
         if (event.type === 'AGENT_STATUS') {
             refreshAgents().catch((error) => log(eventLog, error.message));
         }
@@ -505,6 +509,7 @@ statusSocket(
         }
 
         if (event.sessionId && sessionId && event.sessionId !== sessionId) {
+            // 다른 브라우저가 시작한 세션 이벤트가 현재 화면의 결과 영역을 덮어쓰지 않게 한다.
             return;
         }
 
@@ -535,6 +540,7 @@ statusSocket(
             $('progress-label').textContent = `${payload.percent}%`;
         }
         if (event.type === 'RESULT') {
+            // RESULT는 역할별로 두 번 올 수 있으며 각 도착 시점에 해당 결과와 통합 다운로드를 갱신한다.
             renderMetrics($('metrics'), payload, resultContext);
             const verdict = payload.verdict?.toLowerCase();
             $('verdict').textContent = `판정: ${payload.verdict}`;
@@ -560,6 +566,7 @@ statusSocket(
     ),
 );
 
+// 새로고침으로 WebSocket 과거 이벤트를 잃어도 REST 조회로 Agent와 활성 세션 상태를 복원한다.
 updateControls();
 refreshAgents().catch((error) => log(eventLog, error.message));
 refreshActiveSession().catch((error) => log(eventLog, error.message));

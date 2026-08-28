@@ -35,6 +35,7 @@ public class FrameEvidenceService {
     }
 
     public List<FrameEvidenceSummary> summaries(UUID sessionId) {
+        // Sender와 Receiver 메시지는 별도로 도착하므로 frameIndex를 기준으로 먼저 한 행으로 묶는다.
         Map<Integer, EnumMap<AgentRole, FrameEvidenceMessage>> grouped = group(sessionId);
         return grouped.entrySet().stream()
                 .sorted(Map.Entry.comparingByKey())
@@ -61,6 +62,7 @@ public class FrameEvidenceService {
         byte[] transmitted = bytes(sender, FrameEvidenceMessage::transmittedFrame);
         byte[] received = bytes(receiver, FrameEvidenceMessage::receivedFrame);
         byte[] reencoded = bytes(receiver, FrameEvidenceMessage::reencodedFrame);
+        // 네 단계 원문은 상세 화면용으로 유지하고, 각 단계 사이 차이 위치는 MSB-first bit 번호로 계산한다.
         return new FrameEvidenceDetail(
                 summary(frameIndex, sender, receiver),
                 reference,
@@ -137,6 +139,7 @@ public class FrameEvidenceService {
         byte[] transmitted = bytes(sender, FrameEvidenceMessage::transmittedFrame);
         byte[] received = bytes(receiver, FrameEvidenceMessage::receivedFrame);
         byte[] reencoded = bytes(receiver, FrameEvidenceMessage::reencodedFrame);
+        // 기준→송신은 의도적 오류, 송신→수신은 전송 변화, 기준→재인코딩은 최종 복구 오차를 뜻한다.
         Integer injected = differenceCount(reference, transmitted);
         Integer transport = differenceCount(transmitted, received);
         Integer recovered = differenceCount(reference, reencoded);
@@ -274,6 +277,7 @@ public class FrameEvidenceService {
         List<Integer> positions = new ArrayList<>();
         for (int byteIndex = 0; byteIndex < left.length; byteIndex++) {
             int difference = (left[byteIndex] ^ right[byteIndex]) & 0xff;
+            // 화면의 6,000비트 지도와 동일하게 각 byte의 최상위 비트를 먼저 센다.
             for (int bit = 0; bit < 8; bit++) {
                 if ((difference & (1 << (7 - bit))) != 0) {
                     positions.add(byteIndex * 8 + bit);

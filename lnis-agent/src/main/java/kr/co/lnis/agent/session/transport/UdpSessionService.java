@@ -198,6 +198,7 @@ public final class UdpSessionService implements AutoCloseable {
         Instant started = Instant.now();
         try {
             cancelled.set(false);
+            // 길이-prefix 파일을 검증된 GRAW record로 분리한 뒤 각 record를 SB3/SB4 조각으로 만든다.
             List<byte[]> records = GrawCodec.splitLengthPrefixed(source);
             AfsFrameBuilder.Prepared prepared =
                     new AfsFrameBuilder(codec).prepare(records, command.options());
@@ -206,6 +207,7 @@ public final class UdpSessionService implements AutoCloseable {
             double dropRate = command.options().testType() == TestType.TEST_E_UDP_DROP
                     ? command.options().dropRatePercent()
                     : 0;
+            // Test E는 실제 루프와 같은 결정 함수를 미리 실행해 Receiver가 기대할 Drop 수를 manifest에 기록한다.
             long plannedDrops = 0;
             for (int frameIndex = 0; frameIndex < prepared.frames().size(); frameIndex++) {
                 for (int copy = 0; copy < command.transport().repeatCount(); copy++) {
@@ -236,6 +238,7 @@ public final class UdpSessionService implements AutoCloseable {
                     command.options().syncDamageInterval(),
                     prepared.injectedFrameCount());
 
+            // 프레임 송신 이벤트와 증거 메시지에서 동일한 오류 위치를 재사용하기 위한 조회 맵이다.
             Map<Integer, AfsFrameBuilder.InjectionDetail> injectionsByFrame =
                     new HashMap<>();
             for (var injection : prepared.injections()) {
@@ -265,6 +268,7 @@ public final class UdpSessionService implements AutoCloseable {
             event.accept(EventType.TX_STATUS, preparedDetails);
 
             InetAddress destination = InetAddress.getByName(command.transport().broadcastAddress());
+            // Sender는 결과 포트에 bind한 같은 소켓으로 데이터 송신과 Receiver RESULT 수신을 함께 수행한다.
             try (DatagramSocket socket = new DatagramSocket(command.transport().resultPort())) {
                 activeSocket = socket;
                 socket.setBroadcast(true);
@@ -280,12 +284,14 @@ public final class UdpSessionService implements AutoCloseable {
                         first.timeOfInterval(),
                         utcTicks(),
                         json.writeValueAsBytes(manifest));
+                // SESSION_START가 먼저 도착해야 Receiver가 뒤따르는 FRAME의 세션 ID와 기대 개수를 해석할 수 있다.
                 sendCopies(
                         socket,
                         destination,
                         command.transport().dataPort(),
                         start,
                         command.transport().repeatCount());
+                // FRAME은 논리 순번마다 repeatCount회 시도하며 Test E에서 선택된 복제본만 실제 전송하지 않는다.
                 long sent = 0;
                 for (int index = 0;
                         index < prepared.frames().size() && !cancelled.get();
@@ -378,12 +384,14 @@ public final class UdpSessionService implements AutoCloseable {
                         0,
                         utcTicks(),
                         new byte[0]);
+                // SESSION_END도 반복 전송해 하나가 유실돼 Receiver가 불필요하게 timeout까지 기다릴 가능성을 낮춘다.
                 sendCopies(
                         socket,
                         destination,
                         command.transport().dataPort(),
                         end,
                         command.transport().repeatCount());
+                // 다른 세션이나 종류의 UDP가 섞여도 이 시험의 RESULT가 올 때까지 무시한다.
                 while (!cancelled.get()) {
                     DatagramPacket datagram = new DatagramPacket(new byte[1500], 1500);
                     socket.receive(datagram);
@@ -443,6 +451,7 @@ public final class UdpSessionService implements AutoCloseable {
             java.util.function.Consumer<FrameEvidenceMessage> evidenceSink,
             java.util.function.Consumer<RoleResult> sink) {
         Instant started=Instant.now();
+        // ARM_RECEIVER 명령 시점에 dataPort를 먼저 점유하므로 Sender의 첫 UDP 패킷을 놓치지 않는다.
         try (DatagramSocket socket = new DatagramSocket(command.transport().dataPort())) {
             cancelled.set(false);
             activeSocket = socket;
@@ -475,10 +484,12 @@ public final class UdpSessionService implements AutoCloseable {
                         continue;
                     }
                     lastPacketAt = Instant.now();
+                    // repeatCount로 다시 온 같은 종류·sequence는 통계만 올리고 복호화 입력에는 한 번만 채택한다.
                     if (!accepted.add(new Key(packet.kind(), packet.sequence()))) {
                         duplicates++;
                         continue;
                     }
+                    // manifest가 원본 크기·Hash·시험 조건을 제공하며 응답 주소는 실제 송신 datagram에서 얻는다.
                     if (packet.kind() == Kind.SESSION_START) {
                         manifest = json.readValue(packet.payload(), Manifest.class);
                         senderAddress = datagram.getAddress();
@@ -540,6 +551,7 @@ public final class UdpSessionService implements AutoCloseable {
                         event.accept(EventType.RX_STATUS, frameDetails);
                         continue;
                     }
+                    // END보다 앞서 보낸 FRAME이 네트워크에서 늦게 도착할 수 있어 짧은 grace를 둔다.
                     if (packet.kind() == Kind.SESSION_END) {
                         Thread.sleep(command.transport().endGraceMilliseconds());
                         break;
@@ -571,6 +583,7 @@ public final class UdpSessionService implements AutoCloseable {
                     "invalidDatagrams", corrupt,
                     "corruptDatagrams", corrupt));
 
+            // UDP 수집이 끝난 뒤에만 Native Decoder를 호출해 수신 loop와 CPU 작업을 분리한다.
             DecodeAggregate aggregate = decodeFrames(frames.values(), manifest.testType);
 
             // Receiver가 실제로 채택한 6,000비트와 복호화 후 재인코딩한 검증 프레임을 서버에 전달한다.
@@ -617,6 +630,7 @@ public final class UdpSessionService implements AutoCloseable {
             }
             byte[] raw = reconstructed.toByteArray();
             String hash = Hashing.hex(Hashing.sha256Digest().digest(raw));
+            // 크기·전체 Hash·record 수·미완성 조각을 함께 검사해야 부분 복원이 우연히 성공으로 보이지 않는다.
             boolean integrityOk = raw.length == manifest.sourceLength
                     && hash.equals(manifest.sourceSha256)
                     && records.size() == manifest.recordCount
@@ -719,6 +733,8 @@ public final class UdpSessionService implements AutoCloseable {
                     integrity.sourceSha256().equals(integrity.reconstructedSha256()));
             event.accept(EventType.RX_STATUS, verificationDetails);
 
+            // Receiver 자신의 RoleResult는 중앙 서버 WebSocket으로 먼저 보내고,
+            // 아래의 축약 WireResult는 UDP로 Sender에 돌려줘 Sender 결과 생성에 사용한다.
             sink.accept(result);
 
             byte[] payload = json.writeValueAsBytes(wire);
@@ -798,6 +814,7 @@ public final class UdpSessionService implements AutoCloseable {
         return total;
     }
 
+    /** 프레임 하나를 복호화하고 CRC가 유효한 GRAW 조각만 재조립기에 전달한다. */
     private void decodeOne(
             byte[] frame,
             int toi,
@@ -824,6 +841,7 @@ public final class UdpSessionService implements AutoCloseable {
             boolean fullyDecoded = decoded.sb2Valid()
                     && decoded.sb3Valid()
                     && decoded.sb4Valid();
+            // 실제 GRAW 조각은 SB3/SB4에 있으므로 SB2 실패만으로 재조립 가능한 데이터를 버리지는 않는다.
             boolean usedForGraw = decoded.sb3Valid() && decoded.sb4Valid();
             if (fullyDecoded) {
                 total.fullyDecodedFrames++;

@@ -34,6 +34,7 @@ final class ServerDiscovery {
         }
         try (var executor = Executors.newVirtualThreadPerTaskExecutor()) {
             var completion = new ExecutorCompletionService<URI>(executor);
+            // /24 후보를 직렬 조회하면 수 분이 걸릴 수 있어 짧은 HTTP probe를 virtual thread로 동시에 실행한다.
             for (String host : candidates) {
                 completion.submit(() -> probe(host, port));
             }
@@ -49,6 +50,7 @@ final class ServerDiscovery {
                 }
                 URI result = completed.get();
                 if (result != null) {
+                    // 가장 먼저 LNIS 식별 응답을 준 주소를 채택하고 나머지 probe는 executor 종료 시 취소한다.
                     return Optional.of(result);
                 }
             }
@@ -73,6 +75,7 @@ final class ServerDiscovery {
                 return null;
             }
             DiscoveryResponse value = json.readValue(response.body(), DiscoveryResponse.class);
+            // 단순히 200을 반환하는 다른 장비를 서버로 오인하지 않도록 서비스명과 상대 경로를 확인한다.
             if (!"lnis-server".equals(value.service())
                     || value.agentWebSocketPath() == null
                     || !value.agentWebSocketPath().startsWith("/")) {
@@ -87,6 +90,7 @@ final class ServerDiscovery {
 
     private static Collection<String> candidateHosts() {
         LinkedHashSet<String> hosts = new LinkedHashSet<>();
+        // 개발 환경의 동일 PC 서버도 찾을 수 있도록 LAN 후보보다 localhost를 먼저 넣는다.
         hosts.add("127.0.0.1");
         try {
             NetworkInterface.networkInterfaces()
