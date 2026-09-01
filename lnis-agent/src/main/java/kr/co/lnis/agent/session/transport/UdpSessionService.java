@@ -39,10 +39,16 @@ public final class UdpSessionService implements AutoCloseable {
             String receiverAgentId,
             /** 원본 GRAW가 저장된 서버 입력 버퍼 UUID다. */
             UUID inputId,
+            /** SB2 ephemeris에 사용할 AFS PRN 설정이다. */
+            AfsSettings afs,
             /** UDP 주소·포트·반복·타임아웃 설정이다. */
             TransportSettings transport,
             /** Test A~E 오류 주입과 판정 설정이다. */
-            TestOptions options) {}
+            TestOptions options) {
+        public SessionCommand {
+            afs = afs == null ? new AfsSettings(1) : afs;
+        }
+    }
 
     /** Sender가 SESSION_START UDP payload로 Receiver에 전달하는 원본·시험 조건 manifest다. */
     private record Manifest(
@@ -136,6 +142,12 @@ public final class UdpSessionService implements AutoCloseable {
     private record ReceivedFrame(
             /** 0부터 시작하는 논리 AFS 프레임 순번이다. */
             long sequence,
+            /** UDP AFS 채널 PRN이다. */
+            int prn,
+            /** AFS week 번호다. */
+            int week,
+            /** GPS 주 내 1,200초 구간 번호인 AFS ITOW다. */
+            int afsIntervalOfWeek,
             /** Native Decoder에 전달할 0~99 범위 TOI다. */
             int toi,
             /** UDP payload에서 꺼낸 750 byte AFSFrame이다. */
@@ -201,7 +213,8 @@ public final class UdpSessionService implements AutoCloseable {
             // 길이-prefix 파일을 검증된 GRAW record로 분리한 뒤 각 record를 SB3/SB4 조각으로 만든다.
             List<byte[]> records = GrawCodec.splitLengthPrefixed(source);
             AfsFrameBuilder.Prepared prepared =
-                    new AfsFrameBuilder(codec).prepare(records, command.options());
+                    new AfsFrameBuilder(codec).prepare(
+                            records, command.options(), command.afs().prn());
             String sourceHash = Hashing.hex(Hashing.sha256Digest().digest(source));
             var first = prepared.frames().getFirst();
             double dropRate = command.options().testType() == TestType.TEST_E_UDP_DROP
@@ -220,7 +233,7 @@ public final class UdpSessionService implements AutoCloseable {
             Manifest manifest = new Manifest(
                     id,
                     1,
-                    8,
+                    command.afs().prn(),
                     63,
                     source.length,
                     sourceHash,
@@ -251,6 +264,7 @@ public final class UdpSessionService implements AutoCloseable {
             preparedDetails.put("stage", "Prepared");
             preparedDetails.put("message", "Transmission plan prepared");
             preparedDetails.put("testType", command.options().testType());
+            preparedDetails.put("afsPrn", command.afs().prn());
             preparedDetails.put("sourceBytes", source.length);
             preparedDetails.put("recordCount", records.size());
             preparedDetails.put("totalFrames", prepared.frames().size());
@@ -278,7 +292,7 @@ public final class UdpSessionService implements AutoCloseable {
                         id,
                         0,
                         0,
-                        8,
+                        command.afs().prn(),
                         first.week(),
                         first.intervalOfWeek(),
                         first.timeOfInterval(),
@@ -302,7 +316,7 @@ public final class UdpSessionService implements AutoCloseable {
                             id,
                             index,
                             0,
-                            8,
+                            command.afs().prn(),
                             frame.week(),
                             frame.intervalOfWeek(),
                             frame.timeOfInterval(),
@@ -368,6 +382,7 @@ public final class UdpSessionService implements AutoCloseable {
                                 0,
                                 false,
                                 null,
+                                null,
                                 injection == null
                                         ? "오류가 주입되지 않은 Sender 프레임"
                                         : "Sender가 시험 조건에 따라 비트를 반전한 프레임"));
@@ -378,7 +393,7 @@ public final class UdpSessionService implements AutoCloseable {
                         id,
                         prepared.frames().size(),
                         0,
-                        8,
+                        command.afs().prn(),
                         0,
                         0,
                         0,
@@ -525,10 +540,17 @@ public final class UdpSessionService implements AutoCloseable {
                         continue;
                     }
                     if (packet.kind() == Kind.FRAME) {
+                        if (packet.prn() != manifest.prn) {
+                            corrupt++;
+                            continue;
+                        }
                         frames.put(
                                 packet.sequence(),
                                 new ReceivedFrame(
                                         packet.sequence(),
+                                        packet.prn(),
+                                        packet.week(),
+                                        packet.intervalOfWeek(),
                                         packet.timeOfInterval(),
                                         packet.payload()));
                         Map<String, Object> frameDetails = new LinkedHashMap<>();
@@ -610,6 +632,7 @@ public final class UdpSessionService implements AutoCloseable {
                         diagnostic == null ? 0 : diagnostic.sb3DecisionChanges(),
                         diagnostic == null ? 0 : diagnostic.sb4DecisionChanges(),
                         diagnostic != null && diagnostic.usedForGrawReassembly(),
+                        aggregate.sb2Ephemeris.get(frameIndex),
                         diagnostic == null
                                 ? "동기 패턴을 찾지 못해 복호화 대상에서 제외됐습니다."
                                 : diagnostic.failureReason(),
@@ -746,7 +769,7 @@ public final class UdpSessionService implements AutoCloseable {
                     manifest.testId,
                     0,
                     0,
-                    8,
+                    manifest.prn,
                     0,
                     0,
                     0,
@@ -797,19 +820,14 @@ public final class UdpSessionService implements AutoCloseable {
                 if (source < ordered.size()) {
                     decodeOne(
                             extract(joined, offset),
-                            ordered.get(source).toi,
-                            Math.toIntExact(ordered.get(source).sequence),
+                            ordered.get(source),
                             total);
                 }
             }
             return total;
         }
         for (ReceivedFrame frame : input) {
-            decodeOne(
-                    frame.payload,
-                    frame.toi,
-                    Math.toIntExact(frame.sequence),
-                    total);
+            decodeOne(frame.payload, frame, total);
         }
         return total;
     }
@@ -817,17 +835,24 @@ public final class UdpSessionService implements AutoCloseable {
     /** 프레임 하나를 복호화하고 CRC가 유효한 GRAW 조각만 재조립기에 전달한다. */
     private void decodeOne(
             byte[] frame,
-            int toi,
-            int frameIndex,
+            ReceivedFrame source,
             DecodeAggregate total) {
+        int frameIndex = Math.toIntExact(source.sequence);
         try {
-            var decoded = codec.decode(toi, frame);
+            var decoded = codec.decode(source.toi, frame);
             total.decodedFrames++;
             total.reencodedFrames.put(
                     frameIndex,
-                    codec.encode(toi, decoded.sb2(), decoded.sb3(), decoded.sb4()));
+                    codec.encode(source.toi, decoded.sb2(), decoded.sb3(), decoded.sb4()));
             if (decoded.sb2Valid()) {
                 total.sb2Valid++;
+                total.sb2Ephemeris.put(
+                        frameIndex,
+                        Sb2PayloadCodec.decode(
+                                decoded.sb2(),
+                                source.prn,
+                                source.week,
+                                source.afsIntervalOfWeek));
             }
             if (decoded.sb3Valid()) {
                 total.sb3Valid++;
@@ -966,6 +991,7 @@ public final class UdpSessionService implements AutoCloseable {
         final AfsReassembler reassembler = new AfsReassembler();
         final Map<Integer, byte[]> reencodedFrames = new HashMap<>();
         final Map<Integer, FrameDecodeDiagnostic> diagnostics = new HashMap<>();
+        final Map<Integer, Sb2EphemerisResult> sb2Ephemeris = new HashMap<>();
         long decodedFrames;
         long fullyDecodedFrames;
         long sb2Valid;

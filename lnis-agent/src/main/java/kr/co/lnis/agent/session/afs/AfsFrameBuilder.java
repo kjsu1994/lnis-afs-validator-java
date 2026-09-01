@@ -12,7 +12,7 @@ import java.util.*;
  * canonical GRAW 레코드를 AFS 프레임으로 조립하고 시험 오류를 주입한다.
  *
  * <p>각 GRAW 레코드를 CRC가 포함된 fragment로 나누고 두 fragment를 SB3/SB4에 배치한다. SB2에는
- * week/interval과 결정론적 test pattern을 기록한다. Test B~D의 오류 위치는 seed와 frame index로
+ * week/AFS ITOW와 선택 PRN의 LANS ephemeris를 기록한다. Test B~D의 오류 위치는 seed와 frame index로
  * 계산해 기존 WPF 시험과 반복 실행 결과가 같도록 유지한다.
  */
 public final class AfsFrameBuilder {
@@ -20,7 +20,7 @@ public final class AfsFrameBuilder {
     public record Frame(
             /** GPS week 번호다. */
             int week,
-            /** 해당 GPS week를 1,200초 단위로 나눈 구간 번호다. */
+            /** GPS 주 내 1,200초 구간 번호인 AFS ITOW다. u-blox iTOW(ms)와 다르다. */
             int intervalOfWeek,
             /** 1,200초 구간 안의 AFS TOI 값이며 범위는 0~99다. */
             int timeOfInterval,
@@ -62,7 +62,7 @@ public final class AfsFrameBuilder {
     public AfsFrameBuilder(NativeAfsCodec codec) { this.codec = codec; }
 
     /** 전체 입력 record를 시간 순서의 AFS frame 목록과 오류 주입 개수로 변환한다. */
-    public Prepared prepare(List<byte[]> records, TestOptions options) {
+    public Prepared prepare(List<byte[]> records, TestOptions options, int prn) {
         if (records.isEmpty()) throw new IllegalArgumentException("capture.graw is empty");
         List<byte[]> blocks = new ArrayList<>();
         // GRAW record 하나가 여러 86-byte payload 조각이 될 수 있으며 이후 프레임당 두 조각을 소비한다.
@@ -78,7 +78,7 @@ public final class AfsFrameBuilder {
             byte[] second = index + 1 < blocks.size() ? blocks.get(index + 1) : blocks.get(index);
             byte[] encoded = codec.encode(
                     time[2],
-                    sb2(time[0], time[1]),
+                    Sb2PayloadCodec.encode(time[0], time[1], prn),
                     AfsRawFragmentCodec.toSbBits(blocks.get(index)),
                     AfsRawFragmentCodec.toSbBits(second));
             byte[] reference = encoded.clone();
@@ -146,21 +146,12 @@ public final class AfsFrameBuilder {
             default -> "NONE";
         };
     }
-    private static byte[] sb2(int week, int interval) {
-        byte[] bits = new byte[1176]; int state = 0x6D2B79F5 ^ (week << 9) ^ interval;
-        for (int i = 0; i < bits.length; i++) { state ^= state << 13; state ^= state >>> 17; state ^= state << 5; bits[i] = (byte) (state & 1); }
-        write(bits, 0, 13, week); write(bits, 13, 9, interval); return bits;
-    }
-    private static void write(byte[] bits, int offset, int length, long value) {
-        for (int i = 0; i < length; i++) {
-            bits[offset + i] = (byte) ((value >> (length - i - 1)) & 1);
-        }
-    }
     private static int[] timeFrom(List<byte[]> records) {
         // 실제 GNSS epoch가 있으면 그 GPS 시간을 우선 사용하고, 메타데이터뿐이면 수집 UTC에서 계산한다.
         for (byte[] record : records) {
             var envelope = GrawCodec.decode(record);
-            if (envelope.message() instanceof GrawCodec.ObservationEpoch x) return nextTime(x.week(), x.receiverTowSeconds());
+            if (envelope.message() instanceof GrawCodec.ObservationEpoch x)
+                return nextTime(x.week(), x.receiverTowSeconds());
         }
         Instant captured = GrawCodec.decode(records.getFirst()).capturedAt();
         long gpsSeconds = Duration.between(Instant.parse("1980-01-06T00:00:00Z"), captured).getSeconds() + 18;

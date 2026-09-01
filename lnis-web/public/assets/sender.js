@@ -387,6 +387,10 @@ conditions();
 
 /** 서버 요청 전에 시험별 허용 범위를 일반 사용자가 이해할 수 있는 문장으로 검증한다. */
 function validateTestSettings(options, transport) {
+    const afsPrn = Number($('afs-prn').value);
+    if (!Number.isInteger(afsPrn) || afsPrn < 1 || afsPrn > 8) {
+        return 'SB2 LANS Ephemeris PRN은 1~8 범위에서 선택하세요.';
+    }
     if (transport.repeatCount < 1 || transport.repeatCount > 20) {
         return 'UDP 반복 송신 횟수는 1~20 범위로 입력하세요.';
     }
@@ -424,6 +428,9 @@ $('test-start').onclick = async () => {
             senderAgentId,
             receiverAgentId,
             inputId,
+            afs: {
+                prn: Number($('afs-prn').value),
+            },
             transport: {
                 broadcastAddress: $('broadcast-address').value,
                 dataPort: Number($('data-port').value),

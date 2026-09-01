@@ -141,6 +141,36 @@ public final class LnisModels {
         }
     }
 
+    /** AFS 프레임 payload 생성에 적용할 설정이다. */
+    public record AfsSettings(
+            /** LANS-AFS-SIM 기본 almanac에서 사용할 위성 PRN이며 범위는 1~8이다. */
+            int prn) {
+        public AfsSettings {
+            if (prn == 0) prn = 1;
+        }
+    }
+
+    /** Receiver가 CRC 정상 SB2에서 해석한 LANS ephemeris와 검증 결과다. */
+    public record Sb2EphemerisResult(
+            String profileId,
+            int prn,
+            int week,
+            /** GPS 주 내 1,200초 구간 번호인 AFS ITOW다. u-blox iTOW(ms)와 다르다. */
+            int afsItow,
+            int toeSeconds,
+            double eccentricity,
+            double sqrtSemiMajorAxis,
+            double inclinationRadians,
+            double ascendingNodeRadians,
+            double argumentOfPerigeeRadians,
+            double meanAnomalyRadians,
+            int tocSeconds,
+            double af0Seconds,
+            double af1SecondsPerSecond,
+            boolean headerMatchesPacket,
+            boolean ephemerisMatchesConfigured,
+            boolean tailTestPatternValid) {}
+
     /**
      * Test A~E에 공통으로 전달되는 오류 주입 및 판정 옵션이다.
      *

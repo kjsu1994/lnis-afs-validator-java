@@ -323,6 +323,9 @@ public class SessionService {
         if (t.repeatCount() < 1 || t.repeatCount() > 20) {
             throw new IllegalArgumentException("Repeat count must be 1 to 20");
         }
+        if (request.afs().prn() < 1 || request.afs().prn() > 8) {
+            throw new IllegalArgumentException("AFS PRN must be 1 to 8");
+        }
         TestOptions o = request.options();
         if ((o.testType() == TestType.TEST_B_RANDOM_ERRORS
                 || o.testType() == TestType.TEST_C_BURST_ERRORS)

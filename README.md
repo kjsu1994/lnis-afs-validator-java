@@ -547,6 +547,18 @@ AFS 기본값은 PRN `8`, Custom Message Type `63`입니다.
 
 Receiver는 복원 결과의 byte 길이, record 수, SHA-256 및 미완성 fragment 여부를 원본 manifest와 비교합니다. Test D는 손상되지 않은 프레임의 동기 재획득 수와 SB2·SB3·SB4 CRC 완전 복호 수를 별도로 평가합니다.
 
+#### SB2 payload와 AFS ITOW
+
+SB2의 1,176개 정보 비트는 LANS-AFS-SIM commit
+`480c6bf353717bafc04b5ee5bafb38ed90e61aae`의 `eph2sbf()` 배치를 따른다.
+`0~12`는 WN, `13~21`은 AFS ITOW, `22~283`은 toe/ecc/sqrta/inc0/omg0/aop/m0/toc/af0/af1,
+`284~1175`는 원본과 동일한 0/1 교대 시험 패턴이다. 시험마다 PRN 1~8 중 하나를 선택하며
+내장 ephemeris 값은 원본 `default_almanac.txt`에서 가져온다.
+
+AFS ITOW는 GPS 주 시작 후의 **1,200초 구간 번호**다. u-blox 메시지에서 사용하는
+GPS 주 내 millisecond 단위 iTOW와 이름만 비슷하고 단위와 의미가 다르다. 기존 Java/UDP 필드
+`intervalOfWeek`는 wire 호환을 위해 유지하며 결과 JSON에서는 `afsItow`로 명시한다.
+
 #### Test D의 오픈소스 근거와 범위
 
 원본 WPF의 Native Codec은 프로젝트에 포함된 `LANS-AFS-SIM`과 `PocketSDR-AFS` 코드를 사용합니다.

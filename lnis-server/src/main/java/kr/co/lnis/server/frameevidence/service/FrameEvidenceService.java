@@ -156,6 +156,7 @@ public class FrameEvidenceService {
                 receiver == null ? 0 : receiver.sb3DecisionChanges(),
                 receiver == null ? 0 : receiver.sb4DecisionChanges(),
                 receiver != null && receiver.usedForGrawReassembly(),
+                receiver == null ? null : receiver.sb2Ephemeris(),
                 receiver == null ? null : receiver.failureReason(),
                 hash(reference),
                 hash(transmitted),

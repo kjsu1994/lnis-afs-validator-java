@@ -1,6 +1,7 @@
 package kr.co.lnis.server.frameevidence.dto;
 
 import java.util.List;
+import kr.co.lnis.protocol.model.LnisModels.Sb2EphemerisResult;
 
 /**
  * 프레임 선택 목록과 CSV에 사용하는 단일 AFS 프레임 비교·복호 진단 요약이다.
@@ -32,6 +33,8 @@ public record FrameEvidenceSummary(
         int sb4DecisionChanges,
         /** SB3와 SB4 CRC가 정상이라 이 프레임의 GRAW 조각을 재조립에 사용했는지 여부다. */
         boolean usedForGrawReassembly,
+        /** Receiver가 CRC 정상 SB2에서 해석한 LANS ephemeris와 검증 결과다. */
+        Sb2EphemerisResult sb2Ephemeris,
         /** CRC 실패 블록 또는 Decoder 예외를 사용자가 읽을 수 있게 정리한 이유다. */
         String failureReason,
         /** 오류 주입 전 기준 프레임 전체 750 byte의 SHA-256이다. */

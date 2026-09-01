@@ -17,7 +17,7 @@ import static kr.co.lnis.protocol.model.LnisModels.*;
  */
 public final class AgentProtocol {
     /** 현재 서버/Agent wire protocol version이다. */
-    public static final int PROTOCOL_VERSION = 1;
+    public static final int PROTOCOL_VERSION = 2;
     private AgentProtocol() {}
 
     /** Envelope payload가 어떤 형태인지 결정하는 최상위 메시지 종류다. */
@@ -166,6 +166,8 @@ public final class AgentProtocol {
             int sb4DecisionChanges,
             /** SB3·SB4 CRC가 정상이라 GRAW 조각을 재조립에 사용했는지 여부다. */
             boolean usedForGrawReassembly,
+            /** CRC 정상 SB2에서 해석한 LANS ephemeris와 profile 검증 결과다. */
+            Sb2EphemerisResult sb2Ephemeris,
             /** 실패한 SB CRC 또는 Decoder 예외의 요약 설명이다. */
             String failureReason,
             /** Test D 동기 제외 등 Agent가 서버에 전달하는 추가 진단 메모다. */

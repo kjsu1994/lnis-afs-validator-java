@@ -3,6 +3,7 @@ package kr.co.lnis.server.frameevidence.service;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import kr.co.lnis.protocol.model.AgentProtocol.FrameEvidenceMessage;
 import kr.co.lnis.protocol.model.LnisModels.AgentRole;
+import kr.co.lnis.protocol.model.LnisModels.Sb2EphemerisResult;
 import kr.co.lnis.server.frameevidence.entity.FrameEvidenceEntity;
 import kr.co.lnis.server.frameevidence.repository.FrameEvidenceRepository;
 import org.junit.jupiter.api.Test;
@@ -23,7 +24,7 @@ class FrameEvidenceServiceTest {
     private FrameEvidenceRepository repository;
 
     @Test
-    void mergesSenderAndReceiverEvidenceAndCountsBitDifferences() {
+    void mergesSenderAndReceiverEvidenceAndCountsBitDifferences() throws Exception {
         UUID sessionId = UUID.randomUUID();
         byte[] reference = new byte[750];
         byte[] transmitted = reference.clone();
@@ -31,17 +32,21 @@ class FrameEvidenceServiceTest {
         transmitted[749] = (byte) 0b0000_0001;
         byte[] received = transmitted.clone();
         byte[] reencoded = reference.clone();
+        var sb2 = new Sb2EphemerisResult(
+                "profile-1", 1, 2300, 123, 319488, 0.6, 2557.342371,
+                0.98, 0, 1.57, 0, 319488, 0, 0,
+                true, true, true);
 
         FrameEvidenceMessage sender = new FrameEvidenceMessage(
                 0, reference, transmitted, null, null,
                 List.of(0, 5999), false,
                 false, false, false, false,
-                0, 0, 0, false, null, "sender");
+                0, 0, 0, false, null, null, "sender");
         FrameEvidenceMessage receiver = new FrameEvidenceMessage(
                 0, null, null, received, reencoded,
                 List.of(), true,
                 true, true, true, true,
-                10, 20, 30, true, null, "receiver");
+                10, 20, 30, true, sb2, null, "receiver");
         when(repository.find(sessionId, AgentRole.SENDER, 0))
                 .thenReturn(java.util.Optional.of(new FrameEvidenceEntity(
                         sessionId, AgentRole.SENDER, 0, sender, Instant.now())));
@@ -59,6 +64,11 @@ class FrameEvidenceServiceTest {
         assertEquals(0, detail.summary().referenceToReencodedDifferences());
         assertEquals(List.of(0, 5999), detail.referenceToTransmittedPositions());
         assertTrue(detail.summary().interpretation().contains("완전히 같아졌습니다"));
+        assertEquals(123, detail.summary().sb2Ephemeris().afsItow());
+        String resultJson = new ObjectMapper()
+                .findAndRegisterModules()
+                .writeValueAsString(detail);
+        assertTrue(resultJson.contains("\"afsItow\":123"));
     }
 
     @Test
@@ -70,7 +80,7 @@ class FrameEvidenceServiceTest {
                 0, new byte[749], null, null, null,
                 List.of(), false,
                 false, false, false, false,
-                0, 0, 0, false, null, "invalid");
+                0, 0, 0, false, null, null, "invalid");
 
         assertThrows(
                 IllegalArgumentException.class,
