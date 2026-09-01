@@ -85,6 +85,10 @@ lnis-agent  ──┘
 - protocol 변경 시 서버와 Agent가 함께 컴파일되므로 양쪽 규격 불일치를 조기에 발견할 수 있습니다.
 - 빌드 시 `lnis-protocol-1.0.0.jar`가 서버 JAR과 Agent 배포본에 각각 포함됩니다.
 
+현재 Agent WebSocket protocol은 **v2**입니다. v2에서는 세션별 AFS PRN 설정과 Receiver의
+SB2 ephemeris 증거가 추가되었습니다. protocol version이 다른 Server와 Agent는 함께 사용할 수
+없으므로 중앙 서버, Sender Agent, Receiver Agent를 반드시 같은 소스 빌드로 배포해야 합니다.
+
 따라서 세 모듈은 별도 저장소가 아니라 하나의 Gradle 멀티모듈 프로젝트이며, 실제 실행 산출물은 서버와 Agent 두 종류입니다.
 
 백엔드는 공통 계층 폴더에 모든 클래스를 모으는 방식이 아니라, 업무 기능을 먼저 나누고 각 기능 아래에 필요한 계층을 배치하는 **기능 우선(Vertical Slice)** 구조입니다.
@@ -180,13 +184,13 @@ Gradle로 직접 빌드할 경우 Java 21이 필요합니다. Docker Compose만 
 작업 디렉터리:
 
 ```text
-C:\Users\honeybadger\Desktop\Lins Java
+O:\3.ing\LNIS\LnisServer
 ```
 
 관리자 권한이 아닌 일반 PowerShell에서 다음 명령을 실행할 수 있습니다.
 
 ```powershell
-Set-Location 'C:\Users\honeybadger\Desktop\Lins Java'
+Set-Location 'O:\3.ing\LNIS\LnisServer'
 Copy-Item .env.example .env
 ```
 
@@ -256,7 +260,7 @@ docker compose up -d --build
 이 프로젝트는 Maven이 아니라 **Gradle Kotlin DSL**을 사용합니다.
 
 ```powershell
-Set-Location 'C:\Users\honeybadger\Desktop\Lins Java'
+Set-Location 'O:\3.ing\LNIS\LnisServer'
 .\gradlew.bat clean test
 .\gradlew.bat :lnis-server:bootJar :lnis-agent:installDist
 ```
@@ -265,6 +269,10 @@ Set-Location 'C:\Users\honeybadger\Desktop\Lins Java'
 
 - 서버 JAR: `lnis-server/build/libs/lnis-server.jar`
 - Agent 배포본: `lnis-agent/build/install/lnis-agent`
+
+SB2/AFS 설정 또는 `lnis-protocol`을 변경한 빌드는 서버만 재기동해서는 적용되지 않습니다.
+두 Windows Agent PC에도 새 Agent 배포본을 복사하고 Sender/Receiver Agent 프로세스를
+재시작해야 합니다. `LnisAfsCodec.dll` ABI는 이번 SB2 payload 변경으로 바뀌지 않았습니다.
 
 호스트에 Java 21이 없으면 Gradle Docker 이미지로 테스트할 수 있습니다.
 
@@ -496,11 +504,11 @@ COM 연결 실패 시 다른 GNSS 도구가 같은 포트를 점유하고 있지
 1. Receiver PC 또는 모니터링 화면에서 `/lnis/test/receiver`를 엽니다.
 2. Sender 화면 `/lnis/test/sender`에서 입력 GRAW를 준비합니다.
 3. Sender Agent와 Receiver Agent를 선택합니다.
-4. 시험 종류와 조건을 입력합니다.
+4. 시험 종류와 SB2 LANS Ephemeris PRN(1~8), 오류 조건을 입력합니다.
 5. 목적지 주소 및 UDP 포트를 확인합니다.
 6. `시험 시작`을 누릅니다.
 7. 양쪽 화면에서 TX/RX 진행률과 이벤트 로그를 확인합니다.
-8. 완료 후 TX/RX 결과의 JSON 또는 CSV 다운로드 버튼을 누릅니다.
+8. 완료 후 통합 Excel 또는 JSON 다운로드 버튼을 누릅니다.
 
 중앙 서버는 Receiver를 먼저 대기 상태로 만든 다음 Sender 송신을 시작합니다.
 
@@ -527,8 +535,10 @@ COM 연결 실패 시 다른 GNSS 도구가 같은 포트를 점유하고 있지
 | 결과 제한 시간 | `30초` | Sender가 Receiver 결과를 기다리는 시간 |
 | 종료 유예 | `1000ms` | SESSION_END 후 지연 패킷 수신 유예 |
 | Probe 간격 | `1000ms` | 프로토콜 설정값 |
+| SB2 LANS Ephemeris PRN | `1` | 기본 almanac의 PRN 1~8 중 세션당 하나 선택 |
 
-AFS 기본값은 PRN `8`, Custom Message Type `63`입니다.
+AFS Custom Message Type 기본값은 `63`입니다. 기존 고정 PRN `8`은 제거됐으며 선택한
+PRN이 SESSION_START, FRAME, SESSION_END, RESULT packet에 일관되게 기록됩니다.
 
 ### 8.5 세션 상태
 
@@ -676,13 +686,13 @@ node lnis-web\test\result-presentation.smoke.mjs
 
 ### 8.7 sample-data 실제 A~E 회귀시험
 
-`C:\Users\honeybadger\Desktop\Lnis\sample-data\dummy-capture.graw`를 REST API로 실제 업로드하고,
-로컬 Sender/Receiver Agent와 UDP 통신을 사용해 A~E를 순서대로 실행하는 스크립트를 제공합니다.
+`SamplePath`로 지정한 GRAW를 REST API로 실제 업로드하고 로컬 Sender/Receiver Agent와
+UDP 통신을 사용해 A~E를 순서대로 실행하는 스크립트를 제공합니다.
 서버, Redis, Nginx와 두 Agent가 실행된 상태에서 다음 명령을 사용합니다.
 
 ```powershell
-Set-Location 'C:\Users\honeybadger\Desktop\Lins Java'
-.\scripts\run-sample-regression.ps1
+Set-Location 'O:\3.ing\LNIS\LnisServer'
+.\scripts\run-sample-regression.ps1 -SamplePath 'D:\LNIS\sample-data\dummy-capture.graw'
 ```
 
 특정 시험만 다시 확인하려면 다음처럼 `TestTypes`를 지정합니다.
@@ -907,6 +917,9 @@ POST /lnis/api/v1/sessions
   "senderAgentId": "sender-1",
   "receiverAgentId": "receiver-1",
   "inputId": "00000000-0000-0000-0000-000000000000",
+  "afs": {
+    "prn": 1
+  },
   "transport": {
     "broadcastAddress": "192.168.0.21",
     "dataPort": 45821,
@@ -927,6 +940,11 @@ POST /lnis/api/v1/sessions
   }
 }
 ```
+
+`afs` 또는 `afs.prn`을 생략하면 PRN `1`을 사용합니다. 허용 범위는 `1~8`이며 범위를
+벗어나면 세션을 생성하지 않습니다. 이 PRN은 단일 UDP 시험 스트림 전체에 적용됩니다.
+`intervalOfWeek`가 API/packet에 나타나는 경우 그 값은 u-blox iTOW(ms)가 아니라 GPS 주 내
+1,200초 구간 번호인 AFS ITOW입니다.
 
 조회 및 취소:
 
@@ -962,6 +980,17 @@ GET /lnis/api/v1/sessions/{sessionId}/frame-evidence/artifacts/frame-diff-summar
 첫 번째 프레임 증거 API는 원문을 제외한 프레임 선택 목록과 SHA-256/차이 수를 반환합니다.
 두 번째 API만 선택한 750 byte 프레임 네 단계 원문과 비트 차이 위치를 Base64 JSON으로 반환해
 브라우저와 서버가 한 번에 불필요한 대용량 데이터를 주고받지 않게 합니다.
+
+통합 `lnis-report.json`과 프레임 증거 상세에는 CRC가 정상인 SB2 해석 결과가 다음 경로로
+포함됩니다.
+
+```text
+frameEvidence[].summary.sb2Ephemeris
+```
+
+주요 필드는 `profileId`, `prn`, `week`, `afsItow`, 10개 ephemeris 값과
+`headerMatchesPacket`, `ephemerisMatchesConfigured`, `tailTestPatternValid`입니다.
+SB2 CRC가 실패했거나 동기 손상으로 복호화하지 않은 프레임은 `sb2Ephemeris: null`입니다.
 
 `role`에는 `tx`/`sender` 또는 `rx`/`receiver`를 사용할 수 있습니다.
 
@@ -1129,7 +1158,7 @@ REST API에는 현재 별도의 브라우저 사용자 로그인 기능이 없�
 중앙 서버:
 
 ```powershell
-Set-Location 'C:\Users\honeybadger\Desktop\Lins Java'
+Set-Location 'O:\3.ing\LNIS\LnisServer'
 Copy-Item .env.example .env
 # .env의 token 변경
 docker compose up -d --build

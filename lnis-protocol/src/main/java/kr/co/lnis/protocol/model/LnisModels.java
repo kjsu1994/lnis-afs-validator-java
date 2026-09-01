@@ -142,11 +142,18 @@ public final class LnisModels {
     }
 
     /** AFS 프레임 payload 생성에 적용할 설정이다. */
-    public record AfsSettings(
-            /** LANS-AFS-SIM 기본 almanac에서 사용할 위성 PRN이며 범위는 1~8이다. */
-            int prn) {
+    public record AfsSettings(Integer prn)/** LANS-AFS-SIM 기본 almanac에서 사용할 위성 PRN이며 범위는 1~8이다. */
+    {
         public AfsSettings {
-            if (prn == 0) prn = 1;
+            if (prn == null) {
+                prn = 1;
+            }
+
+            if (prn < 1 || prn > 8) {
+                throw new IllegalArgumentException(
+                        "AFS PRN must be 1 to 8"
+                );
+            }
         }
     }
 
