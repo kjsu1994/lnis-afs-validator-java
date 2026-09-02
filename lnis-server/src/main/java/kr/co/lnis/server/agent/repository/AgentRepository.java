@@ -1,57 +1,41 @@
 package kr.co.lnis.server.agent.repository;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
-import kr.co.lnis.server.agent.entity.AgentEntity;
-import org.springframework.data.redis.core.StringRedisTemplate;
-import org.springframework.stereotype.Repository;
-import java.time.Duration;
+import java.time.Instant;
 import java.util.*;
+import kr.co.lnis.server.agent.entity.AgentEntity;
+import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.stereotype.Repository;
 
 @Repository
-/** Agent 접속 상태를 24시간 TTL의 Redis Hash로 관리한다. */
+/** Agent 접속 상태를 H2에 저장하는 업무용 저장소다. */
 public class AgentRepository {
-    private static final String INDEX = "lnis:agents";
-    private final StringRedisTemplate redis;
-    private final ObjectMapper json;
+  private final AgentJpaRepository database;
 
-    public AgentRepository(StringRedisTemplate redis, ObjectMapper json) {
-        this.redis = redis;
-        this.json = json;
-    }
+  public AgentRepository(AgentJpaRepository database) {
+    this.database = database;
+  }
 
-    public void save(AgentEntity agent) {
-        try {
-            redis.opsForHash().put(INDEX, agent.agentId(), json.writeValueAsString(agent));
-            redis.expire(INDEX, Duration.ofDays(1));
-        } catch (Exception e) {
-            throw new IllegalStateException(e);
-        }
-    }
+  public void save(AgentEntity agent) {
+    database.save(agent);
+  }
 
-    public Optional<AgentEntity> find(String id) {
-        return parse(redis.opsForHash().get(INDEX, id));
-    }
+  public Optional<AgentEntity> find(String id) {
+    return database.findById(id);
+  }
 
-    public List<AgentEntity> findAll() {
-        return redis.opsForHash().values(INDEX).stream()
-                .map(this::parse)
-                .flatMap(Optional::stream)
-                .sorted(Comparator.comparing(AgentEntity::agentId))
-                .toList();
-    }
+  public List<AgentEntity> findAll() {
+    return database.findAll().stream().sorted(Comparator.comparing(AgentEntity::agentId)).toList();
+  }
 
-    public void remove(String id) {
-        redis.opsForHash().delete(INDEX, id);
-    }
+  public void remove(String id) {
+    database.deleteById(id);
+  }
 
-    private Optional<AgentEntity> parse(Object value) {
-        if (value == null) {
-            return Optional.empty();
-        }
-        try {
-            return Optional.of(json.readValue(value.toString(), AgentEntity.class));
-        } catch (Exception e) {
-            return Optional.empty();
-        }
-    }
+  public void deleteLastSeenBefore(Instant cutoff) {
+    database.deleteByLastSeenBefore(cutoff);
+  }
+}
+
+interface AgentJpaRepository extends JpaRepository<AgentEntity, String> {
+  void deleteByLastSeenBefore(Instant cutoff);
 }

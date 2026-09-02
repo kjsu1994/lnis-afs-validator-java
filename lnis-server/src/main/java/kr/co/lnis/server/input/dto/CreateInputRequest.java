@@ -4,7 +4,7 @@ import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.PositiveOrZero;
 import kr.co.lnis.protocol.model.LnisModels.InputKind;
 
-/** GRAW 업로드 또는 GNSS 수집 데이터를 받을 Redis 입력 버퍼 생성 요청이다. */
+/** GRAW 업로드 또는 GNSS 수집 데이터를 받을 파일 입력 버퍼 생성 요청이다. */
 @lombok.Value
 @lombok.AllArgsConstructor
 @lombok.Builder

@@ -10,7 +10,7 @@ import java.util.UUID;
 
 @RestController
 @RequestMapping("/lnis/api/v1/sessions")
-/** Redis에 저장된 역할별 결과를 실제 다운로드 파일로 변환한다. */
+/** H2에 저장된 역할별 결과를 실제 다운로드 파일로 변환한다. */
 public class ArtifactController {
     private static final MediaType XLSX = MediaType.parseMediaType(
             "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");

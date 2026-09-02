@@ -1,70 +1,94 @@
 package kr.co.lnis.server.session.repository;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import kr.co.lnis.protocol.model.LnisModels.AgentRole;
-import kr.co.lnis.protocol.model.LnisModels.RoleResult;
-import kr.co.lnis.server.session.entity.TestSessionEntity;
-import org.springframework.data.redis.core.StringRedisTemplate;
-import org.springframework.stereotype.Repository;
-import java.time.Duration;
+import java.time.Instant;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+import kr.co.lnis.protocol.model.LnisModels.AgentRole;
+import kr.co.lnis.protocol.model.LnisModels.RoleResult;
+import kr.co.lnis.protocol.model.LnisModels.SessionState;
+import kr.co.lnis.server.session.entity.RoleResultEntity;
+import kr.co.lnis.server.session.entity.TestSessionEntity;
+import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.stereotype.Repository;
 
 @Repository
-/** 시험 세션과 TX/RX 결과를 하나의 Redis Hash로 묶어 보관한다. */
+/** 시험 세션과 역할별 결과를 H2 테이블에 보관한다. */
 public class SessionRepository {
-    public static final Duration TTL = Duration.ofHours(24);
-    private final StringRedisTemplate redis;
-    private final ObjectMapper json;
+  private final SessionJpaRepository sessions;
+  private final RoleResultJpaRepository results;
+  private final ObjectMapper json;
 
-    public SessionRepository(StringRedisTemplate redis, ObjectMapper json) {
-        this.redis = redis;
-        this.json = json;
-    }
-    private static String key(UUID id) { return "lnis:session:" + id; }
-    public void save(TestSessionEntity value) {
-        try {
-            redis.opsForHash().put(
-                    key(value.sessionId()), "session", json.writeValueAsString(value));
-            redis.expire(key(value.sessionId()), TTL);
-        } catch (Exception e) {
-            throw new IllegalStateException(e);
-        }
-    }
+  public SessionRepository(
+      SessionJpaRepository sessions, RoleResultJpaRepository results, ObjectMapper json) {
+    this.sessions = sessions;
+    this.results = results;
+    this.json = json;
+  }
 
-    public Optional<TestSessionEntity> find(UUID id) {
-        Object value = redis.opsForHash().get(key(id), "session");
-        if (value == null) {
-            return Optional.empty();
-        }
-        try {
-            return Optional.of(json.readValue(value.toString(), TestSessionEntity.class));
-        } catch (Exception e) {
-            throw new IllegalStateException(e);
-        }
-    }
+  public void save(TestSessionEntity value) {
+    sessions.save(value);
+  }
 
-    public void saveResult(RoleResult result) {
-        try {
-            String field = result.role() == AgentRole.SENDER ? "txResult" : "rxResult";
-            redis.opsForHash().put(
-                    key(result.sessionId()), field, json.writeValueAsString(result));
-            redis.expire(key(result.sessionId()), TTL);
-        } catch (Exception e) {
-            throw new IllegalStateException(e);
-        }
-    }
+  public Optional<TestSessionEntity> find(UUID id) {
+    return sessions.findById(id);
+  }
 
-    public Optional<RoleResult> result(UUID id, AgentRole role) {
-        String field = role == AgentRole.SENDER ? "txResult" : "rxResult";
-        Object value = redis.opsForHash().get(key(id), field);
-        if (value == null) {
-            return Optional.empty();
-        }
-        try {
-            return Optional.of(json.readValue(value.toString(), RoleResult.class));
-        } catch (Exception e) {
-            throw new IllegalStateException(e);
-        }
+  public void saveResult(RoleResult result) {
+    try {
+      results.save(
+          new RoleResultEntity(
+              result.sessionId(), result.role(), json.writeValueAsString(result), Instant.now()));
+    } catch (Exception e) {
+      throw new IllegalStateException(e);
     }
+  }
+
+  public Optional<RoleResult> result(UUID id, AgentRole role) {
+    return results
+        .findBySessionIdAndRole(id, role)
+        .map(
+            value -> {
+              try {
+                return json.readValue(value.getResultJson(), RoleResult.class);
+              } catch (Exception error) {
+                throw new IllegalStateException(error);
+              }
+            });
+  }
+
+  public boolean existsByInputId(UUID inputId) {
+    return sessions.existsByInputId(inputId);
+  }
+
+  public List<UUID> terminalBefore(Instant cutoff) {
+    return sessions
+        .findByStateInAndUpdatedAtBefore(
+            List.of(
+                SessionState.COMPLETED, SessionState.CANCELLED,
+                SessionState.FAILED, SessionState.INCONCLUSIVE),
+            cutoff)
+        .stream()
+        .map(TestSessionEntity::sessionId)
+        .toList();
+  }
+
+  public void delete(UUID id) {
+    results.deleteBySessionId(id);
+    sessions.deleteById(id);
+  }
+}
+
+interface SessionJpaRepository extends JpaRepository<TestSessionEntity, UUID> {
+  boolean existsByInputId(UUID inputId);
+
+  List<TestSessionEntity> findByStateInAndUpdatedAtBefore(
+      List<SessionState> states, Instant cutoff);
+}
+
+interface RoleResultJpaRepository extends JpaRepository<RoleResultEntity, RoleResultEntity.Key> {
+  Optional<RoleResultEntity> findBySessionIdAndRole(UUID sessionId, AgentRole role);
+
+  void deleteBySessionId(UUID sessionId);
 }

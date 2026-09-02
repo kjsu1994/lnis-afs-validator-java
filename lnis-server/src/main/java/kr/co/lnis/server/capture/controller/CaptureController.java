@@ -34,7 +34,7 @@ public class CaptureController {
                     request);
             return input;
         } catch (RuntimeException error) {
-            // Agent 조회 또는 명령 전송이 실패하면 시험에 사용할 수 없는 Redis 입력을 남기지 않는다.
+            // Agent 조회 또는 명령 전송이 실패하면 시험에 사용할 수 없는 DB·파일 입력을 남기지 않는다.
             try {
                 inputs.remove(input.inputId());
             } catch (RuntimeException cleanupError) {

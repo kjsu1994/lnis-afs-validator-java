@@ -2,6 +2,9 @@
 build/
 **/build/
 .idea/
+DB/*
+!DB/.gitkeep
+data/
 *.iml
 logs/
 agent-data/

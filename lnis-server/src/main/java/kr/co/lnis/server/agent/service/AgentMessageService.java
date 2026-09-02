@@ -119,7 +119,7 @@ public class AgentMessageService {
         }
     }
 
-    /** 최초 접속 정보를 Agent 조회용 Redis 엔티티로 만들고 READY 이벤트를 방송한다. */
+    /** 최초 접속 정보를 Agent 조회용 JPA 엔티티로 만들고 READY 이벤트를 방송한다. */
     private void handleHello(Envelope envelope) throws Exception {
         Hello hello = json.treeToValue(envelope.payload(), Hello.class);
         agents.save(new AgentEntity(

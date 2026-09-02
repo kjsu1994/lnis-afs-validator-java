@@ -12,7 +12,7 @@ import java.util.UUID;
 /**
  * 역할별 시험 결과를 JSON 또는 UTF-8 BOM CSV 산출물로 직렬화한다.
  *
- * <p>파일을 서버 디스크에 미리 만들지 않고 HTTP 요청 시 Redis 결과에서 즉시 생성한다. 허용된 세 파일
+ * <p>파일을 서버 디스크에 미리 만들지 않고 HTTP 요청 시 H2 결과에서 즉시 생성한다. 허용된 세 파일
  * 이름만 switch로 처리해 사용자가 임의의 서버 파일 경로를 지정할 수 없게 한다.
  */
 public class ArtifactService {

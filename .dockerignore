@@ -1,4 +1,6 @@
 .git
+DB
+data
 .gradle
 **/build
 dist

@@ -1,85 +1,53 @@
 package kr.co.lnis.server.frameevidence.repository;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
+import java.time.Instant;
+import java.util.*;
 import kr.co.lnis.protocol.model.AgentProtocol.FrameEvidenceMessage;
 import kr.co.lnis.protocol.model.LnisModels.AgentRole;
 import kr.co.lnis.server.frameevidence.entity.FrameEvidenceEntity;
-import kr.co.lnis.server.session.repository.SessionRepository;
-import org.springframework.data.redis.core.StringRedisTemplate;
+import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
-import java.time.Instant;
-import java.util.*;
+import org.springframework.transaction.annotation.Transactional;
 
-/** Sender/Receiver 증거를 서로 다른 Redis Hash field에 저장해 동시 수신 충돌을 막는다. */
+/** Sender/Receiver 프레임 증거를 H2 BLOB으로 저장한다. */
 @Repository
 public class FrameEvidenceRepository {
-    private final StringRedisTemplate redis;
-    private final ObjectMapper json;
+  private final FrameEvidenceJpaRepository database;
 
-    public FrameEvidenceRepository(
-            StringRedisTemplate redis,
-            ObjectMapper json) {
-        this.redis = redis;
-        this.json = json;
-    }
+  public FrameEvidenceRepository(FrameEvidenceJpaRepository database) {
+    this.database = database;
+  }
 
-    public void save(
-            UUID sessionId,
-            AgentRole role,
-            FrameEvidenceMessage evidence) {
-        try {
-            FrameEvidenceEntity entity = new FrameEvidenceEntity(
-                    sessionId,
-                    role,
-                    evidence.frameIndex(),
-                    evidence,
-                    Instant.now());
-            redis.opsForHash().put(
-                    key(sessionId),
-                    field(role, evidence.frameIndex()),
-                    json.writeValueAsString(entity));
-            redis.expire(key(sessionId), SessionRepository.TTL);
-        } catch (Exception error) {
-            throw new IllegalStateException("AFS 프레임 증거 저장에 실패했습니다.", error);
-        }
+  @Transactional
+  public void save(UUID sessionId, AgentRole role, FrameEvidenceMessage evidence) {
+    Instant now = Instant.now();
+    var current =
+        database.findBySessionIdAndRoleAndFrameIndex(sessionId, role, evidence.frameIndex());
+    if (current.isPresent()) {
+      current.get().replace(evidence, now);
+    } else {
+      database.save(new FrameEvidenceEntity(sessionId, role, evidence.frameIndex(), evidence, now));
     }
+  }
 
-    public Optional<FrameEvidenceEntity> find(
-            UUID sessionId,
-            AgentRole role,
-            int frameIndex) {
-        Object value = redis.opsForHash().get(
-                key(sessionId),
-                field(role, frameIndex));
-        return decode(value);
-    }
+  public Optional<FrameEvidenceEntity> find(UUID sessionId, AgentRole role, int frameIndex) {
+    return database.findBySessionIdAndRoleAndFrameIndex(sessionId, role, frameIndex);
+  }
 
-    public List<FrameEvidenceEntity> findAll(UUID sessionId) {
-        List<FrameEvidenceEntity> values = new ArrayList<>();
-        for (Object value : redis.opsForHash().values(key(sessionId))) {
-            decode(value).ifPresent(values::add);
-        }
-        return values;
-    }
+  public List<FrameEvidenceEntity> findAll(UUID sessionId) {
+    return database.findBySessionId(sessionId);
+  }
 
-    private Optional<FrameEvidenceEntity> decode(Object value) {
-        if (value == null) {
-            return Optional.empty();
-        }
-        try {
-            return Optional.of(json.readValue(
-                    value.toString(),
-                    FrameEvidenceEntity.class));
-        } catch (Exception error) {
-            throw new IllegalStateException("AFS 프레임 증거 조회에 실패했습니다.", error);
-        }
-    }
+  public void deleteBySessionId(UUID sessionId) {
+    database.deleteBySessionId(sessionId);
+  }
+}
 
-    private static String key(UUID sessionId) {
-        return "lnis:frame-evidence:" + sessionId;
-    }
+interface FrameEvidenceJpaRepository extends JpaRepository<FrameEvidenceEntity, Long> {
+  Optional<FrameEvidenceEntity> findBySessionIdAndRoleAndFrameIndex(
+      UUID sessionId, AgentRole role, int frameIndex);
 
-    private static String field(AgentRole role, int frameIndex) {
-        return role.name() + ':' + frameIndex;
-    }
+  List<FrameEvidenceEntity> findBySessionId(UUID sessionId);
+
+  void deleteBySessionId(UUID sessionId);
 }

@@ -5,7 +5,7 @@
 - 중앙 백엔드: Java 21, Spring Boot REST API 및 WebSocket
 - 프론트엔드: HTML, CSS, Vanilla JavaScript
 - 실시간 상태: WebSocket을 통한 GNSS/TX/RX/시험 결과 전달
-- 임시 데이터: Redis 휘발성 버퍼, TTL 24시간
+- 영속 데이터: H2 파일 DB와 호스트 `DB` 폴더의 GRAW 파일
 - 시험 PC: Windows Java Agent 및 네이티브 AFS 코덱 DLL
 - 배포: Docker Compose 및 Nginx, 외부 서비스 포트 `8088`
 - 빌드: Gradle Kotlin DSL
@@ -21,10 +21,10 @@ Spring Boot는 화면을 직접 생성하는 서버가 아니라 다음 역할�
 - `/lnis/api/v1/**`: Agent 조회, GRAW 입력, GNSS 수집, 시험 실행, 결과 다운로드 REST API
 - `/lnis/agent/ws`: Windows Agent 제어 및 Agent 상태 수신 WebSocket
 - `/lnis/ws/status`: 브라우저에 GNSS/TX/RX/시험 상태를 전달하는 WebSocket
-- Redis에 시험 입력, 상태, 결과를 임시 저장
+- H2에 메타데이터·상태·결과를 저장하고 GRAW 원문은 별도 파일로 저장
 - Sender와 Receiver Agent의 실행 순서 및 단일 시험 세션 조정
 
-Nginx는 `8088` 포트에서 정적 화면과 Spring Boot 요청을 하나의 주소로 제공합니다. Spring Boot 컨테이너의 `8080` 및 Redis의 `6379` 포트는 호스트에 공개되지 않습니다.
+Nginx는 `8088` 포트에서 정적 화면과 Spring Boot 요청을 하나의 주소로 제공합니다. Spring Boot 컨테이너의 `8080` 포트와 H2 파일 DB는 외부에 공개되지 않습니다.
 
 ### 1.2 COM 포트를 Windows Agent가 담당하는 이유
 
@@ -48,7 +48,8 @@ Nginx는 `8088` 포트에서 정적 화면과 Spring Boot 요청을 하나의 �
           ├─ 정적 HTML/JS/CSS
           └─ Spring Boot :8080
                     │
-                    ├─ Redis (24시간 TTL, 영구 저장 없음)
+                    ├─ H2/JPA (`/app/data/lnis.mv.db`)
+                    ├─ GRAW 파일 (`/app/data/files/inputs`)
                     ├─ WebSocket ─ Sender Windows Agent ─ COM/u-blox
                     └─ WebSocket ─ Receiver Windows Agent
 
@@ -62,13 +63,13 @@ Sender와 Receiver 사이의 실제 시험 프레임은 중앙 서버를 경유�
 | 경로 | 설명 |
 |---|---|
 | `lnis-protocol` | 서버/Agent 공유 protocol, LGRW/LAFS wire 계약, CRC32, 결정론적 Drop 로직 |
-| `lnis-server` | Spring Boot Controller/DTO/Entity/Service/Repository/Mapper 및 Redis 연동 |
+| `lnis-server` | Spring Boot Controller/DTO/Entity/Service/Repository/Mapper 및 H2/JPA 연동 |
 | `lnis-agent` | Windows COM/u-blox, JNA 네이티브 코덱, UDP Sender/Receiver |
 | `lnis-web` | Sender/Receiver HTML, JavaScript, CSS 및 Nginx 설정 |
 | `native` | `LnisAfsCodec.dll`, C ABI 헤더/소스 및 고지 파일 |
 | `dist/server` | 빌드된 Spring Boot 실행 JAR |
 | `dist/windows-agent` | Windows Agent 설치용 전체 배포본 |
-| `docker-compose.yml` | Redis, Spring Boot, Nginx 실행 정의 |
+| `docker-compose.yml` | Spring Boot, H2 데이터 볼륨, Nginx 실행 정의 |
 
 ### 2.1 `lnis-protocol`을 독립 모듈로 두는 이유
 
@@ -80,7 +81,7 @@ lnis-server ──┐
 lnis-agent  ──┘
 ```
 
-- Spring Boot, Redis, COM 포트, JNA 같은 실행 환경 의존성을 포함하지 않습니다.
+- Spring Boot, H2/JPA, COM 포트, JNA 같은 실행 환경 의존성을 포함하지 않습니다.
 - WebSocket envelope, 세션/결과 모델, canonical GRAW와 UDP binary 규격만 제공합니다.
 - 서버가 Agent의 Windows 전용 라이브러리를 의존하거나 Agent가 Spring Boot를 의존하지 않게 합니다.
 - protocol 변경 시 서버와 Agent가 함께 컴파일되므로 양쪽 규격 불일치를 조기에 발견할 수 있습니다.
@@ -155,7 +156,7 @@ kr.co.lnis.agent
 - Docker Desktop 또는 Docker Engine
 - Docker Compose v2
 - 외부에서 접근 가능한 TCP `8088`
-- 권장 메모리: Redis 최대 메모리 설정값과 Spring Boot/Nginx 실행 메모리를 합산하여 준비
+- 디스크: `DB` 폴더에 H2 DB, GRAW 원본, 임시 파일과 백업을 저장할 충분한 공간
 
 Gradle로 직접 빌드할 경우 Java 21이 필요합니다. Docker Compose만 사용할 경우 호스트 JDK는 필요하지 않습니다.
 
@@ -199,7 +200,10 @@ Copy-Item .env.example .env
 
 ```dotenv
 LNIS_AGENT_TOKENS=sender-1=sender용-긴-임의-토큰,receiver-1=receiver용-긴-임의-토큰
-REDIS_MAXMEMORY=4gb
+LNIS_DB_USERNAME=sa
+LNIS_DB_PASSWORD=충분히-긴-DB-암호
+LNIS_INCOMPLETE_RETENTION=PT1H
+LNIS_COMPLETED_RETENTION=PT24H
 ```
 
 주의 사항:
@@ -216,7 +220,7 @@ docker compose up -d --build
 docker compose ps
 ```
 
-정상 상태에서는 `redis`와 `server`가 `healthy`, `nginx`가 `Up`으로 표시됩니다.
+정상 상태에서는 `server`가 `healthy`, `nginx`가 `Up`으로 표시됩니다.
 
 접속 주소:
 
@@ -258,7 +262,7 @@ docker compose down
 docker compose up -d --build
 ```
 
-`docker compose down`은 컨테이너와 Compose 네트워크를 제거합니다. 이 프로젝트의 Redis는 디스크 영구 저장을 사용하지 않으므로 컨테이너가 제거되면 남아 있던 시험 데이터는 복구할 수 없습니다.
+`docker compose down`은 컨테이너와 Compose 네트워크만 제거합니다. H2와 GRAW 파일은 호스트의 `DB` 폴더에 남으므로 다음 기동 때 다시 사용됩니다. `DB` 폴더를 직접 삭제하면 복구할 수 없습니다.
 
 ## 5. Gradle 빌드 및 테스트
 
@@ -788,34 +792,43 @@ Test D에서 동기 패턴을 의도적으로 훼손한 프레임은 Receiver가
 네 번째 지도가 없을 수 있습니다. 이것은 Test D의 설계된 동작이며, 다음 정상 동기를 찾아낸
 프레임들의 복구 결과와 Test D 판정 카드를 함께 확인해야 합니다.
 
-## 10. Redis 저장 정책
+## 10. H2 및 GRAW 파일 저장 정책
 
-Redis는 시험 중 필요한 임시 버퍼로만 사용됩니다.
+Compose는 호스트의 `./DB`를 컨테이너 `/app/data`에 바인드 마운트합니다.
 
-- RDB snapshot 비활성화: `--save ""`
-- AOF 비활성화: `--appendonly no`
-- 메모리 정책: `noeviction`
-- 입력/세션/결과/Agent 상태 키 TTL: 최대 24시간
-- AFS 프레임 상세 증거 TTL: 최대 24시간
-- 상세 증거 상한: 세션당 최대 500프레임. 초과 시 처음 250개와 마지막 250개 보관
-- Redis 포트는 Docker 내부 네트워크에서만 접근
+- H2 파일 DB: `DB/lnis.mv.db`
+- GRAW 입력: `DB/files/inputs/<input-id>.graw`
+- 업로드 중 임시 파일: `DB/files/inputs/<input-id>.part`
+- H2에는 Agent, 입력 메타데이터, 청크 위치, 세션, 역할별 결과, 활성 시험 잠금과 AFS 프레임 증거를 저장
+- AFS 프레임 증거 본문은 H2 BLOB으로 저장
+- 브라우저 WebSocket 이벤트 이력은 저장하지 않음
+- Hibernate 스키마 정책: `ddl-auto=update`
+- H2 웹 콘솔과 `AUTO_SERVER`는 사용하지 않음
 
-`noeviction`은 메모리가 부족할 때 오래된 진행 중 시험을 임의로 삭제하지 않고 새로운 쓰기를 실패시키기 위한 선택입니다. 대용량 입력을 사용할 때는 `.env`의 `REDIS_MAXMEMORY`를 조정해야 합니다.
+기본 보존 기간은 미완성 입력 1시간, 완료 입력·세션·결과·증거·Agent 상태 24시간입니다.
+`.env`의 `LNIS_INCOMPLETE_RETENTION`, `LNIS_COMPLETED_RETENTION`에 ISO-8601 Duration을
+지정합니다. 예를 들어 `PT6H`, `P7D`를 사용할 수 있고, `PT0S`이면 자동 삭제하지 않습니다.
+정리 주기는 `LNIS_CLEANUP_DELAY`로 설정하며 기본값은 `PT10M`입니다.
 
-예를 들어 최대 1GB GRAW를 취급한다면 원본 청크, 세션 정보, 결과 및 Redis 오버헤드가 함께 필요하므로 최소값만 1GB로 잡지 말고 서버 가용 메모리를 고려해 여유 있게 설정하십시오. 현재 기본값은 `4gb`입니다.
+대용량 GRAW는 H2 BLOB에 넣지 않으므로 JVM과 DB 메모리 사용량이 파일 크기만큼 증가하지 않습니다.
+다만 `DB` 폴더에는 업로드 원본, H2 DB, 백업본이 함께 들어갈 수 있으므로 최대 입력 크기와 보존
+기간을 기준으로 디스크 여유 공간을 확보해야 합니다. 상세 증거 상한은 세션당 최대 500프레임이며,
+초과 시 처음 250개와 마지막 250개를 보관합니다.
 
-다음 상황에서는 데이터가 사라질 수 있으며 이는 설계된 동작입니다.
+### 10.1 수동 콜드 백업
 
-- TTL 24시간 경과
-- Redis 컨테이너 삭제/재생성
-- Docker 또는 호스트 강제 종료
-- 운영자가 키를 삭제
+열린 H2 파일을 운영체제 복사로 백업하지 마십시오. 다음처럼 서버 컨테이너를 멈춘 뒤 `DB` 폴더
+전체를 함께 복사해야 H2 메타데이터와 GRAW 파일 시점이 일치합니다.
 
-보존이 필요한 결과는 시험 완료 직후 CSV/JSON으로 다운로드하여 별도 저장소에 보관해야 합니다.
+```powershell
+docker compose stop server
+Copy-Item -Recurse -Path .\DB -Destination ".\DB-backup-$(Get-Date -Format yyyyMMdd-HHmmss)"
+docker compose start server
+```
 
-프레임 증거는 프레임당 최대 네 개의 750 byte 원문과 JSON/Base64 오버헤드를 사용합니다.
-따라서 대용량 시험에서 모든 프레임을 무제한 저장하지 않습니다. 보관되지 않은 중간 프레임은
-화면 선택 목록과 `frame-evidence.json`에도 포함되지 않습니다.
+복원할 때도 서버를 중지하고 현재 `DB` 폴더를 별도 보관한 뒤 백업 폴더 전체를 `DB`로 되돌립니다.
+기존 Redis 데이터는 H2로 자동 이전하지 않습니다. 전환 배포 전 필요한 기존 결과는 먼저 다운로드해야
+합니다.
 
 ## 11. REST API 상세
 

@@ -1,5 +1,6 @@
 package kr.co.lnis.server.session.entity;
 
+import jakarta.persistence.*;
 import java.time.Instant;
 import java.util.UUID;
 import kr.co.lnis.protocol.model.LnisModels.SessionState;
@@ -7,25 +8,28 @@ import kr.co.lnis.protocol.model.LnisModels.TestType;
 import kr.co.lnis.protocol.model.LnisModels.Verdict;
 
 /**
- * Redis에 저장하는 시험 세션의 현재 실행 상태와 재사용할 요청 원문이다.
+ * H2에 저장하는 시험 세션의 현재 실행 상태와 재사용할 요청 원문이다.
  *
- * <p>TX/RX 상세 결과는 별도 Redis 키에 저장하며 이 엔티티에는 세션 요약만 보관한다.
+ * <p>TX/RX 상세 결과는 별도 H2 테이블에 저장하며 이 엔티티에는 세션 요약만 보관한다.
  */
-@lombok.Value
+@Entity
+@Table(name = "test_sessions")
+@lombok.Getter
 @lombok.AllArgsConstructor
-@lombok.Builder
-@lombok.extern.jackson.Jacksonized
+@lombok.NoArgsConstructor(access = lombok.AccessLevel.PROTECTED)
 @lombok.experimental.Accessors(fluent = true)
 @com.fasterxml.jackson.annotation.JsonAutoDetect(
     fieldVisibility = com.fasterxml.jackson.annotation.JsonAutoDetect.Visibility.ANY)
 public class TestSessionEntity {
   /** 세션 생성 시 서버가 발급하며 API·WebSocket·산출물 경로에서 공통으로 사용하는 UUID다. */
-  UUID sessionId;
+  @Id UUID sessionId;
 
   /** 생성, Receiver 대기, 전송, 검증, 종료 중 현재 단계다. */
+  @Enumerated(EnumType.STRING)
   SessionState state;
 
   /** 이 세션에 적용한 Test A~E 시험 유형이다. */
+  @Enumerated(EnumType.STRING)
   TestType testType;
 
   /** 세션에 고정된 Sender Agent ID다. */
@@ -44,10 +48,11 @@ public class TestSessionEntity {
   String message;
 
   /** 최종 판정이며 시험 종료 전에는 보통 {@code INCONCLUSIVE}다. */
+  @Enumerated(EnumType.STRING)
   Verdict verdict;
 
   /** Agent 명령을 다시 구성할 수 있도록 세션 생성 요청 전체를 보관한 JSON 문자열이다. */
-  String requestJson;
+  @Lob String requestJson;
 
   /** 세션 레코드를 최초 생성한 UTC 시각이다. */
   Instant createdAt;

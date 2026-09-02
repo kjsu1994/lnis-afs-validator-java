@@ -22,7 +22,7 @@ public class CreateSessionRequest {
   /** UDP 프레임을 수신하고 AFS/GRAW를 복원할 Receiver Agent의 고유 ID다. */
   @NotBlank String receiverAgentId;
 
-  /** 완료 검증된 Redis 입력 버퍼의 UUID다. 미완료 입력은 시험에 사용할 수 없다. */
+  /** 완료 검증된 H2·파일 입력 버퍼의 UUID다. 미완료 입력은 시험에 사용할 수 없다. */
   @NotNull UUID inputId;
 
   /** SB2 ephemeris에 사용할 AFS PRN 설정이며 생략하면 PRN 1이다. */
@@ -39,7 +39,7 @@ public class CreateSessionRequest {
       @NotBlank String senderAgentId,
       /** UDP 프레임을 수신하고 AFS/GRAW를 복원할 Receiver Agent의 고유 ID다. */
       @NotBlank String receiverAgentId,
-      /** 완료 검증된 Redis 입력 버퍼의 UUID다. 미완료 입력은 시험에 사용할 수 없다. */
+      /** 완료 검증된 H2·파일 입력 버퍼의 UUID다. 미완료 입력은 시험에 사용할 수 없다. */
       @NotNull UUID inputId,
       /** SB2 ephemeris에 사용할 AFS PRN 설정이며 생략하면 PRN 1이다. */
       @Valid AfsSettings afs,

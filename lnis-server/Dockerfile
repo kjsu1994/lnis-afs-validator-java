@@ -5,7 +5,9 @@ RUN gradle --no-daemon :lnis-server:bootJar
 
 FROM eclipse-temurin:21-jre
 WORKDIR /app
-RUN useradd --system --uid 10001 lnis
+RUN useradd --system --uid 10001 lnis \
+    && mkdir -p /app/data \
+    && chown -R 10001:10001 /app/data
 COPY --from=build /workspace/lnis-server/build/libs/lnis-server.jar /app/lnis-server.jar
 USER 10001
 EXPOSE 8080

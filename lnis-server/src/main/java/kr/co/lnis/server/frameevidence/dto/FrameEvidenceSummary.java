@@ -18,7 +18,7 @@ public class FrameEvidenceSummary {
   /** 세션 내부의 0부터 시작하는 논리 프레임 번호다. 화면에서는 1을 더해 표시한다. */
   int frameIndex;
 
-  /** 기준·송신 프레임을 포함한 Sender 증거가 Redis에 도착했는지 여부다. */
+  /** 기준·송신 프레임을 포함한 Sender 증거가 H2에 저장됐는지 여부다. */
   boolean senderEvidenceAvailable;
 
   /** 수신·재인코딩 프레임과 CRC 진단을 포함한 Receiver 증거가 도착했는지 여부다. */
@@ -90,7 +90,7 @@ public class FrameEvidenceSummary {
   public FrameEvidenceSummary(
       /** 세션 내부의 0부터 시작하는 논리 프레임 번호다. 화면에서는 1을 더해 표시한다. */
       int frameIndex,
-      /** 기준·송신 프레임을 포함한 Sender 증거가 Redis에 도착했는지 여부다. */
+      /** 기준·송신 프레임을 포함한 Sender 증거가 H2에 저장됐는지 여부다. */
       boolean senderEvidenceAvailable,
       /** 수신·재인코딩 프레임과 CRC 진단을 포함한 Receiver 증거가 도착했는지 여부다. */
       boolean receiverEvidenceAvailable,

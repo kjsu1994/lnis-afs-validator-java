@@ -1,22 +1,29 @@
 package kr.co.lnis.server.input.entity;
 
+import jakarta.persistence.*;
 import java.time.Instant;
 import java.util.UUID;
 import kr.co.lnis.protocol.model.LnisModels.InputKind;
+import lombok.AccessLevel;
+import lombok.AllArgsConstructor;
+import lombok.Getter;
+import lombok.NoArgsConstructor;
 
-/** Redis에 저장하는 GRAW 입력 버퍼의 메타데이터와 청크 수신 진행 상태다. */
-@lombok.Value
-@lombok.AllArgsConstructor
-@lombok.Builder
-@lombok.extern.jackson.Jacksonized
+/** H2에 저장하는 GRAW 입력 버퍼의 메타데이터와 청크 수신 진행 상태다. */
+@Entity
+@Table(name = "input_buffers")
+@Getter
+@AllArgsConstructor
+@NoArgsConstructor(access = AccessLevel.PROTECTED)
 @lombok.experimental.Accessors(fluent = true)
 @com.fasterxml.jackson.annotation.JsonAutoDetect(
     fieldVisibility = com.fasterxml.jackson.annotation.JsonAutoDetect.Visibility.ANY)
 public class InputBufferEntity {
   /** 입력 버퍼와 이후 시험 세션이 공유하는 UUID다. */
-  UUID inputId;
+  @Id UUID inputId;
 
   /** 업로드 파일인지 Agent GNSS 수집 데이터인지 나타낸다. */
+  @Enumerated(EnumType.STRING)
   InputKind kind;
 
   /** 사용자가 제공한 원본 파일 또는 수집 결과의 표시 이름이다. */
@@ -25,7 +32,7 @@ public class InputBufferEntity {
   /** 입력 생성 시 클라이언트가 선언한 예상 전체 크기이며 단위는 byte다. */
   long declaredSize;
 
-  /** Redis 청크에 실제로 누적 수신된 크기이며 단위는 byte다. */
+  /** GRAW 파일에 실제로 누적 수신된 크기이며 단위는 byte다. */
   long receivedSize;
 
   /** 지금까지 순서대로 저장한 입력 청크 개수다. */

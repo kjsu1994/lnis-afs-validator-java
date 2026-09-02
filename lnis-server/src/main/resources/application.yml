@@ -6,11 +6,11 @@ server:
 spring:
   application:
     name: lnis-server
-  data:
-    redis:
-      host: ${REDIS_HOST:redis}
-      port: ${REDIS_PORT:6379}
-      timeout: 5s
+  datasource:
+    url: ${LNIS_DB_URL:jdbc:h2:file:./data/lnis}
+    username: ${LNIS_DB_USERNAME:sa}
+    password: ${LNIS_DB_PASSWORD:}
+    driver-class-name: org.h2.Driver
   jackson:
     default-property-inclusion: non_null
     serialization:
@@ -22,19 +22,23 @@ spring:
     database-platform: org.hibernate.dialect.H2Dialect
     hibernate:
       ddl-auto: update
-    show-sql: true
+    show-sql: false
     open-in-view: false
     properties:
       hibernate:
         format_sql: true
         jdbc:
-          time_zone: Asia/Seoul
-    h2:
-      console:
-        enabled: true
-        path: /h2-console
+          time_zone: UTC
+  h2:
+    console:
+      enabled: false
 lnis:
   agent-tokens: ${LNIS_AGENT_TOKENS:sender-1=change-me-sender,receiver-1=change-me-receiver}
+  storage:
+    data-directory: ${LNIS_DATA_DIR:./data}
+    incomplete-retention: ${LNIS_INCOMPLETE_RETENTION:PT1H}
+    completed-retention: ${LNIS_COMPLETED_RETENTION:PT24H}
+    cleanup-delay: ${LNIS_CLEANUP_DELAY:PT10M}
 management:
   endpoints:
     web:
