@@ -23,7 +23,7 @@
 │  └─ SFRBX                          │
 │       │                            │
 │       ▼                            │
-│ Navigation Decoder (SFRBX 디코더)   │
+│ Navigation Decoder(RTKLIB 오픈소스) │
 │       │                            │
 │       ▼                            │
 │   Ephemeris 추출                    │
@@ -49,9 +49,9 @@
 │       │                            │
 │       ▼                            │
 │   AFS Frame 생성                    │
-│       ├─ SB2 = Ephemeris           │
-│       ├─ SB3 = 필요 데이터          │
-│       └─ SB4 = 필요 데이터          │
+│       ├─ SB2 = Ephemeris + 시간정보  │
+│       ├─ SB3 = 필요 데이터           │
+│       └─ SB4 = 필요 데이터           │
 └────────────────┬───────────────────┘
                  │
                  │
@@ -1057,4 +1057,127 @@ extern void eph2pos(
     /* 위성 위치/Clock 오차 분산 */
     *var = var_uraeph(eph->sva);
 }
+```
+
+### 변경 후 처리과정
+> - RAWX에서 Observation Epoch, Pseudorange, Doppler, C/N0, Tracking Status를 수집한다.
+> - SFRBX에서 GNSS Navigation Raw Words를 수집한다.
+> - RTKLIB Navigation Decoder를 이용해 SFRBX에서 Full Broadcast Ephemeris를 복원한다.
+> - Full Ephemeris 중 AFS SB2에서 정의한 필드는 SB2 Payload로 Mapping한다.
+> - 현재 구현에서는 GRAW Fragment를 SB3/SB4에 배치한다.
+> - RTKLIB PVT에는 AFS SB2에 없는 Ephemeris 필드도 필요하므로 Full Ephemeris를 별도로 보존/전달한다.
+> - 수신측에서는 RAWX Observation과 Full Ephemeris를 RTKLIB obsd_t, nav_t/eph_t로 변환한 뒤 pntpos()를 호출한다.
+> -RTKLIB은 satposs() → estpos() → estvel() 순서로 위성 상태, 수신기 위치, 수신기 속도를 계산한다.
+```text
+┌─────────────────────────────────────────────┐
+│                 u-blox                     │
+├─────────────────────────────────────────────┤
+│                                             │
+│ RAWX                         SFRBX           │
+│   │                            │             │
+│   ▼                            ▼             │
+│ Observation              Navigation Words   │
+│ ├ Pseudorange                  │             │
+│ ├ Doppler                      ▼             │
+│ ├ Epoch                RTKLIB Navigation    │
+│ ├ C/N0                    Decoder           │
+│ └ Status                       │             │
+│                                ▼             │
+│                       Full GPS Ephemeris     │
+│                                │             │
+│                         ┌──────┴───────┐     │
+│                         │              │     │
+│                         ▼              ▼     │
+│                   AFS SB2 Mapping   PVT용    │
+│                         │         Full Eph.  │
+│                         ▼              │     │
+│                        SB2             │     │
+│                         │              │     │
+│                         ▼              │     │
+│                    AFS Frame           │     │
+│                         │              │     │
+│                         └──────┬───────┘     │
+│                                │             │
+└────────────────────────────────┼─────────────┘
+                                 ▼
+
+                      Application Payload
+                      ├─ Epoch
+                      └─ Satellites[]
+                           ├─ PRN
+                           ├─ AFS Frame
+                           ├─ Full Ephemeris
+                           ├─ Pseudorange
+                           ├─ Doppler
+                           ├─ C/N0
+                           └─ Tracking Status
+
+                                 ↓
+                              REST
+                                 ↓
+
+                          HDTN / BPv7
+                         Store & Forward
+
+                                 ↓
+
+                         Receiver Adapter
+                                 ↓
+
+                       Application Payload
+                                 ↓
+                 ┌───────────────┴────────────────┐
+                 │                                │
+                 ▼                                ▼
+
+           AFS Frame                      Full Ephemeris
+               ↓                               +
+          AFS Decode                      Observation
+               ↓                               │
+              SB2                              │
+               ↓                               │
+        AFS 데이터 검증                        │
+                                                ▼
+                                      RTKLIB Adapter
+                                      ★ 직접 구현
+                                                │
+                             ┌──────────────────┴────────────┐
+                             │                               │
+                             ▼                               ▼
+                       Observation DTO                 Ephemeris DTO
+                             ↓                               ↓
+                          obsd_t[]                       eph_t / nav_t
+                             │                               │
+                             └──────────────┬────────────────┘
+                                            ▼
+
+                                         RTKLIB
+                                            │
+                                            ▼
+                                         satposs()
+                                            │
+                         ┌──────────────────┴────────────────┐
+                         │                                   │
+                         ▼                                   ▼
+                 Satellite Position                    Satellite Clock
+                 Satellite Velocity                    Bias / Drift
+                         │                                   │
+                         └──────────────────┬────────────────┘
+                                            ▼
+                                          estpos()
+                                            │
+                                    Pseudorange 사용
+                                            ↓
+                                    Receiver X/Y/Z
+                                    Receiver Clock Bias
+                                            │
+                                            ▼
+                                          estvel()
+                                            │
+                                      Doppler 사용
+                                            ↓
+                                   Receiver VX/VY/VZ
+                                            │
+                                            ▼
+                                           PVT
 ```
