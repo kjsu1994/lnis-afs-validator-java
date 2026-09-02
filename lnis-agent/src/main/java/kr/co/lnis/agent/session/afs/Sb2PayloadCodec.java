@@ -12,8 +12,6 @@ public final class Sb2PayloadCodec {
     public static final int DATA_BITS = 1176;
     public static final int EPHEMERIS_OFFSET = 22;
     public static final int EPHEMERIS_BITS = 262;
-    public static final String SOURCE_COMMIT =
-            "480c6bf353717bafc04b5ee5bafb38ed90e61aae";
 
     private static final double POW2_M19 = Math.scalb(1.0, -19);
     private static final double POW2_M31 = Math.scalb(1.0, -31);
@@ -33,7 +31,7 @@ public final class Sb2PayloadCodec {
             double af0Seconds,
             double af1SecondsPerSecond) {
         String profileId() {
-            return "LANS-AFS-SIM:" + SOURCE_COMMIT + ":default_almanac:PRN-"
+            return "LANS-AFS-SIM:" + ":default_almanac:PRN-"
                     + String.format("%02d", prn);
         }
     }
