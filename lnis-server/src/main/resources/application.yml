@@ -18,6 +18,21 @@ spring:
   servlet:
     multipart:
       enabled: false
+  jpa:
+    database-platform: org.hibernate.dialect.H2Dialect
+    hibernate:
+      ddl-auto: update
+    show-sql: true
+    open-in-view: false
+    properties:
+      hibernate:
+        format_sql: true
+        jdbc:
+          time_zone: Asia/Seoul
+    h2:
+      console:
+        enabled: true
+        path: /h2-console
 lnis:
   agent-tokens: ${LNIS_AGENT_TOKENS:sender-1=change-me-sender,receiver-1=change-me-receiver}
 management:

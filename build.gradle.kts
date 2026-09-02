@@ -12,6 +12,13 @@ allprojects {
 
 subprojects {
     apply(plugin = "java")
+
+    dependencies {
+        // record를 대체한 불변 DTO의 생성자, 접근자, 값 객체 메서드를 컴파일 시점에 생성한다.
+        "compileOnly"("org.projectlombok:lombok:1.18.42")
+        "annotationProcessor"("org.projectlombok:lombok:1.18.42")
+    }
+
     java {
         toolchain { languageVersion = JavaLanguageVersion.of(21) }
     }
