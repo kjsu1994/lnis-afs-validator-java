@@ -1,6 +1,6 @@
 const HELP_TEXT = new Map([
-    ['nav a[href="/lnis/test/sender"]', '송신 시험을 설정하고 시작하는 Sender 화면으로 이동합니다.'],
-    ['nav a[href="/lnis/test/receiver"]', '수신 상태와 수신 시험 결과를 확인하는 Receiver 화면으로 이동합니다.'],
+    ['.role-nav a[href="/lnis/afstest/sender"]', 'AFS 송신 시험을 설정하고 시작하는 Sender 화면으로 이동합니다.'],
+    ['.role-nav a[href="/lnis/afstest/receiver"]', 'AFS 수신 상태와 시험 결과를 확인하는 Receiver 화면으로 이동합니다.'],
     ['#server-status', '웹 화면과 LNIS 서버 사이의 실시간 WebSocket 연결 상태입니다.'],
     ['#sender-status', '송신 PC에서 실행 중인 Sender Agent의 연결 및 준비 상태입니다.'],
     ['#receiver-status', '수신 PC에서 실행 중인 Receiver Agent의 연결 및 준비 상태입니다.'],

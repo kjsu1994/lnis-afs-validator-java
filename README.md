@@ -39,8 +39,9 @@ Nginx는 `8088` 포트에서 정적 화면과 Spring Boot 요청을 하나의 �
 
 ```text
 사용자 브라우저
-  ├─ /lnis/test/sender
-  └─ /lnis/test/receiver
+  ├─ /lnis/afstest/sender
+  ├─ /lnis/afstest/receiver
+  └─ /lnis/dtntest/sender
           │ HTTP / WebSocket :8088
           ▼
       Nginx :8088
@@ -219,8 +220,12 @@ docker compose ps
 
 접속 주소:
 
-- Sender 화면: `http://localhost:8088/lnis/test/sender`
-- Receiver 화면: `http://localhost:8088/lnis/test/receiver`
+- AFS Sender 화면: `http://localhost:8088/lnis/afstest/sender`
+- AFS Receiver 화면: `http://localhost:8088/lnis/afstest/receiver`
+- DTN 송수신 시험 화면: `http://localhost:8088/lnis/dtntest/sender`
+
+기존 `/lnis/test/sender`, `/lnis/test/receiver` 주소는 호환성을 위해 각각 새 AFS 주소로
+자동 이동합니다. DTN 시험 화면은 현재 상단 대분류 탭과 빈 본문만 제공합니다.
 - Agent API: `http://localhost:8088/lnis/api/v1/agents`
 - Health: `http://localhost:8088/lnis/api/v1/actuator/health`
 - Readiness: `http://localhost:8088/lnis/api/v1/actuator/health/readiness`
@@ -228,7 +233,7 @@ docker compose ps
 다른 PC에서 접속할 때는 `localhost`를 중앙 서버 IP로 바꿉니다.
 
 ```text
-http://192.168.0.10:8088/lnis/test/sender
+http://192.168.0.10:8088/lnis/afstest/sender
 ```
 
 ### 4.1 운영 명령
@@ -501,8 +506,8 @@ COM 연결 실패 시 다른 GNSS 도구가 같은 포트를 점유하고 있지
 
 ### 8.2 화면 실행 순서
 
-1. Receiver PC 또는 모니터링 화면에서 `/lnis/test/receiver`를 엽니다.
-2. Sender 화면 `/lnis/test/sender`에서 입력 GRAW를 준비합니다.
+1. Receiver PC 또는 모니터링 화면에서 `/lnis/afstest/receiver`를 엽니다.
+2. Sender 화면 `/lnis/afstest/sender`에서 입력 GRAW를 준비합니다.
 3. Sender Agent와 Receiver Agent를 선택합니다.
 4. 시험 종류와 SB2 LANS Ephemeris PRN(1~8), 오류 조건을 입력합니다.
 5. 목적지 주소 및 UDP 포트를 확인합니다.
@@ -1045,7 +1050,7 @@ docker compose logs --tail=200 server
 
 - `8088` 포트를 다른 프로그램이 사용 중인지 확인합니다.
 - 중앙 서버 방화벽의 TCP `8088` 인바운드 규칙을 확인합니다.
-- URL에 `/lnis/test/sender` 또는 `/lnis/test/receiver`가 포함됐는지 확인합니다.
+- URL에 `/lnis/afstest/sender` 또는 `/lnis/afstest/receiver`가 포함됐는지 확인합니다.
 
 ### 13.2 Agent가 OFFLINE
 
@@ -1174,8 +1179,8 @@ Agent PC:
 
 시험:
 
-1. `http://<server>:8088/lnis/test/receiver` 열기
-2. `http://<server>:8088/lnis/test/sender` 열기
+1. `http://<server>:8088/lnis/afstest/receiver` 열기
+2. `http://<server>:8088/lnis/afstest/sender` 열기
 3. 두 Agent가 `READY`인지 확인
 4. GRAW 업로드 또는 GNSS 수집
 5. Receiver IP와 UDP 포트 설정

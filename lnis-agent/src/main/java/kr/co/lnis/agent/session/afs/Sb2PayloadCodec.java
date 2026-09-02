@@ -35,7 +35,7 @@ public final class Sb2PayloadCodec {
                     + String.format("%02d", prn);
         }
     }
-
+    //default_almanac.txt의 PRN 1~8 프로파일 구성
     private static final List<EphemerisProfile> PROFILES = List.of(
             profile(1, 0.0),
             profile(2, 1.5707963268),
@@ -105,7 +105,7 @@ public final class Sb2PayloadCodec {
         }
         return PROFILES.get(prn - 1);
     }
-
+    // 알마낙에서 가져온 공통 궤도 값
     private static EphemerisProfile profile(int prn, double meanAnomalyRadians) {
         double ascendingNodeRadians = prn <= 4 ? 0.0 : 3.1415926536;
         return new EphemerisProfile(

@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>LNIS AFS Sender</title>
-  <link rel="stylesheet" href="/lnis/assets/app.css?v=20260824-compact-row">
+  <link rel="stylesheet" href="/lnis/assets/app.css?v=20260902-test-suite-tabs">
   <link rel="stylesheet" href="/lnis/assets/notice.css">
 </head>
 <body data-page="sender">
@@ -12,10 +12,15 @@
   <div>
     <span class="eyebrow">LNIS AFS VALIDATOR</span>
     <h1>Sender 시험 제어</h1>
+    <!-- 시험 기능이 늘어나도 기존 AFS 화면의 입력·결과 DOM은 그대로 유지하는 최상위 분류 탭이다. -->
+    <nav class="test-suite-tabs" aria-label="시험 대분류">
+      <a class="active" href="/lnis/afstest/sender" aria-current="page">AFS Frame 시험</a>
+      <a href="/lnis/dtntest/sender">DTN 송수신 시험</a>
+    </nav>
   </div>
-  <nav>
-    <a class="active" href="/lnis/test/sender">Sender</a>
-    <a href="/lnis/test/receiver">Receiver</a>
+  <nav class="role-nav" aria-label="AFS 시험 역할">
+    <a class="active" href="/lnis/afstest/sender" aria-current="page">Sender</a>
+    <a href="/lnis/afstest/receiver">Receiver</a>
   </nav>
 </header>
 <main>
