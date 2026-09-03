@@ -75,7 +75,7 @@ export function setPill(element, text, state = '') {
     element.className = `pill ${state}`;
 }
 
-/** Redis 결과를 요청 시점에 JSON/CSV 실제 파일로 내려받는 링크를 만든다. */
+/** H2에 보존된 결과를 요청 시점에 JSON/CSV 파일로 내려받는 링크를 만든다. */
 export function downloads(container, sessionId) {
     container.classList.remove('hidden');
     container.replaceChildren();

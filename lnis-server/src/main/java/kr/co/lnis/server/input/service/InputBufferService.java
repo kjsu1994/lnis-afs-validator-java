@@ -145,9 +145,7 @@ public class InputBufferService {
   @Transactional
   public void remove(UUID id) {
     var input = get(id);
-    if (sessions.existsByInputId(id)) {
-      throw new IllegalStateException("보존 중인 시험 세션이 참조하는 입력은 삭제할 수 없습니다.");
-    }
+    // 기준 버전과 동일하게 사용자의 명시적 삭제는 허용한다. 자동 보존 정리만 세션 참조를 보호한다.
     repository.delete(id, input.chunkCount());
   }
 

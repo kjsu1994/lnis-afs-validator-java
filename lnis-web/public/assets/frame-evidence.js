@@ -379,7 +379,7 @@ export async function renderFrameEvidence(
             </div>
             <label title="보관된 AFS 프레임 중 점자형 지도로 비교할 프레임을 선택합니다.">확인할 프레임 <select class="frame-selector" aria-label="확인할 AFS 프레임" title="확인할 AFS 프레임을 선택합니다."></select></label>
         </div>
-        <p class="frame-retention-note">최대 500프레임의 상세 원문을 Redis에 24시간 보관합니다. 500프레임을 넘으면 처음 250개와 마지막 250개를 보관합니다.</p>
+        <p class="frame-retention-note">최대 500프레임의 상세 원문을 H2에 24시간 보관합니다. 500프레임을 넘으면 처음 250개와 마지막 250개를 보관합니다.</p>
         <aside class="frame-comparison-guide" aria-label="프레임 단계 비교 기준">
             <span>Test A <code>1=2=3=4</code></span>
             <span>Test B/C <code>1≠2, 2=3, 복구 성공 시 1=4</code></span>

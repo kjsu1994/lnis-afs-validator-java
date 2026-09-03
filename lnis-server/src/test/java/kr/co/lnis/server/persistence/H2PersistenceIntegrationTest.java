@@ -2,18 +2,29 @@ package kr.co.lnis.server.persistence;
 
 import static org.junit.jupiter.api.Assertions.*;
 
+import java.nio.ByteBuffer;
+import java.nio.ByteOrder;
 import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
+import kr.co.lnis.protocol.codec.GrawCodec;
 import kr.co.lnis.protocol.model.AgentProtocol.FrameEvidenceMessage;
 import kr.co.lnis.protocol.model.LnisModels.AgentRole;
 import kr.co.lnis.protocol.model.LnisModels.AgentState;
 import kr.co.lnis.protocol.model.LnisModels.InputKind;
+import kr.co.lnis.protocol.model.LnisModels.SessionState;
+import kr.co.lnis.protocol.model.LnisModels.TestType;
+import kr.co.lnis.protocol.model.LnisModels.Verdict;
 import kr.co.lnis.server.agent.entity.AgentEntity;
 import kr.co.lnis.server.agent.repository.AgentRepository;
 import kr.co.lnis.server.frameevidence.repository.FrameEvidenceRepository;
+import kr.co.lnis.server.input.service.GrawFileStorage;
 import kr.co.lnis.server.input.service.InputBufferService;
+import kr.co.lnis.server.realtime.repository.RealtimeEventRepository;
+import kr.co.lnis.server.realtime.service.EventService;
+import kr.co.lnis.server.session.entity.TestSessionEntity;
 import kr.co.lnis.server.session.repository.ActiveSessionLockRepository;
+import kr.co.lnis.server.session.repository.SessionRepository;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -31,6 +42,10 @@ class H2PersistenceIntegrationTest {
   @Autowired private FrameEvidenceRepository evidence;
   @Autowired private ActiveSessionLockRepository locks;
   @Autowired private InputBufferService inputs;
+  @Autowired private GrawFileStorage files;
+  @Autowired private RealtimeEventRepository realtimeEvents;
+  @Autowired private EventService eventService;
+  @Autowired private SessionRepository sessions;
 
   @Test
   void storesAgentAndMaintainsSingleActiveSessionLock() {
@@ -62,6 +77,28 @@ class H2PersistenceIntegrationTest {
   }
 
   @Test
+  void persistsIncreasingEventSequenceAndSessionStream() {
+    UUID sessionId = UUID.randomUUID();
+    var first =
+        eventService.publish(
+            kr.co.lnis.protocol.model.AgentProtocol.EventType.SESSION_STATUS,
+            null,
+            null,
+            sessionId,
+            "first");
+    var second =
+        eventService.publish(
+            kr.co.lnis.protocol.model.AgentProtocol.EventType.RESULT,
+            null,
+            null,
+            sessionId,
+            "second");
+
+    assertTrue(second.sequence() > first.sequence());
+    assertEquals(2, realtimeEvents.count(sessionId.toString()));
+  }
+
+  @Test
   void storesFrameEvidenceAsBlobAndUpdatesRetransmission() {
     UUID sessionId = UUID.randomUUID();
     evidence.save(sessionId, AgentRole.SENDER, frame("first"));
@@ -83,6 +120,76 @@ class H2PersistenceIntegrationTest {
 
     inputs.remove(input.inputId());
     assertThrows(IllegalArgumentException.class, () -> inputs.get(input.inputId()));
+  }
+
+  @Test
+  void explicitlyRemovesInputReferencedBySessionLikeBaseline() {
+    var input = inputs.create("explicit-remove.graw", 3, InputKind.GRAW_UPLOAD);
+    UUID sessionId = UUID.randomUUID();
+    Instant now = Instant.now();
+    sessions.save(
+        new TestSessionEntity(
+            sessionId,
+            SessionState.CREATED,
+            TestType.TEST_A_NORMAL,
+            "sender",
+            "receiver",
+            input.inputId(),
+            0,
+            "created",
+            Verdict.INCONCLUSIVE,
+            "{}",
+            now,
+            now));
+
+    inputs.remove(input.inputId());
+
+    assertThrows(IllegalArgumentException.class, () -> inputs.get(input.inputId()));
+    sessions.delete(sessionId);
+  }
+
+  @Test
+  void completesValidGrawAndReadsChunksFromFinalFile() {
+    byte[] graw = validGraw();
+    var input = inputs.create("complete-integration.graw", graw.length, InputKind.GRAW_UPLOAD);
+    inputs.append(input.inputId(), 0, graw);
+    var completed = inputs.complete(input.inputId());
+
+    assertTrue(completed.complete());
+    assertEquals(1, completed.recordCount());
+    assertNotNull(completed.sha256());
+    assertArrayEquals(graw, inputs.chunk(input.inputId(), 0));
+    inputs.remove(input.inputId());
+  }
+
+  @Test
+  void retriesCompletionAfterFileWasRenamedBeforeDatabaseCommit() {
+    byte[] graw = validGraw();
+    var input = inputs.create("interrupted-complete.graw", graw.length, InputKind.GRAW_UPLOAD);
+    inputs.append(input.inputId(), 0, graw);
+    files.complete(input.inputId());
+
+    var completed = inputs.complete(input.inputId());
+
+    assertTrue(completed.complete());
+    assertArrayEquals(graw, inputs.chunk(input.inputId(), 0));
+    inputs.remove(input.inputId());
+  }
+
+  private static byte[] validGraw() {
+    byte[] record =
+        GrawCodec.encode(
+            new GrawCodec.Envelope(
+                UUID.randomUUID(),
+                UUID.randomUUID(),
+                0,
+                Instant.parse("2026-01-01T00:00:00Z"),
+                new GrawCodec.ReceiverMetadata("F9P", "1", "COM3", 115200, "test")));
+    return ByteBuffer.allocate(record.length + Integer.BYTES)
+        .order(ByteOrder.BIG_ENDIAN)
+        .putInt(record.length)
+        .put(record)
+        .array();
   }
 
   private static FrameEvidenceMessage frame(String note) {

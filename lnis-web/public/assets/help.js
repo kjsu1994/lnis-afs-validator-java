@@ -9,8 +9,8 @@ const HELP_TEXT = new Map([
     ['#notice-close', '현재 안내 메시지를 화면에서 닫습니다.'],
     ['.tab[data-tab="upload"]', '이미 저장된 GRAW 파일을 시험 입력 데이터로 사용하는 화면을 엽니다.'],
     ['.tab[data-tab="capture"]', 'GNSS 장비의 COM 포트에서 데이터를 직접 수집하는 화면을 엽니다.'],
-    ['#graw-file', '시험에 사용할 capture.graw 파일을 선택합니다. 선택한 파일은 Redis 임시 버퍼로 전송됩니다.'],
-    ['#upload-button', '선택한 GRAW 파일을 분할 업로드하고 서버에서 무결성을 확인한 뒤 Redis에 임시 저장합니다.'],
+    ['#graw-file', '시험에 사용할 capture.graw 파일을 선택합니다. 선택한 파일은 서버의 임시 파일 저장소로 전송됩니다.'],
+    ['#upload-button', '선택한 GRAW 파일을 분할 업로드하고 서버에서 무결성을 확인한 뒤 H2 메타데이터와 파일로 저장합니다.'],
     ['#upload-progress', '선택한 GRAW 파일이 서버로 전송된 비율입니다.'],
     ['#input-summary', '업로드 또는 수집한 시험 입력의 레코드 수, 크기와 SHA-256 검증값입니다.'],
     ['#capture-agent', 'GNSS 장비가 연결된 Windows PC에서 실행 중인 Sender Agent를 선택합니다.'],
@@ -44,7 +44,7 @@ const HELP_TEXT = new Map([
     ['#verdict', 'Sender와 Receiver의 결과를 바탕으로 한 최종 시험 판정입니다.'],
     ['#metrics', '원본 복원, 프레임 처리, 주입 오류, UDP 해석 실패와 AFS 복호화 실패를 구분한 시험 결과입니다.'],
     ['#event-log', 'Agent 연결, 송수신 단계, 오류 및 결과 이벤트를 시간순으로 표시합니다.'],
-    ['#clear-log', '화면에 표시된 이벤트 로그만 지웁니다. Redis의 시험 데이터와 결과에는 영향을 주지 않습니다.'],
+    ['#clear-log', '화면에 표시된 이벤트 로그만 지웁니다. H2의 시험 데이터와 결과에는 영향을 주지 않습니다.'],
     ['#downloads', '현재 시험 결과를 JSON 또는 CSV 실제 파일로 내려받는 영역입니다.'],
 ]);
 

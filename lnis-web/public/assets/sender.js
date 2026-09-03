@@ -13,7 +13,7 @@ import { renderFrameEvidence } from './frame-evidence.js?v=20260824-frame-label'
 const $ = (id) => document.getElementById(id);
 const eventLog = $('event-log');
 
-// 다음 값들은 서버/Redis 원본이 아니라 현재 페이지의 버튼과 표시를 제어하는 UI 상태다.
+// 다음 값들은 서버/H2 원본이 아니라 현재 페이지의 버튼과 표시를 제어하는 UI 상태다.
 let inputId = null;
 let captureId = null;
 let sessionId = null;
@@ -154,7 +154,7 @@ function applyActiveSession(session) {
     updateControls();
 }
 
-/** 페이지 새로고침 후에도 Redis 활성 잠금의 세션 ID를 다시 가져온다. */
+/** 페이지 새로고침 후에도 H2 활성 잠금의 세션 ID를 다시 가져온다. */
 async function refreshActiveSession() {
     const active = await request('/sessions/active');
     applyActiveSession(active);
@@ -254,7 +254,7 @@ $('upload-button').onclick = async () => {
         $('input-summary').textContent = `${complete.recordCount.toLocaleString()} records · `
             + `${complete.receivedSize.toLocaleString()} bytes · SHA-256 ${complete.sha256}`;
         log(eventLog, 'GRAW 업로드 및 검증 완료');
-        showNotice('success', '업로드 완료', 'GRAW 파일을 검증하고 Redis 입력 버퍼에 저장했습니다.');
+        showNotice('success', '업로드 완료', 'GRAW 파일을 검증하고 서버 입력 저장소에 저장했습니다.');
         updateControls();
     } catch (error) {
         reportError('GRAW 업로드', error);

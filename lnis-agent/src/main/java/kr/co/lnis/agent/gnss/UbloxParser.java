@@ -33,7 +33,7 @@ public final class UbloxParser {
     int leap = in.get();
     int count = Byte.toUnsignedInt(in.get());
     int receiverStatus = Byte.toUnsignedInt(in.get());
-    int version = Byte.toUnsignedInt(in.get());
+    in.get(); // 기준 구현은 장치 RAWX version과 무관하게 canonical schema version 1로 정규화한다.
     in.getShort(); // reserved 2 bytes
     List<GrawCodec.Observation> observations = new ArrayList<>(count);
 
@@ -57,7 +57,7 @@ public final class UbloxParser {
           new GrawCodec.Observation(
               pr, cp, doppler, gnss, sv, sig, freq, lock, cno, prStd, cpStd, doStd, tracking));
     }
-    return new GrawCodec.ObservationEpoch(tow, week, leap, receiverStatus, version, observations);
+    return new GrawCodec.ObservationEpoch(tow, week, leap, receiverStatus, 1, observations);
   }
 
   private static GrawCodec.NavigationUpdate sfrbx(byte[] payload) {

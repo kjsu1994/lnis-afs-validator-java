@@ -19,7 +19,7 @@ public class FrameEvidenceRepository {
   }
 
   @Transactional
-  public void save(UUID sessionId, AgentRole role, FrameEvidenceMessage evidence) {
+  public synchronized void save(UUID sessionId, AgentRole role, FrameEvidenceMessage evidence) {
     Instant now = Instant.now();
     var current =
         database.findBySessionIdAndRoleAndFrameIndex(sessionId, role, evidence.frameIndex());

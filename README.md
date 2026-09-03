@@ -220,6 +220,15 @@ docker compose up -d --build
 docker compose ps
 ```
 
+`O:`처럼 로그인 후 연결되는 보안/가상 드라이브에서 WSL Docker를 사용하는 경우에는 재부팅 후
+빈 `/mnt/o` 경로가 먼저 만들어질 수 있습니다. 이때 H2가 잘못된 경로에서 시작되지 않도록 다음
+스크립트를 사용합니다. 스크립트는 실제 Windows 드라이브를 WSL에 마운트하고 프로젝트 파일을
+확인한 뒤 Compose를 실행합니다.
+
+```powershell
+.\scripts\start-docker.ps1 -Build
+```
+
 정상 상태에서는 `server`가 `healthy`, `nginx`가 `Up`으로 표시됩니다.
 
 접속 주소:
@@ -228,8 +237,8 @@ docker compose ps
 - AFS Receiver 화면: `http://localhost:8088/lnis/afstest/receiver`
 - DTN 송수신 시험 화면: `http://localhost:8088/lnis/dtntest/sender`
 
-기존 `/lnis/test/sender`, `/lnis/test/receiver` 주소는 호환성을 위해 각각 새 AFS 주소로
-자동 이동합니다. DTN 시험 화면은 현재 상단 대분류 탭과 빈 본문만 제공합니다.
+기존 `/lnis/test/sender`, `/lnis/test/receiver` 주소도 기준 버전과 같은 화면을 직접
+반환합니다. DTN 시험 화면은 현재 상단 대분류 탭과 빈 본문만 제공합니다.
 - Agent API: `http://localhost:8088/lnis/api/v1/agents`
 - Health: `http://localhost:8088/lnis/api/v1/actuator/health`
 - Readiness: `http://localhost:8088/lnis/api/v1/actuator/health/readiness`
@@ -613,11 +622,11 @@ PASS입니다.
 Receiver는 세션 시작 패킷 또는 다음 패킷을 제한 시간 안에 받지 못하면 자동으로
 `INCONCLUSIVE` 결과를 보내고 수신 socket을 종료합니다. 중앙 서버도 Agent 결과 유실에
 대비한 watchdog을 실행하며, 입력 크기와 결과 제한 시간을 기준으로 만료된 시험을 자동
-취소하고 Redis 활성 시험 잠금을 해제합니다.
+취소하고 H2 활성 시험 잠금을 해제합니다.
 
 Sender 화면은 `GET /lnis/api/v1/sessions/active`로 현재 시험을 주기적으로 확인합니다.
 따라서 페이지를 새로 열어도 `진행 중 시험 취소` 버튼이 다시 활성화되며 사용자가 세션 ID나
-Redis 잠금을 직접 찾을 필요가 없습니다.
+H2의 활성 세션 행을 직접 찾을 필요가 없습니다.
 
 ### 8.6 화면 도움말과 수신 진행률
 
@@ -697,7 +706,7 @@ node lnis-web\test\result-presentation.smoke.mjs
 
 `SamplePath`로 지정한 GRAW를 REST API로 실제 업로드하고 로컬 Sender/Receiver Agent와
 UDP 통신을 사용해 A~E를 순서대로 실행하는 스크립트를 제공합니다.
-서버, Redis, Nginx와 두 Agent가 실행된 상태에서 다음 명령을 사용합니다.
+서버, Nginx와 두 Agent가 실행된 상태에서 다음 명령을 사용합니다.
 
 ```powershell
 Set-Location 'O:\3.ing\LNIS\LnisServer'
@@ -746,7 +755,7 @@ SHA-256 일치로 PASS했습니다. Test D는 설계대로 `3/4 record`, `348/46
 <session-id>-lnis-report.json
 ```
 
-결과 파일은 미리 서버 디스크에 생성하지 않습니다. 사용자가 다운로드할 때 Redis의 결과 객체를
+결과 파일은 미리 서버 디스크에 생성하지 않습니다. 사용자가 다운로드할 때 H2의 결과 객체를
 Excel 또는 JSON byte stream으로 생성합니다. 현재 구현은 `reconstructed.graw` 파일을 산출하지 않습니다.
 
 ### 9.1 AFS 6,000비트 점자형 지도 읽는 방법
@@ -801,7 +810,7 @@ Compose는 호스트의 `./DB`를 컨테이너 `/app/data`에 바인드 마운�
 - 업로드 중 임시 파일: `DB/files/inputs/<input-id>.part`
 - H2에는 Agent, 입력 메타데이터, 청크 위치, 세션, 역할별 결과, 활성 시험 잠금과 AFS 프레임 증거를 저장
 - AFS 프레임 증거 본문은 H2 BLOB으로 저장
-- 브라우저 WebSocket 이벤트 이력은 저장하지 않음
+- 브라우저 WebSocket 이벤트는 전역 순번과 스트림별 최근 10,000개를 H2에 저장
 - Hibernate 스키마 정책: `ddl-auto=update`
 - H2 웹 콘솔과 `AUTO_SERVER`는 사용하지 않음
 
@@ -974,7 +983,7 @@ POST /lnis/api/v1/sessions/{sessionId}/cancel
 
 활성 세션이 없으면 `/active`는 `204 No Content`를 반환합니다. 개별 세션 조회 응답에는 상태,
 진행률, 메시지, 최종 판정, TX 결과 및 RX 결과가 포함됩니다. 취소는 한쪽 Agent가 이미
-오프라인이어도 중앙 상태와 Redis 잠금을 우선 정리하고 연결된 나머지 Agent에 계속 전달됩니다.
+오프라인이어도 중앙 상태와 H2 활성 잠금을 우선 정리하고 연결된 나머지 Agent에 계속 전달됩니다.
 
 ### 11.5 결과 다운로드
 
@@ -1103,7 +1112,7 @@ Sender PC에서 Agent를 먼저 실행해야 합니다. 화면은 연결된 Agen
 `POST /lnis/api/v1/captures`가 `400 Bad Request`를 반환하면 응답의 `detail`에 표시된
 Sender Agent, COM 포트, baud rate 또는 프로토콜 입력을 확인합니다. 화면에서는 팝업 대신
 상단 인라인 알림으로 원인과 조치 방법을 안내합니다. Agent 조회나 명령 전송이 실패한 경우
-서버는 생성 중이던 Redis 입력 메타데이터도 즉시 제거합니다.
+서버는 생성 중이던 H2 입력 메타데이터와 임시 파일도 즉시 제거합니다.
 
 ### 13.4 Receiver가 데이터를 받지 못함
 
@@ -1120,14 +1129,16 @@ Sender Agent, COM 포트, baud rate 또는 프로토콜 입력을 확인합니�
 Get-NetUDPEndpoint | Where-Object LocalPort -In 45821,45822
 ```
 
-### 13.5 Redis 메모리 오류
+### 13.5 H2 파일 접근 오류
 
 ```powershell
-docker compose logs --tail=200 redis
-docker compose exec redis redis-cli INFO memory
+docker compose logs --tail=200 server
+Get-ChildItem .\DB
 ```
 
-`OOM command not allowed`가 보이면 진행 중이지 않은 입력/세션의 TTL 만료를 기다리거나 서버 가용 메모리를 확인한 뒤 `.env`의 `REDIS_MAXMEMORY`를 늘리고 Compose를 재기동합니다. Redis를 재생성하면 기존 시험 데이터는 사라집니다.
+`Database may be already in use`가 보이면 호스트에서 같은 `DB/lnis.mv.db`를 연 프로세스가
+없는지 확인합니다. `AccessDeniedException: /app/data/lnis.mv.db`가 보이면 `./DB:/app/data`
+바인드 마운트와 호스트 폴더 쓰기 권한을 확인한 뒤 Compose를 재기동합니다.
 
 ### 13.6 DLL/JNA 오류
 
@@ -1155,11 +1166,11 @@ REST API에는 현재 별도의 브라우저 사용자 로그인 기능이 없�
 ## 15. 현재 구현 범위와 제한
 
 - 동시에 하나의 Sender/Receiver 시험 세션을 기준으로 구현
-- Redis 데이터는 영구 보존하지 않음
+- H2 데이터와 GRAW 파일은 기본 24시간 보존 후 정리하며, 보존 기간은 환경 변수로 변경 가능
 - 결과는 JSON/CSV로만 제공하며 복원 GRAW 파일은 제공하지 않음
 - Agent는 Windows 서비스 배포를 기준으로 함
 - COM/u-blox 및 실제 두 PC 간 UDP 동작은 현장 장비와 네트워크에서 최종 인수 시험 필요
-- 최대 1GB 입력은 Redis 메모리뿐 아니라 브라우저, Agent JVM heap, 네트워크 시간 및 시험 지속 시간을 포함한 부하 시험 필요
+- 최대 1GB 입력은 호스트 디스크 여유 공간뿐 아니라 브라우저, Agent JVM heap, 네트워크 시간 및 시험 지속 시간을 포함한 부하 시험 필요
 
 권장 현장 인수 순서:
 

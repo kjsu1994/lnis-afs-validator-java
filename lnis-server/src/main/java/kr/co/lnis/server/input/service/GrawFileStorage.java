@@ -30,6 +30,8 @@ public class GrawFileStorage {
   }
 
   public synchronized void append(UUID id, long expectedOffset, byte[] bytes) {
+    // 파일 rename 뒤 DB commit 전에 프로세스가 종료됐으면 다음 요청에서 임시 파일로 되돌려 이어 쓴다.
+    restorePartialIfNeeded(id);
     try (FileChannel channel =
         FileChannel.open(
             partial(id),
@@ -50,8 +52,8 @@ public class GrawFileStorage {
 
   public byte[] read(UUID id, boolean complete, long offset, int length) {
     ByteBuffer buffer = ByteBuffer.allocate(length);
-    try (FileChannel channel =
-        FileChannel.open(complete ? completed(id) : partial(id), StandardOpenOption.READ)) {
+    Path source = readable(id, complete);
+    try (FileChannel channel = FileChannel.open(source, StandardOpenOption.READ)) {
       channel.position(offset);
       while (buffer.hasRemaining() && channel.read(buffer) >= 0) {}
     } catch (IOException error) {
@@ -62,6 +64,8 @@ public class GrawFileStorage {
   }
 
   public synchronized void complete(UUID id) {
+    // 이미 최종 파일만 남은 경우는 이전 완료 요청의 재시도로 보고 성공 처리한다.
+    if (!Files.exists(partial(id)) && Files.exists(completed(id))) return;
     try {
       Files.move(
           partial(id),
@@ -86,6 +90,22 @@ public class GrawFileStorage {
     } catch (IOException error) {
       throw new IllegalStateException("GRAW 파일 삭제에 실패했습니다.", error);
     }
+  }
+
+  private void restorePartialIfNeeded(UUID id) {
+    if (Files.exists(partial(id)) || !Files.exists(completed(id))) return;
+    try {
+      Files.move(completed(id), partial(id), StandardCopyOption.REPLACE_EXISTING);
+    } catch (IOException error) {
+      throw new IllegalStateException("GRAW 임시 파일 복구에 실패했습니다.", error);
+    }
+  }
+
+  private Path readable(UUID id, boolean complete) {
+    Path expected = complete ? completed(id) : partial(id);
+    if (Files.exists(expected)) return expected;
+    Path recovered = complete ? partial(id) : completed(id);
+    return Files.exists(recovered) ? recovered : expected;
   }
 
   private Path partial(UUID id) {
