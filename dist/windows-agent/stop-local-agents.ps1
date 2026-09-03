@@ -8,7 +8,7 @@ $agents = Get-CimInstance Win32_Process |
     Where-Object {
         $_.ExecutablePath -and
         [IO.Path]::GetFullPath($_.ExecutablePath) -eq $bundledJava -and
-        $_.CommandLine -match 'kr\.co\.lnis\.agent\.LnisAgentApplication'
+        $_.CommandLine -match 'server\.co\.lnis\.agent\.LnisAgentApplication'
     }
 
 if (-not $agents) {

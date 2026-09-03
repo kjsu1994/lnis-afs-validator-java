@@ -13,7 +13,7 @@ dependencies {
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
 }
 
-application { mainClass = "kr.co.lnis.agent.LnisAgentApplication" }
+application { mainClass = "server.LnisAgentApplication" }
 
 distributions {
     main {

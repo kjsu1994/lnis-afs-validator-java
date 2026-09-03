@@ -212,7 +212,7 @@ DEFAULT_JVM_OPTS=""
 
 set -- \
         -classpath "$CLASSPATH" \
-        kr.co.lnis.agent.LnisAgentApplication \
+        server.LnisAgentApplication \
         "$@"
 
 # Stop when "xargs" is not available.

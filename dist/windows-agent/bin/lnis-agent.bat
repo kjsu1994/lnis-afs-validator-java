@@ -74,7 +74,7 @@ set CLASSPATH=%APP_HOME%\lib\lnis-agent-1.0.0.jar;%APP_HOME%\lib\lnis-protocol-1
 
 
 @rem Execute lnis-agent
-"%JAVA_EXE%" %DEFAULT_JVM_OPTS% %JAVA_OPTS% %LNIS_AGENT_OPTS%  -classpath "%CLASSPATH%" kr.co.lnis.agent.LnisAgentApplication %*
+"%JAVA_EXE%" %DEFAULT_JVM_OPTS% %JAVA_OPTS% %LNIS_AGENT_OPTS%  -classpath "%CLASSPATH%" server.LnisAgentApplication %*
 
 :end
 @rem End local scope for the variables with windows NT shell

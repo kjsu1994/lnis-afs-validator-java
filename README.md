@@ -96,7 +96,7 @@ SB2 ephemeris 증거가 추가되었습니다. protocol version이 다른 Server
 백엔드는 공통 계층 폴더에 모든 클래스를 모으는 방식이 아니라, 업무 기능을 먼저 나누고 각 기능 아래에 필요한 계층을 배치하는 **기능 우선(Vertical Slice)** 구조입니다.
 
 ```text
-kr.co.lnis.server
+server.co.lnis.server
 ├─ agent
 │  ├─ controller
 │  ├─ entity
@@ -135,7 +135,7 @@ kr.co.lnis.server
 Windows Agent 역시 역할과 기능을 기준으로 분리되어 있습니다.
 
 ```text
-kr.co.lnis.agent
+server.co.lnis.agent
 ├─ config       # Agent ID, 역할, 서버, token, DLL 경로
 ├─ connection   # 중앙 서버 WebSocket 연결과 heartbeat
 ├─ runtime      # 서버 명령 분배 및 Agent 상태

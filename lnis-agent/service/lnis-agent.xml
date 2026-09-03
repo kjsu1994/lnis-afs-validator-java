@@ -3,7 +3,8 @@
   <name>LNIS AFS Agent</name>
   <description>LNIS GNSS, AFS and UDP host agent</description>
   <executable>%BASE%\runtime\jdk-21\bin\java.exe</executable>
-  <arguments>-Dlnis.agent.config="%BASE%\conf\agent.properties" -Dlnis.native.dir="%BASE%\native" -cp "%BASE%\lib\*" kr.co.lnis.agent.LnisAgentApplication</arguments>
+  <arguments>-Dlnis.agent.config="%BASE%\conf\agent.properties" -Dlnis.native.dir="%BASE%\native" -cp "%BASE%\lib\*"
+      server.LnisAgentApplication</arguments>
   <startmode>Automatic</startmode>
   <log mode="roll-by-size-time"><sizeThreshold>10485760</sizeThreshold><keepFiles>14</keepFiles></log>
   <onfailure action="restart" delay="5 sec"/>
