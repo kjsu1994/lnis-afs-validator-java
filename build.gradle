@@ -1,0 +1,110 @@
+plugins {
+    id 'java'
+    id 'org.springframework.boot' version '3.5.16'
+    id 'io.spring.dependency-management' version '1.1.7'
+}
+
+group = 'kr.co.lnis'
+version = '1.0.0'
+
+java {
+    toolchain {
+        languageVersion = JavaLanguageVersion.of(21)
+    }
+}
+
+repositories {
+    mavenCentral()
+}
+
+configurations {
+    compileOnly {
+        extendsFrom annotationProcessor
+    }
+    testCompileOnly {
+        extendsFrom testAnnotationProcessor
+    }
+}
+
+dependencies {
+    implementation 'org.springframework.boot:spring-boot-starter-web'
+    implementation 'org.springframework.boot:spring-boot-starter-websocket'
+    implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
+    implementation 'org.springframework.boot:spring-boot-starter-validation'
+    implementation 'org.springframework.boot:spring-boot-starter-actuator'
+    implementation 'com.fasterxml.jackson.datatype:jackson-datatype-jsr310'
+    implementation 'org.apache.poi:poi-ooxml:5.5.1'
+    implementation 'org.mapstruct:mapstruct:1.6.3'
+    implementation 'net.java.dev.jna:jna:5.17.0'
+    implementation 'com.fazecast:jSerialComm:2.11.4'
+
+    compileOnly 'org.projectlombok:lombok:1.18.42'
+    annotationProcessor 'org.projectlombok:lombok:1.18.42'
+    annotationProcessor 'org.mapstruct:mapstruct-processor:1.6.3'
+
+    runtimeOnly 'com.h2database:h2'
+
+    testImplementation 'org.springframework.boot:spring-boot-starter-test'
+    testImplementation 'com.tngtech.archunit:archunit-junit5:1.4.1'
+    testCompileOnly 'org.projectlombok:lombok:1.18.42'
+    testAnnotationProcessor 'org.projectlombok:lombok:1.18.42'
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+}
+
+tasks.named('test') {
+    useJUnitPlatform()
+    testLogging {
+        events 'failed', 'skipped'
+    }
+}
+
+tasks.register('webTest') {
+    group = 'verification'
+    description = '브라우저 JavaScript 회귀시험을 실행한다.'
+    doLast {
+        [
+                'src/test/js/event-log.smoke.mjs',
+                'src/test/js/frame-evidence-selection.smoke.mjs',
+                'src/test/js/result-presentation.smoke.mjs'
+        ].each { script ->
+            providers.exec {
+                commandLine 'node', script
+            }.result.get().assertNormalExitValue()
+        }
+    }
+}
+
+tasks.named('check') {
+    dependsOn tasks.named('webTest')
+}
+
+tasks.named('bootJar') {
+    archiveFileName = 'lnis.jar'
+}
+
+tasks.register('agentDistZip', Zip) {
+    dependsOn tasks.named('bootJar')
+    archiveFileName = 'lnis-agent-windows.zip'
+    destinationDirectory = layout.buildDirectory.dir('distributions')
+
+    from(tasks.named('bootJar').flatMap { it.archiveFile }) {
+        rename { 'lnis.jar' }
+    }
+    from('native/bin/win-x64') {
+        into 'native'
+    }
+    from('native/THIRD-PARTY-NOTICES.txt')
+    from('config') {
+        into 'config'
+    }
+    from('dist/windows-agent/runtime/jdk-21') {
+        into 'runtime'
+    }
+
+    doFirst {
+        if (!file('dist/windows-agent/runtime/jdk-21/bin/java.exe').isFile()) {
+            throw new GradleException(
+                    'Agent 전용 Java 21 runtime이 없습니다. 기존 runtime 설치 절차를 먼저 실행하세요.')
+        }
+    }
+}

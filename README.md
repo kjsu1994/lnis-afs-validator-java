@@ -7,8 +7,8 @@
 - 실시간 상태: WebSocket을 통한 GNSS/TX/RX/시험 결과 전달
 - 영속 데이터: H2 파일 DB와 호스트 `DB` 폴더의 GRAW 파일
 - 시험 PC: Windows Java Agent 및 네이티브 AFS 코덱 DLL
-- 배포: Docker Compose 및 Nginx, 외부 서비스 포트 `8088`
-- 빌드: Gradle Kotlin DSL
+- 배포: 단일 Spring Boot 컨테이너와 Docker Compose, 외부 서비스 포트 `8088`
+- 빌드: Gradle Groovy DSL
 
 이 문서는 중앙 서버와 Sender/Receiver PC를 처음 설치하는 과정부터 GRAW 시험, 결과 다운로드, API 사용법 및 장애 대응까지 설명합니다.
 
@@ -16,7 +16,7 @@
 
 ### 1.1 Spring Boot API 구조
 
-Spring Boot는 화면을 직접 생성하는 서버가 아니라 다음 역할을 수행하는 **중앙 REST API 및 WebSocket 서버**입니다.
+Spring Boot 하나가 정적 화면, REST API 및 WebSocket을 모두 제공합니다.
 
 - `/lnis/api/v1/**`: Agent 조회, GRAW 입력, GNSS 수집, 시험 실행, 결과 다운로드 REST API
 - `/lnis/agent/ws`: Windows Agent 제어 및 Agent 상태 수신 WebSocket
@@ -24,7 +24,7 @@ Spring Boot는 화면을 직접 생성하는 서버가 아니라 다음 역할�
 - H2에 메타데이터·상태·결과를 저장하고 GRAW 원문은 별도 파일로 저장
 - Sender와 Receiver Agent의 실행 순서 및 단일 시험 세션 조정
 
-Nginx는 `8088` 포트에서 정적 화면과 Spring Boot 요청을 하나의 주소로 제공합니다. Spring Boot 컨테이너의 `8080` 포트와 H2 파일 DB는 외부에 공개되지 않습니다.
+별도 Nginx나 웹 프로젝트 없이 Spring Boot가 `8088` 포트에서 화면과 API를 함께 제공합니다. H2 파일 DB는 외부에 공개되지 않습니다.
 
 ### 1.2 COM 포트를 Windows Agent가 담당하는 이유
 
@@ -44,14 +44,13 @@ Nginx는 `8088` 포트에서 정적 화면과 Spring Boot 요청을 하나의 �
   └─ /lnis/dtntest/sender
           │ HTTP / WebSocket :8088
           ▼
-      Nginx :8088
+      Spring Boot :8088
           ├─ 정적 HTML/JS/CSS
-          └─ Spring Boot :8080
-                    │
-                    ├─ H2/JPA (`/app/data/lnis.mv.db`)
-                    ├─ GRAW 파일 (`/app/data/files/inputs`)
-                    ├─ WebSocket ─ Sender Windows Agent ─ COM/u-blox
-                    └─ WebSocket ─ Receiver Windows Agent
+          ├─ REST API / WebSocket
+          ├─ H2/JPA (`/app/data/lnis.mv.db`)
+          ├─ GRAW 파일 (`/app/data/files/inputs`)
+          ├─ WebSocket ─ Sender Windows Agent ─ COM/u-blox
+          └─ WebSocket ─ Receiver Windows Agent
 
 Sender Windows Agent ═════ UDP 45821/45822 ═════ Receiver Windows Agent
 ```
@@ -62,72 +61,45 @@ Sender와 Receiver 사이의 실제 시험 프레임은 중앙 서버를 경유�
 
 | 경로 | 설명 |
 |---|---|
-| `lnis-protocol` | 서버/Agent 공유 protocol, LGRW/LAFS wire 계약, CRC32, 결정론적 Drop 로직 |
-| `lnis-server` | Spring Boot Controller/DTO/Entity/Service/Repository/Mapper 및 H2/JPA 연동 |
-| `lnis-agent` | Windows COM/u-blox, JNA 네이티브 코덱, UDP Sender/Receiver |
-| `lnis-web` | Sender/Receiver HTML, JavaScript, CSS 및 Nginx 설정 |
+| `src/main/java/server/protocol` | 서버/Agent 공유 protocol, LGRW/LAFS wire 계약, CRC32, 결정론적 Drop 로직 |
+| `src/main/java/server/central` | Controller/DTO/Entity/Service/Repository 및 H2/JPA 연동 |
+| `src/main/java/server/agent` | Windows COM/u-blox, JNA 네이티브 코덱, UDP Sender/Receiver |
+| `src/main/resources/static` | Sender/Receiver HTML, JavaScript, CSS |
 | `native` | `LnisAfsCodec.dll`, C ABI 헤더/소스 및 고지 파일 |
-| `dist/server` | 빌드된 Spring Boot 실행 JAR |
-| `dist/windows-agent` | Windows Agent 설치용 전체 배포본 |
-| `docker-compose.yml` | Spring Boot, H2 데이터 볼륨, Nginx 실행 정의 |
+| `config` | Sender/Receiver Agent 설정 예제 |
+| `dist/windows-agent/runtime` | Agent ZIP에 포함할 Windows Java 21 런타임 |
+| `docker-compose.yml` | 단일 Spring Boot 컨테이너와 H2 데이터 볼륨 정의 |
 
-### 2.1 `lnis-protocol`을 독립 모듈로 두는 이유
+### 2.1 단일 프로젝트 내부 경계
 
-`lnis-protocol`은 일반적인 유틸리티 모음이 아니라 중앙 서버와 Windows Agent 사이의 **공유 계약**입니다.
+`server.protocol`은 일반적인 유틸리티 모음이 아니라 중앙 서버와 Windows Agent 사이의 **공유 계약**입니다.
 
 ```text
-lnis-server ──┐
-              ├──> lnis-protocol
-lnis-agent  ──┘
+central ──┐
+          ├──> protocol
+agent   ──┘
 ```
 
 - Spring Boot, H2/JPA, COM 포트, JNA 같은 실행 환경 의존성을 포함하지 않습니다.
 - WebSocket envelope, 세션/결과 모델, canonical GRAW와 UDP binary 규격만 제공합니다.
-- 서버가 Agent의 Windows 전용 라이브러리를 의존하거나 Agent가 Spring Boot를 의존하지 않게 합니다.
 - protocol 변경 시 서버와 Agent가 함께 컴파일되므로 양쪽 규격 불일치를 조기에 발견할 수 있습니다.
-- 빌드 시 `lnis-protocol-1.0.0.jar`가 서버 JAR과 Agent 배포본에 각각 포함됩니다.
+- ArchUnit 테스트가 protocol과 agent의 의존 방향을 자동으로 검사합니다.
 
 현재 Agent WebSocket protocol은 **v2**입니다. v2에서는 세션별 AFS PRN 설정과 Receiver의
 SB2 ephemeris 증거가 추가되었습니다. protocol version이 다른 Server와 Agent는 함께 사용할 수
 없으므로 중앙 서버, Sender Agent, Receiver Agent를 반드시 같은 소스 빌드로 배포해야 합니다.
 
-따라서 세 모듈은 별도 저장소가 아니라 하나의 Gradle 멀티모듈 프로젝트이며, 실제 실행 산출물은 서버와 Agent 두 종류입니다.
+전체 코드는 하나의 Gradle 프로젝트와 하나의 Boot JAR로 빌드됩니다. 같은 JAR을 첫 번째 인수에
+따라 `server`, `sender`, `receiver` 모드로 실행하므로 protocol 규격도 항상 함께 배포됩니다.
 
 백엔드는 공통 계층 폴더에 모든 클래스를 모으는 방식이 아니라, 업무 기능을 먼저 나누고 각 기능 아래에 필요한 계층을 배치하는 **기능 우선(Vertical Slice)** 구조입니다.
 
 ```text
-server.co.lnis.server
-├─ agent
-│  ├─ controller
-│  ├─ entity
-│  ├─ repository
-│  ├─ service
-│  └─ websocket
-├─ input
-│  ├─ controller
-│  ├─ dto
-│  ├─ entity
-│  ├─ repository
-│  └─ service
-├─ capture
-│  ├─ controller
-│  └─ dto
-├─ session
-│  ├─ controller
-│  ├─ dto
-│  ├─ entity
-│  ├─ mapper
-│  ├─ repository
-│  └─ service
-├─ artifact
-│  ├─ controller
-│  └─ service
-├─ realtime
-│  ├─ service
-│  └─ websocket
-├─ common
-│  └─ exception
-└─ config
+server
+├─ protocol   # 중앙 서버와 Agent가 공유하는 wire/model 계약
+├─ agent      # Windows Sender/Receiver 실행 기능
+├─ central    # 웹/API/H2/JPA 중앙 서버 기능
+└─ bootstrap  # 실행 모드 선택
 ```
 
 예를 들어 입력 업로드 기능을 변경할 때는 `input` 하위의 Controller/DTO/Entity/Repository/Service만 함께 살펴보면 됩니다. 기능을 공유하는 코드만 `common` 또는 `config`에 두며, Sender와 Receiver 양쪽에 걸친 세션 로직을 역할별로 중복 구현하지 않습니다.
@@ -135,7 +107,7 @@ server.co.lnis.server
 Windows Agent 역시 역할과 기능을 기준으로 분리되어 있습니다.
 
 ```text
-server.co.lnis.agent
+server.agent
 ├─ config       # Agent ID, 역할, 서버, token, DLL 경로
 ├─ connection   # 중앙 서버 WebSocket 연결과 heartbeat
 ├─ runtime      # 서버 명령 분배 및 Agent 상태
@@ -164,7 +136,6 @@ Gradle로 직접 빌드할 경우 Java 21이 필요합니다. Docker Compose만 
 
 - Windows x64
 - Java 21 x64
-- WinSW x64(Windows 서비스 설치 시)
 - 중앙 서버의 TCP `8088`에 접근 가능
 - Sender와 Receiver 간 UDP 통신 가능
 - 기본 UDP 포트:
@@ -229,7 +200,7 @@ docker compose ps
 .\scripts\start-docker.ps1 -Build
 ```
 
-정상 상태에서는 `server`가 `healthy`, `nginx`가 `Up`으로 표시됩니다.
+정상 상태에서는 단일 `server` 컨테이너가 `healthy`로 표시됩니다.
 
 접속 주소:
 
@@ -275,20 +246,19 @@ docker compose up -d --build
 
 ## 5. Gradle 빌드 및 테스트
 
-이 프로젝트는 Maven이 아니라 **Gradle Kotlin DSL**을 사용합니다.
+이 프로젝트는 **Gradle Groovy DSL**을 사용합니다.
 
 ```powershell
 Set-Location 'O:\3.ing\LNIS\LnisServer'
-.\gradlew.bat clean test
-.\gradlew.bat :lnis-server:bootJar :lnis-agent:installDist
+.\gradlew.bat clean build agentDistZip
 ```
 
 주요 산출물:
 
-- 서버 JAR: `lnis-server/build/libs/lnis-server.jar`
-- Agent 배포본: `lnis-agent/build/install/lnis-agent`
+- 공용 실행 JAR: `build/libs/lnis.jar`
+- Windows Agent 배포본: `build/distributions/lnis-agent-windows.zip`
 
-SB2/AFS 설정 또는 `lnis-protocol`을 변경한 빌드는 서버만 재기동해서는 적용되지 않습니다.
+SB2/AFS 설정 또는 `server.protocol`을 변경한 빌드는 서버만 재기동해서는 적용되지 않습니다.
 두 Windows Agent PC에도 새 Agent 배포본을 복사하고 Sender/Receiver Agent 프로세스를
 재시작해야 합니다. `LnisAfsCodec.dll` ABI는 이번 SB2 payload 변경으로 바뀌지 않았습니다.
 
@@ -301,154 +271,69 @@ docker run --rm -v "${PWD}:/workspace" -w /workspace `
 
 ## 6. Windows Agent 설치
 
-Sender와 Receiver PC에 각각 Agent를 설치합니다. 동일 PC에서 두 역할을 동시에 실행하는 구성은 서비스 ID와 UDP 포트 충돌 가능성이 있으므로 기본 운영 구성으로 권장하지 않습니다.
+Sender와 Receiver PC에는 같은 `lnis-agent-windows.zip`을 배포합니다. 실행 모드와 설정 파일만 역할별로 다릅니다.
 
-### 6.1 배포본 복사
+### 6.1 배포본 생성 및 복사
 
-중앙 개발 PC의 다음 디렉터리 전체를 각 Windows PC로 복사합니다.
+Agent 전용 Windows Java 21 런타임이 없다면 프로젝트 루트에서 먼저 설치합니다.
 
-```text
-dist\windows-agent
+```powershell
+.\scripts\install-agent-java21.ps1
+.\gradlew.bat agentDistZip
 ```
 
-또는 새로 빌드한 다음 아래 디렉터리를 복사할 수 있습니다.
+생성된 `build\distributions\lnis-agent-windows.zip`을 각 Agent PC의 고정 경로에 압축 해제합니다.
 
 ```text
-lnis-agent\build\install\lnis-agent
-```
-
-배포 디렉터리에는 최소한 다음 항목이 있어야 합니다.
-
-```text
-bin\
-conf\
-lib\
+lnis.jar
 native\LnisAfsCodec.dll
-runtime\jdk-21\bin\java.exe
-service\
-start-sender-agent.bat
-start-receiver-agent.bat
-stop-local-agents.ps1
+runtime\bin\java.exe
+config\application-sender.yml.example
+config\application-receiver.yml.example
 ```
 
-`runtime\jdk-21`은 Agent 전용 Windows Java 21 런타임입니다. 시스템에 설치된 Java 17을
-삭제하거나 `PATH`, 시스템 `JAVA_HOME`을 변경하지 않습니다. 두 역할별 실행 스크립트도
-배포본 안의 Java만 사용하므로 기존 Java 17 서버와 동시에 실행할 수 있습니다.
+포함된 JRE만 사용하므로 시스템의 Java 버전이나 `JAVA_HOME`을 변경할 필요가 없습니다.
 
-런타임이 빠진 배포본을 다시 준비할 때는 다음 스크립트를 실행합니다. 스크립트는 공식
-Eclipse Adoptium API에서 Windows x64 Temurin 21 JRE를 내려받고 SHA-256을 검증합니다.
+### 6.2 설정
+
+Sender PC에서는 `application-sender.yml.example`을 `application.yml`로 복사하고 값을 변경합니다.
+Receiver PC에서는 receiver 예제를 같은 방식으로 사용합니다.
+
+```yaml
+lnis:
+  agent:
+    id: sender-1
+    token: 중앙서버-env의-sender-token
+  server:
+    ws: ws://192.168.0.10:8088/lnis/agent/ws
+  native:
+    dir: native
+```
+
+CLI 모드가 역할을 결정하므로 설정의 역할과 실행 모드를 다르게 지정할 수 없습니다. 설정 우선순위는
+명령행 `--속성=값`, 환경 변수, `config/application.yml`, 모드별 기본값 순서입니다. 주요 환경 변수는
+`LNIS_AGENT_ID`, `LNIS_AGENT_TOKEN`, `LNIS_SERVER_WS`, `LNIS_NATIVE_DIR`입니다.
+
+### 6.3 실행
+
+배포 디렉터리에서 별도 BAT 파일 없이 다음 명령을 실행합니다.
+
+Sender:
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File .\runtime\install-java21.ps1
+.\runtime\bin\java.exe -jar .\lnis.jar sender --spring.config.additional-location=optional:file:.\config\
 ```
 
-### 6.2 콘솔 모드로 먼저 확인
-
-서비스 설치 전에 콘솔에서 연결을 검증하는 것이 좋습니다.
-
-Sender PC의 `conf\agent.properties` 예시:
-
-```properties
-lnis.agent.id=sender-1
-lnis.agent.role=SENDER
-lnis.server.ws=ws://192.168.0.10:8088/lnis/agent/ws
-lnis.agent.token=중앙서버-env의-sender-token
-lnis.native.dir=native
-```
-
-Receiver PC 예시:
-
-```properties
-lnis.agent.id=receiver-1
-lnis.agent.role=RECEIVER
-lnis.server.ws=ws://192.168.0.10:8088/lnis/agent/ws
-lnis.agent.token=중앙서버-env의-receiver-token
-lnis.native.dir=native
-```
-
-한 PC에서 로컬 통합 시험을 할 때는 Agent 배포 디렉터리에서 PowerShell 창을 두 개 열고
-역할별 스크립트를 하나씩 실행합니다.
+Receiver:
 
 ```powershell
-.\start-sender-agent.bat
+.\runtime\bin\java.exe -jar .\lnis.jar receiver --spring.config.additional-location=optional:file:.\config\
 ```
 
-```powershell
-.\start-receiver-agent.bat
-```
+종료는 `Ctrl+C`입니다. 상시 실행이 필요하면 이 명령 자체를 Windows 작업 스케줄러나 조직에서
+사용 중인 프로세스 관리 도구에 등록할 수 있으며, 프로젝트 전용 BAT나 WinSW 파일은 필요하지 않습니다.
 
-각 스크립트는 `conf\agent-sender.properties` 또는 `conf\agent-receiver.properties`를
-자동 선택합니다. 설정된 서버에 연결할 수 없으면 Agent는 같은 LAN의 IPv4 /24 대역에서
-LNIS 식별 API를 찾아 중앙 서버 WebSocket 주소를 자동 갱신합니다. 따라서 기본
-`localhost` 설정을 유지해도 중앙 서버, Sender, Receiver를 서로 다른 PC에서 실행할 수 있습니다.
-라우터로 분리된 다른 서브넷에서는 `lnis.server.ws`에 중앙 서버 주소를 직접 지정합니다.
-화면의 Agent 상태가 `READY`로 바뀌면 중앙 서버 인증 및 WebSocket 연결이 정상입니다.
-Sender 화면의 Receiver 주소도 선택된 Receiver Agent가 보고한 LAN IP로 자동 설정됩니다.
-종료는 각 창에서 `Ctrl+C`입니다.
-
-백그라운드로 실행한 로컬 Agent 두 개를 종료할 때는 다음 스크립트를 사용합니다. 다른 Java
-프로세스는 건드리지 않고 현재 배포본의 Java 21로 실행된 LNIS Agent만 종료합니다.
-
-```powershell
-powershell -ExecutionPolicy Bypass -File .\stop-local-agents.ps1
-```
-
-설정은 다음 우선순위로 읽습니다.
-
-1. 환경 변수
-2. Java 시스템 속성
-3. `conf/agent.properties`
-4. 코드 기본값
-
-사용 가능한 환경 변수는 `LNIS_AGENT_CONFIG`, `LNIS_AGENT_ID`, `LNIS_AGENT_ROLE`,
-`LNIS_SERVER_WS`, `LNIS_AGENT_TOKEN`, `LNIS_NATIVE_DIR`입니다.
-
-### 6.3 Windows 서비스 설치
-
-1. WinSW 공식 릴리스에서 x64 실행 파일을 내려받습니다.
-2. Agent 배포 디렉터리를 변경되지 않을 고정 경로에 둡니다.
-3. 관리자 PowerShell에서 설치 스크립트를 실행합니다.
-
-Sender 예시:
-
-```powershell
-Set-Location 'C:\LNIS\sender-agent'
-.\service\install-service.ps1 `
-  -Role SENDER `
-  -AgentId sender-1 `
-  -ServerHost 192.168.0.10 `
-  -Token '중앙서버-env의-sender-token' `
-  -WinSwExe 'C:\Tools\WinSW-x64.exe'
-```
-
-Receiver 예시:
-
-```powershell
-Set-Location 'C:\LNIS\receiver-agent'
-.\service\install-service.ps1 `
-  -Role RECEIVER `
-  -AgentId receiver-1 `
-  -ServerHost 192.168.0.10 `
-  -Token '중앙서버-env의-receiver-token' `
-  -WinSwExe 'C:\Tools\WinSW-x64.exe'
-```
-
-스크립트는 다음 작업을 수행합니다.
-
-- WinSW 실행 파일을 `service\lnis-agent-service.exe`로 복사
-- `conf\agent.properties` 생성
-- `runtime\jdk-21\bin\java.exe`를 서비스 실행 파일로 사용
-- `LNIS AFS Agent` 서비스 설치 및 시작
-- 부팅 시 자동 시작 설정
-- 장애 시 5초 후 재시작
-- 10MiB 기준 롤링 로그, 최대 14개 보관
-
-서비스 제거:
-
-```powershell
-.\service\uninstall-service.ps1
-```
-
+### 6.4 Agent 인증
 ### 6.4 Agent 인증
 
 Agent는 `/lnis/agent/ws` 연결 시 Agent ID와 토큰으로 인증합니다. 다음 조건 중 하나라도 다르면 연결되지 않습니다.
@@ -693,20 +578,20 @@ SESSION_START 같은 제어 패킷도 포함합니다. 따라서 정상 시험�
 상세 로그 포맷 회귀 테스트는 다음 명령으로 실행합니다.
 
 ```powershell
-node lnis-web\test\event-log.smoke.mjs
+node src\test\js\event-log.smoke.mjs
 ```
 
 결과 카드의 일반 시험 및 Test D 전용 표시 회귀 테스트는 다음 명령으로 실행합니다.
 
 ```powershell
-node lnis-web\test\result-presentation.smoke.mjs
+node src\test\js\result-presentation.smoke.mjs
 ```
 
 ### 8.7 sample-data 실제 A~E 회귀시험
 
 `SamplePath`로 지정한 GRAW를 REST API로 실제 업로드하고 로컬 Sender/Receiver Agent와
 UDP 통신을 사용해 A~E를 순서대로 실행하는 스크립트를 제공합니다.
-서버, Nginx와 두 Agent가 실행된 상태에서 다음 명령을 사용합니다.
+중앙 서버와 두 Agent가 실행된 상태에서 다음 명령을 사용합니다.
 
 ```powershell
 Set-Location 'O:\3.ing\LNIS\LnisServer'
@@ -1056,9 +941,9 @@ ws://<server>:8088/lnis/ws/status
 ws://<server>:8088/lnis/agent/ws
 ```
 
-Agent 프로토콜 버전은 `1`이며 HELLO/HEARTBEAT/COMMAND/STATUS/PORT_LIST/INPUT_CHUNK/ROLE_RESULT 등의 메시지를 교환합니다. 이 경로는 일반 브라우저 UI 용도가 아니며 Agent ID와 토큰 인증이 필요합니다.
+Agent 프로토콜 버전은 `2`이며 HELLO/HEARTBEAT/COMMAND/STATUS/PORT_LIST/INPUT_CHUNK/ROLE_RESULT 등의 메시지를 교환합니다. 이 경로는 일반 브라우저 UI 용도가 아니며 Agent ID와 토큰 인증이 필요합니다.
 
-운영 서버에 TLS를 적용하면 화면/API는 `https`, WebSocket은 `wss`를 사용하도록 Nginx와 Agent 설정을 함께 변경해야 합니다.
+운영 서버에 TLS를 적용하면 화면/API는 `https`, WebSocket은 `wss`를 사용하도록 Spring Boot 또는 앞단 reverse proxy와 Agent 설정을 함께 변경해야 합니다.
 
 ## 13. 상태 확인과 문제 해결
 
@@ -1066,7 +951,6 @@ Agent 프로토콜 버전은 `1`이며 HELLO/HEARTBEAT/COMMAND/STATUS/PORT_LIST/
 
 ```powershell
 docker compose ps
-docker compose logs --tail=200 nginx
 docker compose logs --tail=200 server
 ```
 
@@ -1078,13 +962,12 @@ docker compose logs --tail=200 server
 
 - Agent PC에서 `http://<server>:8088/lnis/api/v1/actuator/health` 접근 여부 확인
 - Agent의 `lnis.server.ws` 주소 확인
-- `.env`와 `agent.properties`의 Agent ID/token 일치 여부 확인
-- Agent 서비스 로그 확인
+- `.env`와 `config/application.yml`의 Agent ID/token 일치 여부 확인
+- Agent 콘솔 또는 프로세스 관리 도구의 로그 확인
 - 서버 로그에서 WebSocket 인증 실패 확인
 
 ```powershell
 docker compose logs --tail=200 server
-Get-Service 'lnis-agent'
 ```
 
 ### 13.3 COM 포트가 표시되지 않음
@@ -1155,7 +1038,7 @@ Get-ChildItem .\DB
 - Agent token은 반드시 기본값에서 변경
 - `.env` 파일 접근 권한 제한
 - 외부망에 `8088` 직접 공개 금지
-- 외부망 또는 여러 사용자 환경에서는 Nginx TLS와 사용자 인증 추가
+- 외부망 또는 여러 사용자 환경에서는 Spring TLS 또는 reverse proxy와 사용자 인증 추가
 - 운영 로그에 토큰이나 민감한 시험 데이터를 기록하지 않도록 주의
 - 시험 직후 필요한 CSV/JSON 다운로드
 - 호스트 시간 동기화(NTP) 권장
@@ -1168,7 +1051,7 @@ REST API에는 현재 별도의 브라우저 사용자 로그인 기능이 없�
 - 동시에 하나의 Sender/Receiver 시험 세션을 기준으로 구현
 - H2 데이터와 GRAW 파일은 기본 24시간 보존 후 정리하며, 보존 기간은 환경 변수로 변경 가능
 - 결과는 JSON/CSV로만 제공하며 복원 GRAW 파일은 제공하지 않음
-- Agent는 Windows 서비스 배포를 기준으로 함
+- Agent는 포함된 Java 21 런타임과 단일 JAR 명령으로 실행
 - COM/u-blox 및 실제 두 PC 간 UDP 동작은 현장 장비와 네트워크에서 최종 인수 시험 필요
 - 최대 1GB 입력은 호스트 디스크 여유 공간뿐 아니라 브라우저, Agent JVM heap, 네트워크 시간 및 시험 지속 시간을 포함한 부하 시험 필요
 
@@ -1179,7 +1062,7 @@ REST API에는 현재 별도의 브라우저 사용자 로그인 기능이 없�
 3. Test B~E 기능 시험
 4. 실제 GNSS COM 수집 시험
 5. 장시간/대용량 입력 시험
-6. Agent 서비스 자동 재시작 및 PC 재부팅 시험
+6. 사용하는 프로세스 관리 도구의 자동 재시작 및 PC 재부팅 시험
 7. 결과 CSV/JSON 보존 및 추적성 확인
 
 ## 16. 빠른 시작 요약
@@ -1197,8 +1080,8 @@ docker compose ps
 Agent PC:
 
 ```powershell
-# dist\windows-agent를 고정 경로에 복사하고 conf\agent.properties 작성
-.\bin\lnis-agent.bat
+# Agent ZIP을 고정 경로에 풀고 config\application.yml 작성
+.\runtime\bin\java.exe -jar .\lnis.jar sender --spring.config.additional-location=optional:file:.\config\
 ```
 
 시험:

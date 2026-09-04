@@ -1,6 +1,0 @@
-lnis.agent.id=receiver-1
-lnis.agent.role=RECEIVER
-lnis.server.ws=ws://localhost:8088/lnis/agent/ws
-lnis.agent.token=change-me-receiver
-lnis.native.dir=native
-
