@@ -61,6 +61,7 @@ public class SessionService {
     validate(request);
     UUID id = UUID.randomUUID();
     if (!locks.tryAcquire(id)) throw new IllegalStateException("Another test session is active");
+    boolean sessionStored = false;
     try {
       // 2. 이후 어느 Agent 명령에서 실패하더라도 추적할 수 있도록 세션을 먼저 영속화한다.
       Instant now = Instant.now();
@@ -79,6 +80,7 @@ public class SessionService {
               now,
               now);
       sessions.save(session);
+      sessionStored = true;
 
       // 3. Sender가 즉시 UDP를 보내 유실되는 일을 막기 위해 Receiver 소켓을 먼저 준비시킨다.
       commands.command(request.receiverAgentId(), id, CommandType.ARM_RECEIVER, request);
@@ -97,8 +99,25 @@ public class SessionService {
           server.protocol.model.AgentProtocol.EventType.SESSION_STATUS, null, null, id, session);
       return session;
     } catch (Exception e) {
-      // 생성 중간 실패는 완료 이벤트가 오지 않으므로 여기서 잠금을 직접 해제한다.
-      locks.release(id);
+      // 세션 저장 뒤의 부분 실패는 양쪽 Agent와 DB를 함께 종료해야 Receiver 대기나 유령 세션이 남지 않는다.
+      if (sessionStored) {
+        try {
+          terminateInternal(id, SessionState.FAILED, startupFailureMessage(e));
+        } catch (Exception compensationError) {
+          // 보상 처리 오류가 최초 원인을 가리지 않게 suppressed로 보존하고 운영 로그에도 남긴다.
+          e.addSuppressed(compensationError);
+          log.error(
+              "Failed to compensate LNIS session startup failure for {}", id, compensationError);
+        }
+      } else {
+        // JSON 직렬화나 최초 DB 저장 전에는 Agent 명령이 전송되지 않았으므로 lock만 정리하면 된다.
+        try {
+          locks.release(id);
+        } catch (Exception releaseError) {
+          e.addSuppressed(releaseError);
+          log.error("Failed to release LNIS session startup lock for {}", id, releaseError);
+        }
+      }
       if (e instanceof RuntimeException runtime) {
         throw runtime;
       }
@@ -122,38 +141,55 @@ public class SessionService {
    * 하는 것이 목적이다.
    */
   private TestSessionEntity cancelInternal(UUID id, String reason) {
-    var current = get(id);
-    if (terminal(current.state())) {
-      release(id);
-      return current;
-    }
+    return terminateInternal(id, SessionState.CANCELLED, reason);
+  }
 
-    var commandErrors = new ArrayList<String>();
-    cancelAgent(current.senderAgentId(), id, commandErrors);
-    cancelAgent(current.receiverAgentId(), id, commandErrors);
-    String message =
-        commandErrors.isEmpty()
-            ? reason
-            : reason + " 일부 Agent 취소 명령 실패: " + String.join(", ", commandErrors);
-    var cancelled =
-        new TestSessionEntity(
-            id,
-            SessionState.CANCELLED,
-            current.testType(),
-            current.senderAgentId(),
-            current.receiverAgentId(),
-            current.inputId(),
-            current.progress(),
-            message,
-            Verdict.INCONCLUSIVE,
-            current.requestJson(),
-            current.createdAt(),
-            Instant.now());
-    sessions.save(cancelled);
-    release(id);
-    events.publish(
-        server.protocol.model.AgentProtocol.EventType.SESSION_STATUS, null, null, id, cancelled);
-    return cancelled;
+  /**
+   * 부분 시작 실패와 사용자 취소가 같은 보상 순서를 사용하게 한다. 양쪽 취소 전송과 상태 저장 중 하나가 실패해도 활성 lock은 반드시 마지막에 해제한다.
+   */
+  private TestSessionEntity terminateInternal(UUID id, SessionState terminalState, String reason) {
+    try {
+      var current = get(id);
+      if (terminal(current.state())) {
+        return current;
+      }
+
+      var commandErrors = new ArrayList<String>();
+      cancelAgent(current.senderAgentId(), id, commandErrors);
+      cancelAgent(current.receiverAgentId(), id, commandErrors);
+      String message =
+          commandErrors.isEmpty()
+              ? reason
+              : reason + " 일부 Agent 취소 명령 실패: " + String.join(", ", commandErrors);
+      var terminated =
+          new TestSessionEntity(
+              id,
+              terminalState,
+              current.testType(),
+              current.senderAgentId(),
+              current.receiverAgentId(),
+              current.inputId(),
+              current.progress(),
+              message,
+              Verdict.INCONCLUSIVE,
+              current.requestJson(),
+              current.createdAt(),
+              Instant.now());
+      sessions.save(terminated);
+      events.publish(
+          server.protocol.model.AgentProtocol.EventType.SESSION_STATUS, null, null, id, terminated);
+      return terminated;
+    } finally {
+      // DB 갱신이나 상태 이벤트 발행 실패도 다음 시험을 영구적으로 막아서는 안 된다.
+      release(id);
+    }
+  }
+
+  private static String startupFailureMessage(Exception error) {
+    String detail = error.getMessage();
+    return detail == null || detail.isBlank()
+        ? "시험 시작 중 오류가 발생하여 양쪽 Agent를 취소했습니다."
+        : "시험 시작 실패: " + detail;
   }
 
   private void cancelAgent(String agentId, UUID sessionId, ArrayList<String> errors) {

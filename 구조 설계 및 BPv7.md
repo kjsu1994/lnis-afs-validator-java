@@ -1181,3 +1181,84 @@ extern void eph2pos(
                                             ▼
                                            PVT
 ```
+
+## 전송규격
+```text
+LNIS Server :8088
+     │
+     │ POST /api/v1/bundles
+     │ JSON
+     ▼
+DTN REST Adapter :8090     ← 제안값, BPv7 표준 포트 아님
+     │
+     │ JSON → BPv7 Payload
+     ▼
+HDTN / ION
+     │
+     ▼
+DTN Receiver Adapter
+     │
+     │ POST /lnis/api/v1/dtn/received
+     ▼
+LNIS Server :8088
+```
+```json
+{
+  "sourceEid": "ipn:10.1",
+  "destinationEid": "ipn:20.1",
+  "lifetimeMs": 60000,
+
+  "payload": {
+    "protocolVersion": 1,
+
+    "sessionId": "8e6f1ce8-178e-4ac1-9013-cc23da26cf42",
+    "messageId": "7e70ce41-5fa4-4c30-90bb-e38eefc03fa2",
+    "sequence": 15,
+
+    "afsFrame": {
+      "frameIndex": 15,
+      "prn": 3,
+      "gpsWeek": 2434,
+      "intervalOfWeek": 181,
+      "timeOfInterval": 4,
+      "frameDataBase64": "AQAAGF8hF...",
+      "frameSha256": "15f532c66a..."
+    },
+
+    "gnssEpoch": {
+      "gpsWeek": 2434,
+      "receiverTowSeconds": 217245.0,
+      "leapSeconds": 18,
+
+      "observations": [
+        {
+          "constellationId": 0,
+          "satelliteId": 3,
+          "signalId": 0,
+          "frequencyId": 0,
+
+          "pseudorangeMeters": 21435821.27,
+          "carrierPhaseCycles": 112349827.51,
+          "dopplerHz": -2345.72,
+
+          "carrierToNoiseDbHz": 43,
+          "trackingStatus": 15
+        },
+        {
+          "constellationId": 0,
+          "satelliteId": 7,
+          "signalId": 0,
+          "frequencyId": 0,
+
+          "pseudorangeMeters": 22561142.83,
+          "carrierPhaseCycles": 118239102.37,
+          "dopplerHz": 1732.24,
+
+          "carrierToNoiseDbHz": 41,
+          "trackingStatus": 15
+        }
+      ]
+    }
+  }
+}
+```
