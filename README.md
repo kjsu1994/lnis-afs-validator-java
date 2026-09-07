@@ -253,10 +253,27 @@ Set-Location 'O:\3.ing\LNIS\LnisServer'
 .\gradlew.bat clean build agentDistZip
 ```
 
+`build`가 성공하면 소스 없이 실행할 수 있는 운영 배포본을 기본 `C:\lnis-compose`에 자동으로
+갱신합니다. 기존 `C:\lnis-compose\.env`와 `DB` 데이터는 덮어쓰거나 삭제하지 않습니다.
+
+운영자는 다음 파일만 더블클릭하면 됩니다.
+
+```text
+C:\lnis-compose\START.cmd
+C:\lnis-compose\STOP.cmd
+```
+
+다른 배포 경로가 필요하면 빌드 property로 지정할 수 있습니다.
+
+```powershell
+.\gradlew.bat clean build -PlnisComposeDir='D:/lnis-compose'
+```
+
 주요 산출물:
 
 - 공용 실행 JAR: `build/libs/lnis.jar`
 - Windows Agent 배포본: `build/distributions/lnis-agent-windows.zip`
+- 독립 운영 폴더: `C:\lnis-compose`
 
 SB2/AFS 설정 또는 `server.protocol`을 변경한 빌드는 서버만 재기동해서는 적용되지 않습니다.
 두 Windows Agent PC에도 새 Agent 배포본을 복사하고 Sender/Receiver Agent 프로세스를

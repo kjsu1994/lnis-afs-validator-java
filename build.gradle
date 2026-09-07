@@ -108,3 +108,51 @@ tasks.register('agentDistZip', Zip) {
         }
     }
 }
+
+// 운영 폴더는 소스 저장소와 분리한다. -PlnisComposeDir=...로 다른 경로를 지정할 수 있다.
+def lnisComposeDirectory = providers.gradleProperty('lnisComposeDir').orElse('C:/lnis-compose')
+
+tasks.register('deployComposeBundle') {
+    group = 'distribution'
+    description = '실행에 필요한 파일만 C:/lnis-compose에 복사한다.'
+    dependsOn tasks.named('bootJar')
+    dependsOn tasks.named('agentDistZip')
+    dependsOn tasks.named('check')
+
+    doLast {
+        File target = file(lnisComposeDirectory.get())
+        target.mkdirs()
+
+        // Copy 대신 Gradle copy 작업을 명시적으로 사용해 기존 .env와 DB를 삭제하지 않는다.
+        copy {
+            from('deployment/compose')
+            into(target)
+        }
+        copy {
+            from(tasks.named('bootJar').flatMap { it.archiveFile })
+            into(target)
+            rename { 'lnis.jar' }
+        }
+        copy {
+            from(tasks.named('agentDistZip').flatMap { it.archiveFile })
+            into(new File(target, 'agent'))
+        }
+
+        new File(target, 'DB').mkdirs()
+        File environment = new File(target, '.env')
+        if (!environment.exists()) {
+            copy {
+                from('deployment/compose/.env.example')
+                into(target)
+                rename { '.env' }
+            }
+        }
+        logger.lifecycle("LNIS 운영 배포본 갱신 완료: ${target.absolutePath}")
+        logger.lifecycle('기존 .env와 DB 폴더는 유지했습니다.')
+    }
+}
+
+// 사용자가 요청한 단순 흐름: 모든 시험이 성공한 build에서만 운영 폴더를 갱신한다.
+tasks.named('build') {
+    dependsOn tasks.named('deployComposeBundle')
+}
