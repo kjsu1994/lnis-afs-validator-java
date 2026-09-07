@@ -1,4 +1,6 @@
 $ErrorActionPreference = 'Stop'
+[Console]::OutputEncoding = [Text.UTF8Encoding]::new()
+$OutputEncoding = [Text.UTF8Encoding]::new()
 $composeRoot = $PSScriptRoot
 $timestamp = Get-Date -Format 'yyyyMMdd-HHmmss'
 $backupRoot = Join-Path $composeRoot "backups\$timestamp"

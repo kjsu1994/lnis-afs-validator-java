@@ -263,6 +263,9 @@ C:\lnis-compose\START.cmd
 C:\lnis-compose\STOP.cmd
 ```
 
+`START.cmd`는 Docker 중앙 서버와 같은 PC의 Sender Agent를 함께 실행합니다. Receiver PC에서는
+`agent\lnis-agent-windows.zip`을 압축 해제하고 `START-RECEIVER.cmd`를 더블클릭합니다.
+
 다른 배포 경로가 필요하면 빌드 property로 지정할 수 있습니다.
 
 ```powershell

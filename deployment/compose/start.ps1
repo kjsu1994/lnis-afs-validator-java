@@ -4,6 +4,8 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
+[Console]::OutputEncoding = [Text.UTF8Encoding]::new()
+$OutputEncoding = [Text.UTF8Encoding]::new()
 $composeRoot = $PSScriptRoot
 
 if (-not (Test-Path -LiteralPath (Join-Path $composeRoot 'lnis.jar') -PathType Leaf)) {
@@ -62,8 +64,64 @@ if (-not $healthy) {
     throw 'LNIS 서버가 3분 안에 healthy 상태가 되지 않았습니다.'
 }
 
+$agentZip = Join-Path $composeRoot 'agent\lnis-agent-windows.zip'
+$senderRoot = Join-Path $composeRoot 'sender-agent'
+$packageMarker = Join-Path $senderRoot '.package.sha256'
+if (-not (Test-Path -LiteralPath $agentZip -PathType Leaf)) {
+    throw 'Agent ZIP이 없습니다. gradlew.bat build를 다시 실행하세요.'
+}
+$packageHash = (Get-FileHash -LiteralPath $agentZip -Algorithm SHA256).Hash
+$installedHash = if (Test-Path -LiteralPath $packageMarker) {
+    (Get-Content -LiteralPath $packageMarker -Raw).Trim()
+} else {
+    ''
+}
+
+if ($installedHash -ne $packageHash) {
+    # 실행 중인 JAR을 덮어쓰지 않도록 기존 Sender를 먼저 종료하고 새 ZIP을 반영한다.
+    $oldStop = Join-Path $senderRoot 'stop-agent.ps1'
+    if (Test-Path -LiteralPath $oldStop -PathType Leaf) {
+        & $oldStop -Role sender
+    }
+    $updateRoot = Join-Path $composeRoot '.sender-agent-update'
+    if (Test-Path -LiteralPath $updateRoot) {
+        Remove-Item -LiteralPath $updateRoot -Recurse -Force
+    }
+    Expand-Archive -LiteralPath $agentZip -DestinationPath $updateRoot
+    New-Item -ItemType Directory -Path $senderRoot -Force | Out-Null
+
+    # 사용자가 만든 역할별 설정과 기존 로그는 유지하고 실행 파일만 갱신한다.
+    Get-ChildItem -LiteralPath $updateRoot -Force | ForEach-Object {
+        Copy-Item -LiteralPath $_.FullName -Destination $senderRoot -Recurse -Force
+    }
+    [IO.File]::WriteAllText($packageMarker, $packageHash)
+    Remove-Item -LiteralPath $updateRoot -Recurse -Force
+}
+$senderAgent = Join-Path $senderRoot 'start-agent.ps1'
+
+# 중앙 서버와 같은 PC의 Sender는 사용자가 별도로 실행하지 않아도 함께 시작한다.
+$tokenLine = Get-Content -LiteralPath (Join-Path $composeRoot '.env') |
+    Where-Object { $_ -match '^\s*LNIS_AGENT_TOKENS=' } |
+    Select-Object -First 1
+$senderToken = $null
+if ($tokenLine) {
+    $configuredTokens = ($tokenLine -split '=', 2)[1]
+    foreach ($item in ($configuredTokens -split ',')) {
+        $pair = $item.Trim() -split '=', 2
+        if ($pair.Count -eq 2 -and $pair[0] -eq 'sender-1') {
+            $senderToken = $pair[1]
+            break
+        }
+    }
+}
+if (-not $senderToken) {
+    throw '.env의 LNIS_AGENT_TOKENS에 sender-1 token이 없습니다.'
+}
+
+& $senderAgent -Role sender -ServerHost localhost -Token $senderToken
+
 Write-Host ''
-Write-Host 'LNIS 서버가 정상 실행되었습니다.' -ForegroundColor Green
+Write-Host 'LNIS 서버와 Sender Agent가 정상 실행되었습니다.' -ForegroundColor Green
 Write-Host '화면: http://localhost:8088/lnis/afstest/sender'
 Write-Host '종료: STOP.cmd'
 

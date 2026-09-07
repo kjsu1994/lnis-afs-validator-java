@@ -1,4 +1,6 @@
 $ErrorActionPreference = 'Stop'
+[Console]::OutputEncoding = [Text.UTF8Encoding]::new()
+$OutputEncoding = [Text.UTF8Encoding]::new()
 $composeRoot = $PSScriptRoot
 if ($composeRoot -notmatch '^[A-Za-z]:\\') {
     throw 'LNIS 운영 폴더는 Windows 로컬 드라이브에 두세요.'
@@ -7,6 +9,11 @@ if ($composeRoot -notmatch '^[A-Za-z]:\\') {
 $drive = $composeRoot.Substring(0, 1).ToLowerInvariant()
 $relative = $composeRoot.Substring(3).Replace('\', '/')
 $linuxRoot = "/mnt/$drive/$relative"
+
+$stopSender = Join-Path $composeRoot 'sender-agent\stop-agent.ps1'
+if (Test-Path -LiteralPath $stopSender -PathType Leaf) {
+    & $stopSender -Role sender
+}
 
 Push-Location $env:SystemRoot
 try {

@@ -6,7 +6,7 @@
 2. 필요하면 `.env`의 Sender/Receiver token을 변경합니다.
 3. `START.cmd`를 더블클릭합니다.
 
-서버가 준비되면 브라우저가 자동으로 열립니다.
+서버가 준비되면 이 PC의 Sender Agent도 자동 실행되고 브라우저가 열립니다.
 
 ## 종료
 
@@ -26,6 +26,9 @@ PowerShell에서 다음을 실행합니다.
 
 서버를 `STOP.cmd`로 먼저 종료한 후 이 폴더 전체를 다른 컴퓨터의 `C:\lnis-compose`로 복사합니다.
 새 컴퓨터에도 WSL과 Docker가 필요합니다. Receiver/Sender PC에는 `agent\lnis-agent-windows.zip`을 사용합니다.
+
+Receiver PC에서는 ZIP을 압축 해제한 후 `START-RECEIVER.cmd`를 더블클릭합니다. 중앙 서버 IP나
+token이 기본값과 다르면 `config\application-receiver.yml`을 수정합니다. 종료는 `STOP-AGENT.cmd`입니다.
 
 ## 개발 빌드 반영
 

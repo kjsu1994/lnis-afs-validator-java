@@ -97,6 +97,7 @@ tasks.register('agentDistZip', Zip) {
     from('config') {
         into 'config'
     }
+    from('deployment/agent')
     from('dist/windows-agent/runtime/jdk-21') {
         into 'runtime'
     }
@@ -137,7 +138,6 @@ tasks.register('deployComposeBundle') {
             from(tasks.named('agentDistZip').flatMap { it.archiveFile })
             into(new File(target, 'agent'))
         }
-
         new File(target, 'DB').mkdirs()
         File environment = new File(target, '.env')
         if (!environment.exists()) {
