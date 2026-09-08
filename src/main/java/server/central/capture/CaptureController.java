@@ -1,56 +1,70 @@
 package server.central.capture;
 
 import jakarta.validation.Valid;
-import java.util.Map;
-import java.util.UUID;
+
+import lombok.RequiredArgsConstructor;
+
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+
 import server.central.agent.AgentCommandService;
-import server.central.capture.CaptureRequest;
 import server.central.input.InputBufferEntity;
 import server.central.input.InputBufferService;
 import server.shared.model.AgentProtocol.CommandType;
 import server.shared.model.LnisModels.InputKind;
 
+import java.util.Map;
+import java.util.UUID;
+
+@RequiredArgsConstructor
 @RestController
 @RequestMapping("/lnis/api/v1/captures")
 /** Sender Agent의 GNSS 수집 시작·종료와 입력 확정을 담당한다. */
 public class CaptureController {
-  private final InputBufferService inputs;
-  private final AgentCommandService commands;
+    private final InputBufferService inputBufferService;
+    private final AgentCommandService agentCommandService;
 
-  public CaptureController(InputBufferService inputs, AgentCommandService commands) {
-    this.inputs = inputs;
-    this.commands = commands;
-  }
-
-  @PostMapping
-  public InputBufferEntity start(@Valid @RequestBody CaptureRequest request) {
-    var input = inputs.create("capture.graw", 0, InputKind.GNSS_CAPTURE);
-    try {
-      commands.command(
-          request.senderAgentId(), input.inputId(), CommandType.START_CAPTURE, request);
-      return input;
-    } catch (RuntimeException error) {
-      // Agent 조회 또는 명령 전송이 실패하면 시험에 사용할 수 없는 DB·파일 입력을 남기지 않는다.
-      try {
-        inputs.remove(input.inputId());
-      } catch (RuntimeException cleanupError) {
-        // 정리 오류가 원래의 명령 실패 원인을 가리지 않도록 suppressed 예외로 보존한다.
-        error.addSuppressed(cleanupError);
-      }
-      throw error;
+    /* GNSS 수집 시작: 명령 실패 시 생성한 입력을 정리한다. */
+    @PostMapping
+    public ResponseEntity<InputBufferEntity> start(@Valid @RequestBody CaptureRequest request)
+    {
+        InputBufferEntity input =
+                inputBufferService.create("capture.graw", 0, InputKind.GNSS_CAPTURE);
+        try {
+            agentCommandService.command(
+                    request.senderAgentId(), input.inputId(), CommandType.START_CAPTURE, request);
+            InputBufferEntity response = input;
+            return new ResponseEntity<>(response, HttpStatus.OK);
+        } catch (RuntimeException error) {
+            // Agent 조회 또는 명령 전송이 실패하면 시험에 사용할 수 없는 DB·파일 입력을 남기지 않는다.
+            try {
+                inputBufferService.remove(input.inputId());
+            } catch (RuntimeException cleanupError) {
+                // 정리 오류가 원래의 명령 실패 원인을 가리지 않도록 suppressed 예외로 보존한다.
+                error.addSuppressed(cleanupError);
+            }
+            throw error;
+        }
     }
-  }
 
-  @PostMapping("/{captureId}/stop")
-  public Map<String, Object> stop(
-      @PathVariable UUID captureId, @RequestParam String senderAgentId) {
-    UUID command = commands.command(senderAgentId, captureId, CommandType.STOP_CAPTURE, null);
-    return Map.of("commandId", command, "accepted", true);
-  }
+    /* Sender에 GNSS 수집 종료 요청 */
+    @PostMapping("/{captureId}/stop")
+    public ResponseEntity<Map<String, Object>> stop(
+            @PathVariable UUID captureId, @RequestParam String senderAgentId)
+    {
+        UUID command =
+                agentCommandService.command(
+                        senderAgentId, captureId, CommandType.STOP_CAPTURE, null);
+        Map<String, Object> response = Map.of("commandId", command, "accepted", true);
+        return new ResponseEntity<>(response, HttpStatus.OK);
+    }
 
-  @PostMapping("/{captureId}/complete")
-  public InputBufferEntity complete(@PathVariable UUID captureId) {
-    return inputs.complete(captureId);
-  }
+    /* 수집된 입력 검증 및 확정 */
+    @PostMapping("/{captureId}/complete")
+    public ResponseEntity<InputBufferEntity> complete(@PathVariable UUID captureId)
+    {
+        InputBufferEntity response = inputBufferService.complete(captureId);
+        return new ResponseEntity<>(response, HttpStatus.OK);
+    }
 }

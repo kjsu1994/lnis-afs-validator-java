@@ -132,6 +132,19 @@ realtime, dtn, config, common입니다. 수집과 입력은 AFS/DTN이 공유하
 
 ## 3. 요구사항
 
+### 중앙 서버 코드 스타일
+
+`server.central`은 CommunityServer의 명시적인 처리 흐름을 참고한다.
+공백 4칸을 사용하고 메서드 시작 중괄호는 다음 줄에 둔다.
+지역 변수의 타입과 의존성의 역할을 명시하고, 한 줄에 여러 동작을 압축하지 않는다.
+단순 생성자 주입은 `@RequiredArgsConstructor`, 로거는 `@Slf4j`를 사용한다.
+설정값 가공이나 기본값 처리가 있는 생성자는 유지한다.
+
+REST Controller는 응답 변수를 구성한 뒤 기존 HTTP 상태와 함께 반환한다.
+한국어 주석은 기능과 중요한 처리 이유를 설명한다.
+스타일 변경을 이유로 트랜잭션·동기화·예외 전달·JSON 계약을 변경하지 않는다.
+이 규칙은 Agent, shared, native 및 프론트엔드에는 일괄 적용하지 않는다.
+
 ### 3.1 중앙 서버
 
 - Windows/Linux 서버 또는 개발 PC

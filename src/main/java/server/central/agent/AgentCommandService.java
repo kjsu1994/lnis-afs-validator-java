@@ -1,13 +1,19 @@
 package server.central.agent;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import java.util.UUID;
+import com.fasterxml.jackson.databind.node.ObjectNode;
+
+import lombok.RequiredArgsConstructor;
+
 import org.springframework.stereotype.Service;
-import server.central.agent.AgentRepository;
-import server.central.agent.AgentConnectionRegistry;
+
 import server.shared.model.AgentProtocol.*;
 import server.shared.model.LnisModels.AgentRole;
 
+import java.util.Base64;
+import java.util.UUID;
+
+@RequiredArgsConstructor
 @Service
 /**
  * 중앙 서버의 명령과 입력 청크를 대상 Agent WebSocket으로 전달한다.
@@ -16,50 +22,56 @@ import server.shared.model.LnisModels.AgentRole;
  * Agent에는 명령을 대기열에 적재하지 않고 즉시 오류를 반환한다.
  */
 public class AgentCommandService {
-  private final AgentConnectionRegistry connections;
-  private final AgentRepository agents;
-  private final ObjectMapper json;
+    private final AgentConnectionRegistry agentConnectionRegistry;
+    private final AgentRepository agentRepository;
+    private final ObjectMapper objectMapper;
 
-  public AgentCommandService(
-      AgentConnectionRegistry connections, AgentRepository agents, ObjectMapper json) {
-    this.connections = connections;
-    this.agents = agents;
-    this.json = json;
-  }
+    /** 명령 인수를 JSON tree로 변환해 COMMAND envelope로 전송하고 추적용 message ID를 반환한다. */
+    public UUID command(String agentId, UUID sessionId, CommandType type, Object arguments)
+    {
+        AgentRole role =
+                agentRepository
+                        .find(agentId)
+                        .orElseThrow(
+                                () -> new IllegalArgumentException("Unknown agent: " + agentId))
+                        .role();
+        Envelope envelope =
+                Envelope.of(
+                        MessageType.COMMAND,
+                        agentId,
+                        role,
+                        sessionId,
+                        objectMapper.valueToTree(
+                                new Command(type, objectMapper.valueToTree(arguments))));
+        agentConnectionRegistry.send(agentId, envelope);
+        return envelope.messageId();
+    }
 
-  /** 명령 인수를 JSON tree로 변환해 COMMAND envelope로 전송하고 추적용 message ID를 반환한다. */
-  public UUID command(String agentId, UUID sessionId, CommandType type, Object arguments) {
-    AgentRole role =
-        agents
-            .find(agentId)
-            .orElseThrow(() -> new IllegalArgumentException("Unknown agent: " + agentId))
-            .role();
-    Envelope envelope =
-        Envelope.of(
-            MessageType.COMMAND,
-            agentId,
-            role,
-            sessionId,
-            json.valueToTree(new Command(type, json.valueToTree(arguments))));
-    connections.send(agentId, envelope);
-    return envelope.messageId();
-  }
+    /** GRAW 청크를 Base64로 감싸 Sender Agent의 해당 세션 입력 버퍼로 전달한다. */
+    public void inputChunk(String agentId, UUID sessionId, long index, byte[] bytes)
+    {
+        AgentRole role = agentRepository.find(agentId).orElseThrow().role();
+        ObjectNode payload =
+                objectMapper
+                        .createObjectNode()
+                        .put("index", index)
+                        .put("dataBase64", Base64.getEncoder().encodeToString(bytes));
+        agentConnectionRegistry.send(
+                agentId, Envelope.of(MessageType.INPUT_CHUNK, agentId, role, sessionId, payload));
+    }
 
-  /** GRAW 청크를 Base64로 감싸 Sender Agent의 해당 세션 입력 버퍼로 전달한다. */
-  public void inputChunk(String agentId, UUID sessionId, long index, byte[] bytes) {
-    AgentRole role = agents.find(agentId).orElseThrow().role();
-    var payload =
-        json.createObjectNode()
-            .put("index", index)
-            .put("dataBase64", java.util.Base64.getEncoder().encodeToString(bytes));
-    connections.send(
-        agentId, Envelope.of(MessageType.INPUT_CHUNK, agentId, role, sessionId, payload));
-  }
-
-  public void inputComplete(String agentId, UUID sessionId) {
-    AgentRole role = agents.find(agentId).orElseThrow().role();
-    connections.send(
-        agentId,
-        Envelope.of(MessageType.INPUT_COMPLETE, agentId, role, sessionId, json.createObjectNode()));
-  }
+    /* ��� �Է� ûũ ���� �� Sender�� �Ϸ� ��踦 �˸���. */
+    /* 모든 입력 청크 전송 후 Sender에 완료 경계를 알린다. */
+    public void inputComplete(String agentId, UUID sessionId)
+    {
+        AgentRole role = agentRepository.find(agentId).orElseThrow().role();
+        agentConnectionRegistry.send(
+                agentId,
+                Envelope.of(
+                        MessageType.INPUT_COMPLETE,
+                        agentId,
+                        role,
+                        sessionId,
+                        objectMapper.createObjectNode()));
+    }
 }

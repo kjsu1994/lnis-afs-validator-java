@@ -15,3 +15,4 @@ import org.springframework.scheduling.annotation.EnableScheduling;
 @EntityScan(basePackages = "server.central")
 @EnableJpaRepositories(basePackages = "server.central")
 public class CentralModeConfiguration {}
+
