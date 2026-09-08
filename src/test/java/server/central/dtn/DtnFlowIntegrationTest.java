@@ -1,0 +1,138 @@
+package server.central.dtn;
+
+import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.ArgumentMatchers.*;
+import static org.mockito.Mockito.*;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.sun.net.httpserver.HttpServer;
+import java.net.*;
+import java.net.http.*;
+import java.nio.file.Path;
+import java.time.Instant;
+import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicReference;
+import org.junit.jupiter.api.*;
+import org.junit.jupiter.api.condition.*;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.web.server.LocalServerPort;
+import org.springframework.test.context.*;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
+import server.agent.codec.*;
+import server.agent.session.dtn.DtnProcessor;
+import server.central.agent.entity.AgentEntity;
+import server.central.agent.repository.AgentRepository;
+import server.central.agent.service.AgentCommandService;
+import server.central.agent.websocket.AgentConnectionRegistry;
+import server.central.input.service.InputBufferService;
+import server.protocol.codec.DtnChunks;
+import server.protocol.model.AgentProtocol.*;
+import server.protocol.model.DtnModels;
+import server.protocol.model.LnisModels.*;
+
+/** 실제 HTTP callback, H2 저장, 네이티브 AFS/PVT 왕복을 검증한다. 외부 서버는 DTN 전송 대신 JSON만 돌려준다. */
+@EnabledOnOs(OS.WINDOWS)
+@SpringBootTest(webEnvironment=SpringBootTest.WebEnvironment.RANDOM_PORT, properties={
+    "spring.datasource.url=jdbc:h2:mem:dtn-flow;DB_CLOSE_DELAY=-1",
+    "spring.jpa.hibernate.ddl-auto=create-drop",
+    "lnis.storage.data-directory=${java.io.tmpdir}/lnis-dtn-flow-tests",
+    "lnis.storage.cleanup-delay=PT24H", "lnis.dtn.receive-token=test-receive-token"})
+@ActiveProfiles("server")
+class DtnFlowIntegrationTest {
+  static final AtomicReference<URI> callback = new AtomicReference<>();
+  static final AtomicReference<byte[]> packet = new AtomicReference<>();
+  static final HttpServer external;
+  static {
+    try {
+      external = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+      external.createContext("/transfers", exchange -> {
+        byte[] body = exchange.getRequestBody().readAllBytes(); packet.set(body);
+        try {
+          var response = HttpClient.newHttpClient().send(HttpRequest.newBuilder(callback.get())
+              .header("Authorization", "Bearer test-receive-token").header("Content-Type", "application/json")
+              .POST(HttpRequest.BodyPublishers.ofByteArray(body)).build(), HttpResponse.BodyHandlers.discarding());
+          exchange.sendResponseHeaders(response.statusCode() == 202 ? 202 : 500, -1);
+        } catch (Exception e) { exchange.sendResponseHeaders(500, -1); }
+        finally { exchange.close(); }
+      });
+      external.start();
+    } catch (Exception e) { throw new ExceptionInInitializerError(e); }
+  }
+  @DynamicPropertySource static void properties(DynamicPropertyRegistry registry) {
+    registry.add("lnis.dtn.send-url", () -> "http://127.0.0.1:" + external.getAddress().getPort() + "/transfers");
+  }
+  @LocalServerPort int port;
+  @Autowired DtnService service;
+  @Autowired InputBufferService inputs;
+  @Autowired AgentRepository agents;
+  @Autowired ObjectMapper json;
+  @MockitoBean AgentCommandService commands;
+  @MockitoBean AgentConnectionRegistry connections;
+  @AfterAll static void shutdown() { external.stop(0); }
+
+  @Test void roundTripAndAuthenticationAndPayloadIntegrity() throws Exception {
+    callback.set(URI.create("http://127.0.0.1:" + port + "/lnis/api/v1/dtn/receive"));
+    when(connections.online(anyString())).thenReturn(true);
+    when(connections.online("dtn-receiver")).thenReturn(false);
+    agents.save(new AgentEntity("dtn-sender", AgentRole.SENDER, AgentState.READY, Instant.now(),
+        "test", 1, "Windows", "amd64", List.of(), null));
+    agents.save(new AgentEntity("dtn-receiver", AgentRole.RECEIVER, AgentState.READY, Instant.now(),
+        "test", 1, "Windows", "amd64", List.of(), null));
+    Map<String, DtnChunks> incoming = new ConcurrentHashMap<>();
+    Path library = Path.of(System.getProperty("lnis.native.candidate", "native/bin/win-x64"));
+    try (var codec = NativeAfsCodec.load(library)) {
+      DtnProcessor processor = new DtnProcessor(codec, library);
+      doAnswer(invocation -> {
+        String agent = invocation.getArgument(0); UUID id = invocation.getArgument(1);
+        var args = json.valueToTree(invocation.getArgument(3));
+        String mode = args.path("mode").asText();
+        byte[] data = incoming.computeIfAbsent(mode, ignored -> new DtnChunks()).append(
+            args.path("index").asInt(), args.path("last").asBoolean(),
+            Base64.getDecoder().decode(args.path("dataBase64").asText()));
+        if (data != null) {
+          var result = "PREPARE".equals(mode) ? processor.prepare(id, data)
+              : processor.receive(id, json.readValue(data, DtnModels.Transfer.class));
+          var payload = json.createObjectNode().put("index", 0).put("last", true)
+              .put("dataBase64", Base64.getEncoder().encodeToString(json.writeValueAsBytes(result)));
+          service.agentData(Envelope.of(MessageType.DTN_DATA, agent,
+              "PREPARE".equals(mode) ? AgentRole.SENDER : AgentRole.RECEIVER, id, payload));
+        }
+        return UUID.randomUUID();
+      }).when(commands).command(anyString(), any(UUID.class), eq(CommandType.DTN_PROCESS), any());
+      byte[] source = NativePvtIntegrationTest.validSample();
+      var input = inputs.create("dtn.graw", source.length, InputKind.GRAW_UPLOAD);
+      inputs.append(input.inputId(), 0, source); inputs.complete(input.inputId());
+      HttpClient client = HttpClient.newHttpClient();
+      String body = json.writeValueAsString(Map.of("inputId", input.inputId(),
+          "senderAgentId", "dtn-sender", "receiverAgentId", "dtn-receiver"));
+      var startRequest = HttpRequest.newBuilder(URI.create("http://127.0.0.1:"+port+"/lnis/api/v1/dtn/tests"))
+          .header("Content-Type", "application/json").POST(HttpRequest.BodyPublishers.ofString(body)).build();
+      var start = client.send(startRequest, HttpResponse.BodyHandlers.ofString());
+      assertEquals(202, start.statusCode(), start.body());
+      UUID id = UUID.fromString(json.readTree(start.body()).path("testId").asText());
+      long deadline = System.nanoTime()+20_000_000_000L;
+      while (service.get(id).getReceivedJson() == null && System.nanoTime() < deadline) Thread.sleep(50);
+      assertNotNull(service.get(id).getReceivedJson());
+      service.tick();
+      assertEquals("WAITING_RECEIVER", service.get(id).getState());
+      when(connections.online("dtn-receiver")).thenReturn(true);
+      service.tick();
+      assertEquals("COMPLETED", service.get(id).getState(), service.get(id).getMessage());
+      assertEquals("PASS", json.readTree(service.get(id).getComparisonJson()).path("verdict").asText());
+      assertNotNull(service.get(id).getComparisonJson());
+      assertFalse(json.readTree(service.get(id).getSentJson()).has("pvt"));
+      assertEquals(401, callback(client, null, packet.get()).statusCode());
+      assertEquals(202, callback(client, "test-receive-token", packet.get()).statusCode());
+      var modified = (com.fasterxml.jackson.databind.node.ObjectNode)json.readTree(packet.get());
+      modified.put("prn", 2);
+      assertEquals(400, callback(client, "test-receive-token", json.writeValueAsBytes(modified)).statusCode());
+      verify(commands, times(2)).command(anyString(), eq(id), eq(CommandType.DTN_PROCESS), any());
+    }
+  }
+  private HttpResponse<String> callback(HttpClient client, String token, byte[] body) throws Exception {
+    var request = HttpRequest.newBuilder(callback.get()).header("Content-Type", "application/json");
+    if (token != null) request.header("Authorization", "Bearer " + token);
+    return client.send(request.POST(HttpRequest.BodyPublishers.ofByteArray(body)).build(), HttpResponse.BodyHandlers.ofString());
+  }
+}

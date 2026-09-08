@@ -552,7 +552,7 @@ Handshake에는 `X-LNIS-Agent-Id`와 `Authorization: Bearer ...`가 필요합니
 | `/lnis/afstest/receiver` | AFS Receiver |
 | `/lnis/test/sender` | 기존 Sender 호환 주소 |
 | `/lnis/test/receiver` | 기존 Receiver 호환 주소 |
-| `/lnis/dtntest/sender` | DTN 송수신 시험 빈 화면 |
+| `/lnis/dtntest/sender` | DTN 송수신 및 PVT 비교 화면 |
 
 ## 12. 일반 사용 순서
 
@@ -577,3 +577,172 @@ POST /captures/{id}/stop
 POST /captures/{id}/complete
 POST /sessions
 ```
+
+## 13. DTN AFS 전달 / PVT 비교 API
+
+기존 AFS API와 별도 경로다. COM 수집 종료 후 전송 버튼을 눌러 시험한다.
+I/Q 생성, RF 송수신, 달 환경 모사는 수행하지 않는다.
+외부 프로그램이 BPv7 생성/송신/수신/해제를 담당한다. 아래 JSON 자체는 BPv7 wire 형식이 아니다.
+
+### 13.1 외부 담당자에게 전달할 계약
+
+1. LNIS 중앙 서버가 외부 프로그램의 설정된 송신 URL에 JSON을 POST한다.
+2. 외부 프로그램은 이 데이터를 DTN으로 전달한다.
+3. 외부 수신부가 동일 JSON을 LNIS 중앙 서버의 수신 URL에 POST한다.
+4. 중앙 서버가 별도 Receiver Agent에 전달하고, Receiver가 AFS 복호화와 PVT 계산을 수행한다.
+
+외부 송신 접수 경로 제안: `POST /lnis-dtn/api/v1/transfers`.
+실제 경로는 `LNIS_DTN_SEND_URL`로 설정하므로 외부 담당자의 경로에 맞출 수 있다.
+송신 시스템은 HTTP 2xx로 접수를 알린다. 접수 성공은 DTN 전달 완료를 의미하지 않는다.
+HTTP 송신 대기 제한은 30초이며 자동 재전송은 하지 않는다.
+BPv7 source/destination EID, lifetime, convergence layer 등은 외부 프로그램의 설정으로 관리한다.
+현재 JSON에는 그 값을 중복 포함하지 않는다.
+
+양방향 Content-Type은 `application/json`, 문자 인코딩은 UTF-8이다.
+송신 시 선택적으로 `Authorization: Bearer <LNIS_DTN_SEND_TOKEN>`을 보낸다.
+수신 callback에는 `Authorization: Bearer <LNIS_DTN_RECEIVE_TOKEN>`이 필수다.
+callback URL과 인증 토큰을 payload에 싣지 않는다.
+
+### 13.2 외부 전달 JSON
+
+다음은 구조 설명용이며 축약한 Base64와 해시는 실제 요청으로 사용할 수 없다.
+
+```json
+{
+  "schemaVersion": 1,
+  "testId": "438a4035-a13c-4b49-a278-0e5fb7f774bd",
+  "profile": "POCKETSDR-GPS-L1CA-SPP-v1",
+  "format": "LNIS-GRAW-AFS-v1",
+  "sourceSha256": "<length-prefixed GRAW 원본의 SHA-256 대문자 hex 64자리>",
+  "recordCount": 100,
+  "prn": 1,
+  "frames": [
+    {
+      "index": 0,
+      "week": 2400,
+      "afsItow": 83,
+      "toi": 33,
+      "frameBase64": "<정확히 750 byte AFS frame의 Base64>"
+    }
+  ]
+}
+```
+
+| 필드 | 의미 |
+|---|---|
+| schemaVersion | 현재 1 |
+| testId | 중앙 서버가 발급한 이번 시험 UUID |
+| profile | 양쪽 PVT 계산 설정과 지원 신호를 지정하는 불변 프로파일 |
+| format | 기존 LNIS GRAW fragment를 AFS SB3/SB4에 넣는 응용 데이터 형식 |
+| sourceSha256 | 복원된 length-prefixed GRAW 바이트열 검증용 해시 |
+| recordCount | 전체 원본 GRAW 레코드 수 |
+| prn | AFS SB2 시험 프로파일 PRN. GPS 관측 위성의 PRN과 다르다. 현재 1 |
+| frames | 순서대로 보관한 모든 AFS 프레임 |
+| index | 0부터 시작하는 연속 번호 |
+| week / afsItow / toi | AFS 프레임 시간 좌표. afsItow는 1,200초 구간 번호 |
+| frameBase64 | 750바이트의 부호화된 프레임. 문자열 길이는 1,000자 |
+
+관측 시각(week/TOW), RAWX 관측값, SFRBX 항법 메시지와 수신기 정보는
+AFS 프레임 안의 GRAW에 포함한다. 외부 프로그램은 이 내용을 해석할 필요가 없다.
+SB2의 고정 LANS 알마낙을 지구 GPS PVT의 항법정보로 사용하지 않는다.
+기준 PVT는 외부에 보내지 않는다.
+
+JSON 필드 순서와 공백은 바뀌어도 되지만 필드, 값, 배열 순서는 유지해야 한다.
+수신 API는 송신 JSON과 구조적으로 동일한지 확인한다. 필드 추가도 거부한다.
+수집 원본은 최대 1 MiB, callback JSON은 최대 16 MiB이다.
+외부 시스템의 번들 최대 크기가 더 작으면 연동 전에 분할 계약을 추가해야 한다.
+
+### 13.3 수신 callback
+
+```http
+POST /lnis/api/v1/dtn/receive
+Content-Type: application/json
+Authorization: Bearer <수신용 토큰>
+```
+
+본문: 송신받았던 동일 JSON.
+
+```json
+{
+  "testId": "438a4035-a13c-4b49-a278-0e5fb7f774bd",
+  "accepted": true,
+  "state": "WAITING_RECEIVER"
+}
+```
+
+HTTP 202는 검증 및 중앙 DB 저장 완료를 뜻하며 PVT 계산 완료를 뜻하지 않는다.
+Receiver가 연결되지 않았으면 대기하며 READY가 되면 전달한다.
+같은 callback의 중복 도착은 재계산하지 않고 기존 상태를 반환한다.
+변경된 JSON은 400, 수신 대기 상태가 아닌 신규 callback은 409,
+인증 실패는 401, JSON 크기 초과는 413이다.
+시험을 찾을 수 없으면 현재 서비스의 오류 규칙에 따라 400을 반환한다.
+
+### 13.4 화면용 제어 API
+
+- `GET /lnis/api/v1/dtn/config`: 외부 연동 설정 여부, 계산 프로파일, 입력 크기 상한.
+- 수집 시작: 기존 `POST /lnis/api/v1/captures` 사용.
+- `POST /lnis/api/v1/dtn/captures/{id}/stop?senderAgentId=sender-1`: 마지막 청크 전달까지 기다리는 수집 종료 명령.
+- 브라우저는 해당 수집 ID의 GNSS_STATUS/Stopped 이벤트 확인 후 기존 `POST /captures/{id}/complete`로 확정한다.
+- `POST /lnis/api/v1/dtn/tests`: 수집 완료 입력으로 기준 계산, AFS 생성 및 외부 전송을 시작한다.
+- `GET /lnis/api/v1/dtn/tests/{id}`: 상태 요약.
+- `GET /lnis/api/v1/dtn/tests/{id}/report`: 기준/수신 PVT, 관측 시각별 비교 JSON.
+
+시험 시작 요청:
+
+```json
+{
+  "inputId": "b191cc34-1f80-4b7f-8644-822d3d014d8a",
+  "senderAgentId": "sender-1",
+  "receiverAgentId": "receiver-1"
+}
+```
+
+시험 상태:
+`PREPARING → WAITING_DTN → WAITING_RECEIVER → CALCULATING → COMPLETED/INCONCLUSIVE`.
+각 단계 실패는 FAILED로 기록한다. 시험 전체 제한 시간은 10분이다.
+동시에 하나의 DTN 시험만 허용한다.
+
+### 13.5 PVT 의미와 판정
+
+현재 계산 프로파일은 GPS L1 C/A 단독 측위다. 다중 GNSS 전체 지원을 의미하지 않는다.
+PocketSDR-AFS 일반 GNSS 경로와 같은 RTKLIB pntpos(), 고도각 15도,
+방송 전리층 모델, Saastamoinen 대류권 보정을 사용한다.
+관측 데이터 순서대로 항법정보를 갱신하며, DTN 도착 시각으로 관측 시각을 대체하지 않는다.
+
+P는 지구 중심 지구 고정 좌표(ECEF), 단위 m.
+V는 ECEF 속도, 단위 m/s. T 비교 항목은 수신기 시계 오차, 단위 s.
+관측 시각은 GPS week와 TOW(s)로 별도 제공한다.
+계산 실패는 positionValid=false이며, 속도 해가 없으면 velocityValid=false다.
+이때 해당 좌표/속도는 null이며 정상적인 0으로 표시하지 않는다.
+
+동일 관측 시각에 대해 위치 차이 0.001 m 이하, 속도 차이 0.001 m/s 이하,
+시계 오차 차이 1e-9 s 이하를 일치로 판정한다.
+양쪽 유효성 차이나 임계값 초과는 FAIL.
+비교 가능한 위치 또는 속도 해가 없으면 INCONCLUSIVE.
+이 판정은 전달 전후 계산 일치성이지 절대 위치 정확도 인증이 아니다.
+
+### 13.6 운영 설정
+
+운영 폴더의 .env에 설정한 뒤 서버를 재시작한다.
+
+```dotenv
+LNIS_DTN_SEND_URL=http://<외부-DTN-송신부>:<port>/lnis-dtn/api/v1/transfers
+LNIS_DTN_SEND_TOKEN=<외부에서 요구하는 경우 송신 인증 토큰>
+LNIS_DTN_RECEIVE_TOKEN=<LNIS가 발급해 외부 수신부에 전달할 토큰>
+```
+
+외부 담당자에게 알릴 callback 주소:
+`http://192.168.1.72:8088/lnis/api/v1/dtn/receive`.
+IP는 실제 중앙 서버 주소에 맞춰 변경한다.
+Receiver PC의 주소를 callback으로 지정하지 않는다.
+외부 DTN 미연결 상태의 시험용 왕복 서버는 실제 BPv7 동작을 검증하지 않는다.
+
+### DTN 역할별 화면 및 최근 시험 조회
+
+- Sender 화면: `/lnis/dtntest/sender` — 수집 및 전송 제어
+- Receiver 화면: `/lnis/dtntest/receiver` — Agent 상태, 수신 및 PVT 비교 결과 조회
+- `GET /lnis/api/v1/dtn/tests`: 생성 시각 내림차순 최근 50개 시험 요약 배열.
+  개별 시험 조회와 같은 필드에 `senderAgentId`, `receiverAgentId`를 포함한다.
+  원본 프레임과 전체 PVT는 포함하지 않는다. 상세 결과는 기존 report API를 사용한다.
+- Receiver 화면은 2초마다 조회하며 수집·전송·계산 명령을 실행하지 않는다.
+  별도 PC에서도 중앙 서버에 저장된 시험을 조회할 수 있다.

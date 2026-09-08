@@ -200,6 +200,16 @@ public final class SerialCaptureService implements AutoCloseable {
     running.set(false);
   }
 
+  /** DTN 입력 확정 전 마지막 청크 전달과 COM 정리가 끝났는지 확인한다. */
+  public void stopAndAwait() throws InterruptedException {
+    stop();
+    Thread current = worker;
+    if (current != null && current != Thread.currentThread()) {
+      current.join(10000);
+      if (current.isAlive()) throw new IllegalStateException("GNSS 수집 종료 대기 시간 초과");
+    }
+  }
+
   /** RAWX/SFRBX 출력률을 임시 활성화하고 조회에 성공한 원래 설정은 종료 시 복원하도록 보관한다. */
   private void configureUbloxTemporarily() {
     restoreCommands.clear();

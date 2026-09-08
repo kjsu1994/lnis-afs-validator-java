@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>LNIS DTN Receiver</title>
+  <link rel="stylesheet" href="/lnis/assets/app.css?v=20260902-test-suite-tabs">
+</head>
+<body data-page="dtn-receiver">
+<header>
+  <div>
+    <span class="eyebrow">LNIS DTN VALIDATOR</span>
+    <h1>DTN 수신 및 PVT 비교</h1>
+    <nav class="test-suite-tabs" aria-label="시험 대분류">
+      <a href="/lnis/afstest/receiver">AFS Frame 시험</a>
+      <a class="active" href="/lnis/dtntest/receiver" aria-current="page">DTN 송수신 시험</a>
+    </nav>
+  </div>
+  <nav class="role-nav" aria-label="DTN 시험 역할">
+    <a href="/lnis/dtntest/sender">Sender</a>
+    <a class="active" href="/lnis/dtntest/receiver" aria-current="page">Receiver</a>
+  </nav>
+</header>
+<main>
+  <!-- 수신 처리는 Agent가 수행한다. 이 화면은 중앙 서버의 결과만 읽는다. -->
+  <section class="status-strip"><span id="dtn-connection" class="pill">서버 연결 중</span></section>
+  <section class="card">
+    <h2>Receiver Agent</h2>
+    <p id="dtn-agents">확인 중</p>
+    <p>Receiver Agent가 실행 중이면 수신 데이터의 AFS 복원 및 PVT 계산은 자동으로 진행됩니다.</p>
+  </section>
+  <section class="card">
+    <h2>최근 DTN 시험</h2>
+    <label>시험 선택<select id="dtn-tests"><option value="">시험 없음</option></select></label>
+    <pre id="dtn-result" aria-live="polite">시험 대기</pre>
+    <a id="dtn-report" hidden target="_blank" rel="noopener">상세 PVT / 비교 JSON 보기</a>
+  </section>
+</main>
+<script type="module" src="/lnis/assets/dtn-receiver.js"></script>
+</body>
+</html>

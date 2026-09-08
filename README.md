@@ -1,5 +1,11 @@
 # LNIS AFS Validator 웹 시스템
 
+DTN 송수신/PVT 비교 기능은 `/lnis/dtntest/sender`에서 사용합니다.
+EVK-F9T COM 수집 종료 후 전송 버튼으로 시험하며 현재 PVT 어댑터는 GPS L1 C/A를 지원합니다.
+외부 DTN 연동 설정과 전달 JSON 계약은 [API-SPEC.md](API-SPEC.md)의 13절을 참고하세요.
+PVT DLL의 원본 사용 범위와 빌드는 [native/PVT-INTEGRATION.md](native/PVT-INTEGRATION.md)에 기록합니다.
+이 기능을 사용하려면 중앙 서버와 양쪽 Agent를 같은 새 배포본으로 갱신해야 합니다.
+
 기존 .NET 8 WPF 기반 **LNIS AFS Validator**의 GRAW 수집, AFS 부호화/복호화, UDP 송수신 및 Test A~E 시험 로직을 다음 구성으로 이전한 프로젝트입니다.
 
 - 중앙 백엔드: Java 21, Spring Boot REST API 및 WebSocket

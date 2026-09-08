@@ -25,4 +25,10 @@ public class WebPageController {
   String dtn() {
     return "forward:/dtn-sender.html";
   }
+
+  /** 수신 PC도 중앙 서버의 동일한 시험 결과를 조회한다. */
+  @GetMapping("/lnis/dtntest/receiver")
+  String dtnReceiver() {
+    return "forward:/dtn-receiver.html";
+  }
 }

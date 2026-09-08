@@ -37,6 +37,15 @@ class WebPageControllerTest {
     mvc.perform(get("/lnis/afstest/receiver")).andExpect(status().isOk());
     mvc.perform(get("/lnis/test/receiver")).andExpect(status().isOk());
     mvc.perform(get("/lnis/dtntest/sender")).andExpect(status().isOk());
+    mvc.perform(get("/lnis/dtntest/receiver")).andExpect(status().isOk())
+        .andExpect(forwardedUrl("/dtn-receiver.html"));
+    mvc.perform(get("/dtn-sender.html")).andExpect(status().isOk())
+        .andExpect(content().string(org.hamcrest.Matchers.containsString("/lnis/dtntest/receiver")));
+    mvc.perform(get("/dtn-receiver.html")).andExpect(status().isOk())
+        .andExpect(content().string(org.hamcrest.Matchers.containsString("/lnis/dtntest/sender")));
+    mvc.perform(get("/lnis/assets/dtn-receiver.js")).andExpect(status().isOk());
+    mvc.perform(get("/lnis/api/v1/dtn/tests")).andExpect(status().isOk())
+        .andExpect(jsonPath("$").isArray());
     mvc.perform(get("/lnis/assets/api.js")).andExpect(status().isOk());
     mvc.perform(get("/lnis/api/v1/discovery"))
         .andExpect(status().isOk())

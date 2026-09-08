@@ -30,6 +30,11 @@ public class AgentMessageService {
   private final EventService events;
   private final SessionService lifecycle;
   private final FrameEvidenceService frameEvidence;
+  private server.central.dtn.DtnService dtn;
+
+  /** 기존 생성자 계약을 유지하며 DTN 경로만 별도로 주입한다. */
+  @org.springframework.beans.factory.annotation.Autowired
+  public void dtnService(server.central.dtn.DtnService service) { this.dtn = service; }
 
   public AgentMessageService(
       ObjectMapper json,
@@ -53,6 +58,10 @@ public class AgentMessageService {
     // 연결 정보(HELLO/HEARTBEAT), 입력, 진행 이벤트, 최종 결과를 각 도메인 서비스로 분배한다.
     // WebSocket Handler는 인증과 역직렬화만 담당하고 업무 상태 변경은 이 계층에서 시작된다.
     switch (envelope.type()) {
+      case DTN_DATA -> dtn.agentData(envelope);
+      case COMMAND_ACK -> {
+        if (dtn != null && !envelope.payload().path("accepted").asBoolean()) dtn.rejected(envelope);
+      }
       case HELLO -> handleHello(envelope);
       case HEARTBEAT -> handleHeartbeat(envelope);
       case STATUS -> {

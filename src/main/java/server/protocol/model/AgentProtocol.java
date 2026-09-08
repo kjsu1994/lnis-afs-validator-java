@@ -34,6 +34,7 @@ public final class AgentProtocol {
     INPUT_COMPLETE,
     FRAME_EVIDENCE,
     ROLE_RESULT,
+    DTN_DATA,
     ERROR
   }
 
@@ -44,7 +45,9 @@ public final class AgentProtocol {
     STOP_CAPTURE,
     ARM_RECEIVER,
     START_SENDER,
-    CANCEL_SESSION
+    CANCEL_SESSION,
+    DTN_PROCESS,
+    DTN_STOP_CAPTURE
   }
 
   /** Agent 상태를 브라우저 화면에 전달할 때 사용하는 실시간 이벤트 종류다. */

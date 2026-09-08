@@ -17,8 +17,37 @@
       <a class="active" href="/lnis/dtntest/sender" aria-current="page">DTN 송수신 시험</a>
     </nav>
   </div>
+  <nav class="role-nav" aria-label="DTN 시험 역할">
+    <a class="active" href="/lnis/dtntest/sender" aria-current="page">Sender</a>
+    <a href="/lnis/dtntest/receiver">Receiver</a>
+  </nav>
 </header>
-<!-- DTN 송수신 기능은 후속 구현에서 이 영역에 추가한다. -->
-<main></main>
+<!-- 기존 AFS 화면과 독립된 DTN 시험 영역이다. -->
+<main>
+  <p id="dtn-config" role="status">설정 확인 중</p>
+  <p>GPS L1 C/A 단독 측위 · PocketSDR/RTKLIB · 입력 최대 1 MiB · I/Q/RF 없이 AFS 프레임을 전달합니다.</p>
+  <div class="grid two">
+    <section class="card">
+      <h2>1. GNSS 데이터 수집</h2>
+      <label>Sender Agent<select id="dtn-sender"></select></label>
+      <label>Receiver Agent<select id="dtn-receiver"></select></label>
+      <button id="dtn-refresh" type="button">Agent / COM 새로고침</button>
+      <label>COM 포트<select id="dtn-port"></select></label>
+      <label>Baud rate<input id="dtn-baud" type="number" value="115200"></label>
+      <label>수집 시간(초)<input id="dtn-seconds" type="number" min="1" max="300" value="60"></label>
+      <button id="dtn-start" type="button" disabled>수집 시작</button>
+      <button id="dtn-stop" type="button" disabled>수집 종료</button>
+      <p id="dtn-message" role="status" aria-live="polite">수집 후 전송 버튼을 눌러 시험합니다.</p>
+    </section>
+    <section class="card">
+      <h2>2. DTN 전송 및 PVT 비교</h2>
+      <p>수집 종료 후 기준 PVT 계산과 AFS 생성을 수행합니다. 외부 DTN이 돌려준 데이터는 Receiver PC에서 처리합니다.</p>
+      <button id="dtn-send" type="button" class="primary" disabled>전송 및 시험 시작</button>
+      <pre id="dtn-result" aria-live="polite">시험 대기</pre>
+      <a id="dtn-report" hidden target="_blank" rel="noopener">상세 PVT / 비교 JSON 보기</a>
+    </section>
+  </div>
+</main>
+<script type="module" src="/lnis/assets/dtn.js"></script>
 </body>
 </html>

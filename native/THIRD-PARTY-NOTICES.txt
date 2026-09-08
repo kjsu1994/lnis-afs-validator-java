@@ -27,3 +27,7 @@ SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES.
 
 The complete upstream license texts remain available in the unmodified source
 trees distributed with this project.
+
+PVT extension also includes RTKLIB from the PocketSDR-AFS source tree.
+Copyright (c) 2007-2020, T. Takasu, All rights reserved.
+The complete RTKLIB notice and license are distributed in RTKLIB-README.txt.

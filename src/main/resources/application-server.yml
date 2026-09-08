@@ -34,6 +34,10 @@ spring:
       enabled: false
 
 lnis:
+  dtn:
+    send-url: ${LNIS_DTN_SEND_URL:}
+    send-token: ${LNIS_DTN_SEND_TOKEN:}
+    receive-token: ${LNIS_DTN_RECEIVE_TOKEN:}
   agent-tokens: ${LNIS_AGENT_TOKENS:sender-1=change-me-sender,receiver-1=change-me-receiver}
   storage:
     data-directory: ${LNIS_DATA_DIR:./data}

@@ -52,6 +52,7 @@ dependencies {
 }
 
 tasks.named('test') {
+    systemProperty 'lnis.native.candidate', providers.gradleProperty('nativeCandidate').orElse('native/bin/win-x64').get()
     useJUnitPlatform()
     testLogging {
         events 'failed', 'skipped'
@@ -94,6 +95,7 @@ tasks.register('agentDistZip', Zip) {
         into 'native'
     }
     from('native/THIRD-PARTY-NOTICES.txt')
+    from('native/RTKLIB-README.txt')
     from('config') {
         into 'config'
     }

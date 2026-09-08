@@ -29,6 +29,7 @@ public final class AgentRuntime implements AutoCloseable {
   private final ObjectMapper json = new ObjectMapper().findAndRegisterModules();
   private final AtomicReference<AgentState> state = new AtomicReference<>(AgentState.READY);
   private final UdpSessionService udp;
+  private final server.agent.session.dtn.DtnWorker dtn;
   private final Map<UUID, ByteArrayOutputStream> sessionInputs = new ConcurrentHashMap<>();
   private volatile Consumer<Envelope> outbound = ignored -> {};
 
@@ -36,6 +37,9 @@ public final class AgentRuntime implements AutoCloseable {
     this.config = config;
     this.codec = codec;
     this.udp = new UdpSessionService(codec);
+    this.dtn = new server.agent.session.dtn.DtnWorker(
+        new server.agent.session.dtn.DtnProcessor(codec, config.nativeDirectory()),
+        json, config.role(), state, (id, payload) -> send(MessageType.DTN_DATA, id, payload));
     json.disable(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES);
   }
 
@@ -44,6 +48,7 @@ public final class AgentRuntime implements AutoCloseable {
   }
 
   public AgentState state() {
+    dtn.expire();
     return state.get();
   }
 
@@ -77,7 +82,18 @@ public final class AgentRuntime implements AutoCloseable {
         return;
       }
       Command command = json.treeToValue(envelope.payload(), Command.class);
+      if (dtn.active() && command.command() != CommandType.DTN_PROCESS && command.command() != CommandType.LIST_PORTS)
+        throw new IllegalStateException("DTN 작업 중에는 다른 시험 명령을 실행할 수 없습니다.");
+      if ((command.command() == CommandType.START_CAPTURE || command.command() == CommandType.ARM_RECEIVER
+          || command.command() == CommandType.START_SENDER) && state.get() == AgentState.BUSY)
+        throw new IllegalStateException("Agent가 다른 작업을 수행 중입니다.");
       switch (command.command()) {
+        case DTN_PROCESS -> dtn.accept(envelope.sessionId(), command.arguments());
+        case DTN_STOP_CAPTURE -> {
+          capture.stopAndAwait();
+          state.set(AgentState.READY);
+          status(envelope.sessionId(), EventType.GNSS_STATUS, 100, "Stopped", "수집 종료 및 청크 전달 완료", Map.of());
+        }
         case LIST_PORTS ->
             send(
                 MessageType.PORT_LIST,
@@ -97,7 +113,7 @@ public final class AgentRuntime implements AutoCloseable {
     } catch (Exception error) {
       ack(envelope, false, error.getMessage());
       status(envelope.sessionId(), EventType.ERROR, 0, "Failed", safe(error), Map.of());
-      state.set(AgentState.ERROR);
+      if (state.get() != AgentState.BUSY) state.set(AgentState.ERROR);
     }
   }
 
