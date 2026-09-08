@@ -60,7 +60,6 @@ public class AgentCommandService {
                 agentId, Envelope.of(MessageType.INPUT_CHUNK, agentId, role, sessionId, payload));
     }
 
-    /* ��� �Է� ûũ ���� �� Sender�� �Ϸ� ��踦 �˸���. */
     /* 모든 입력 청크 전송 후 Sender에 완료 경계를 알린다. */
     public void inputComplete(String agentId, UUID sessionId)
     {

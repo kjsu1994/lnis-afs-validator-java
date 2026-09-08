@@ -15,6 +15,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.MediaType;
 import org.springframework.http.converter.json.MappingJackson2HttpMessageConverter;
+import org.springframework.http.converter.json.Jackson2ObjectMapperBuilder;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import server.central.agent.*;
@@ -26,7 +27,8 @@ import server.shared.model.LnisModels.*;
 
 /** 스타일 변경으로 HTTP 상태, JSON 포장 및 예외 응답이 바뀌지 않는지 검사한다. */
 class ServerResponseContractTest {
-    private final ObjectMapper objectMapper = new ObjectMapper().findAndRegisterModules();
+    // 실제 Spring MVC와 동일하게 ProblemDetail 확장 필드를 최상위 JSON으로 직렬화한다.
+    private final ObjectMapper objectMapper = Jackson2ObjectMapperBuilder.json().build();
     private final SessionService sessionService = mock(SessionService.class);
     private final InputBufferService inputService = mock(InputBufferService.class);
     private final AgentRepository agentRepository = mock(AgentRepository.class);
@@ -104,7 +106,7 @@ class ServerResponseContractTest {
                 .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_PROBLEM_JSON))
                 .andExpect(jsonPath("$.detail").value("missing input"))
                 .andExpect(jsonPath("$.code").value("BAD_REQUEST"));
-        when(inputService.get(id)).thenThrow(new IllegalStateException("busy"));
+        doThrow(new IllegalStateException("busy")).when(inputService).get(id);
         mvc.perform(get("/lnis/api/v1/inputs/" + id))
                 .andExpect(status().isConflict()).andExpect(jsonPath("$.code").value("CONFLICT"));
     }
@@ -140,4 +142,3 @@ class ServerResponseContractTest {
                 .andExpect(status().isOk()).andExpect(jsonPath("$.configured").value(false));
     }
 }
-

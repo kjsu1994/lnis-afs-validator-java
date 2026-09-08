@@ -78,7 +78,7 @@ public class CombinedArtifactService {
         Instant generatedAt;
         RoleResult senderResult;
         RoleResult receiverResult;
-        List<FrameEvidenceDetail> frameEvidenceService;
+        List<FrameEvidenceDetail> frameEvidence;
 
         public CombinedReport(
                 int schemaVersion,
@@ -86,17 +86,17 @@ public class CombinedArtifactService {
                 Instant generatedAt,
                 RoleResult senderResult,
                 RoleResult receiverResult,
-                List<FrameEvidenceDetail> frameEvidenceService)
+                List<FrameEvidenceDetail> frameEvidence)
         {
-            frameEvidenceService =
-                    frameEvidenceService == null ? List.of() : List.copyOf(frameEvidenceService);
+            frameEvidence =
+                    frameEvidence == null ? List.of() : List.copyOf(frameEvidence);
 
             this.schemaVersion = schemaVersion;
             this.sessionId = sessionId;
             this.generatedAt = generatedAt;
             this.senderResult = senderResult;
             this.receiverResult = receiverResult;
-            this.frameEvidenceService = frameEvidenceService;
+            this.frameEvidence = frameEvidence;
         }
     }
 
@@ -109,7 +109,7 @@ public class CombinedArtifactService {
             summarySheet(book, report, styles);
             metricsSheet(book, report, styles);
             samplesSheet(book, report, styles);
-            frameSheet(book, report.frameEvidenceService(), styles);
+            frameSheet(book, report.frameEvidence(), styles);
             book.getProperties()
                     .getCoreProperties()
                     .setTitle("LNIS 통합 시험 결과 " + report.sessionId());
@@ -373,4 +373,3 @@ public class CombinedArtifactService {
         CellStyle fail;
     }
 }
-

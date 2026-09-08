@@ -20,7 +20,6 @@ public class AgentController {
     private final AgentRepository agentRepository;
     private final AgentCommandService agentCommandService;
 
-    /* ��ϵ� Agent ��� ��ȸ */
     /* 등록된 Agent 목록 조회 */
     @GetMapping
     public ResponseEntity<List<AgentEntity>> all()
@@ -29,7 +28,6 @@ public class AgentController {
         return new ResponseEntity<>(response, HttpStatus.OK);
     }
 
-    /* Agent �ܰ� ��ȸ */
     /* Agent 단건 조회 */
     @GetMapping("/{agentId}")
     public ResponseEntity<AgentEntity> one(@PathVariable String agentId)
@@ -41,7 +39,6 @@ public class AgentController {
         return new ResponseEntity<>(response, HttpStatus.OK);
     }
 
-    /* Agent�� COM ��Ʈ ��� ���� ��û */
     /* Agent에 COM 포트 목록 갱신 요청 */
     @PostMapping("/{agentId}/serial-ports/refresh")
     public ResponseEntity<Map<String, Object>> ports(@PathVariable String agentId)
