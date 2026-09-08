@@ -9,7 +9,7 @@ import java.util.*;
 import lombok.Data;
 import org.springframework.http.*;
 import org.springframework.web.bind.annotation.*;
-import server.protocol.model.DtnModels;
+import server.shared.model.DtnModels;
 
 /** DTN 담당자에게 공개하는 callback과 화면용 시험 제어 API다. */
 @RestController @RequestMapping("/lnis/api/v1/dtn")

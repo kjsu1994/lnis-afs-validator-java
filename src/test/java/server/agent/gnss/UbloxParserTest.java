@@ -24,7 +24,7 @@ class UbloxParserTest {
     payload[13] = 9;
 
     var message =
-        (server.protocol.codec.GrawCodec.ObservationEpoch)
+        (server.shared.codec.GrawCodec.ObservationEpoch)
             UbloxParser.toCanonical(new UbloxParser.UbxFrame(0x02, 0x15, payload));
 
     assertEquals(1, message.rawxVersion());

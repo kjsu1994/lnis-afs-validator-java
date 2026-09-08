@@ -11,24 +11,24 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.ActiveProfiles;
-import server.central.agent.entity.AgentEntity;
-import server.central.agent.repository.AgentRepository;
-import server.central.frameevidence.repository.FrameEvidenceRepository;
-import server.central.input.service.GrawFileStorage;
-import server.central.input.service.InputBufferService;
-import server.central.realtime.repository.RealtimeEventRepository;
-import server.central.realtime.service.EventService;
-import server.central.session.entity.TestSessionEntity;
-import server.central.session.repository.ActiveSessionLockRepository;
-import server.central.session.repository.SessionRepository;
-import server.protocol.codec.GrawCodec;
-import server.protocol.model.AgentProtocol.FrameEvidenceMessage;
-import server.protocol.model.LnisModels.AgentRole;
-import server.protocol.model.LnisModels.AgentState;
-import server.protocol.model.LnisModels.InputKind;
-import server.protocol.model.LnisModels.SessionState;
-import server.protocol.model.LnisModels.TestType;
-import server.protocol.model.LnisModels.Verdict;
+import server.central.agent.AgentEntity;
+import server.central.agent.AgentRepository;
+import server.central.frameevidence.FrameEvidenceRepository;
+import server.central.input.GrawFileStorage;
+import server.central.input.InputBufferService;
+import server.central.realtime.RealtimeEventRepository;
+import server.central.realtime.EventService;
+import server.central.session.TestSessionEntity;
+import server.central.session.ActiveSessionLockRepository;
+import server.central.session.SessionRepository;
+import server.shared.codec.GrawCodec;
+import server.shared.model.AgentProtocol.FrameEvidenceMessage;
+import server.shared.model.LnisModels.AgentRole;
+import server.shared.model.LnisModels.AgentState;
+import server.shared.model.LnisModels.InputKind;
+import server.shared.model.LnisModels.SessionState;
+import server.shared.model.LnisModels.TestType;
+import server.shared.model.LnisModels.Verdict;
 
 /** Redis 제거 후 핵심 메타데이터, BLOB 증거, GRAW 파일 저장이 함께 동작하는지 검증한다. */
 @SpringBootTest(
@@ -83,14 +83,14 @@ class H2PersistenceIntegrationTest {
     UUID sessionId = UUID.randomUUID();
     var first =
         eventService.publish(
-            server.protocol.model.AgentProtocol.EventType.SESSION_STATUS,
+            server.shared.model.AgentProtocol.EventType.SESSION_STATUS,
             null,
             null,
             sessionId,
             "first");
     var second =
         eventService.publish(
-            server.protocol.model.AgentProtocol.EventType.RESULT, null, null, sessionId, "second");
+            server.shared.model.AgentProtocol.EventType.RESULT, null, null, sessionId, "second");
 
     assertTrue(second.sequence() > first.sequence());
     assertEquals(2, realtimeEvents.count(sessionId.toString()));

@@ -20,16 +20,16 @@ import org.springframework.boot.test.web.server.LocalServerPort;
 import org.springframework.test.context.*;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import server.agent.codec.*;
-import server.agent.session.dtn.DtnProcessor;
-import server.central.agent.entity.AgentEntity;
-import server.central.agent.repository.AgentRepository;
-import server.central.agent.service.AgentCommandService;
-import server.central.agent.websocket.AgentConnectionRegistry;
-import server.central.input.service.InputBufferService;
-import server.protocol.codec.DtnChunks;
-import server.protocol.model.AgentProtocol.*;
-import server.protocol.model.DtnModels;
-import server.protocol.model.LnisModels.*;
+import server.agent.dtn.DtnProcessor;
+import server.central.agent.AgentEntity;
+import server.central.agent.AgentRepository;
+import server.central.agent.AgentCommandService;
+import server.central.agent.AgentConnectionRegistry;
+import server.central.input.InputBufferService;
+import server.shared.codec.DtnChunks;
+import server.shared.model.AgentProtocol.*;
+import server.shared.model.DtnModels;
+import server.shared.model.LnisModels.*;
 
 /** 실제 HTTP callback, H2 저장, 네이티브 AFS/PVT 왕복을 검증한다. 외부 서버는 DTN 전송 대신 JSON만 돌려준다. */
 @EnabledOnOs(OS.WINDOWS)

@@ -9,7 +9,7 @@ import server.agent.codec.NativeAfsCodec;
 import server.agent.connection.AgentWebSocketClient;
 import server.agent.runtime.AgentProcess;
 import server.agent.runtime.AgentRuntime;
-import server.protocol.model.LnisModels.AgentRole;
+import server.shared.model.LnisModels.AgentRole;
 
 /** Sender와 Receiver 모드에서만 외부 DLL과 Agent 연결 수명주기를 조립한다. */
 @Configuration(proxyBeanMethods = false)

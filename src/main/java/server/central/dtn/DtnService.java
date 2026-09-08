@@ -11,15 +11,15 @@ import java.util.*;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
-import server.central.agent.repository.AgentRepository;
-import server.central.agent.service.AgentCommandService;
-import server.central.agent.websocket.AgentConnectionRegistry;
-import server.central.input.service.InputBufferService;
-import server.protocol.codec.DtnChunks;
-import server.protocol.model.AgentProtocol.*;
-import server.protocol.model.DtnModels;
-import server.protocol.model.DtnModels.*;
-import server.protocol.model.LnisModels.*;
+import server.central.agent.AgentRepository;
+import server.central.agent.AgentCommandService;
+import server.central.agent.AgentConnectionRegistry;
+import server.central.input.InputBufferService;
+import server.shared.codec.DtnChunks;
+import server.shared.model.AgentProtocol.*;
+import server.shared.model.DtnModels;
+import server.shared.model.DtnModels.*;
+import server.shared.model.LnisModels.*;
 
 /** 외부 REST 전달과 별도 Receiver PC의 계산을 조정하는 DTN 전용 서비스다. */
 @Service

@@ -11,10 +11,10 @@ import com.tngtech.archunit.lang.ArchRule;
 @AnalyzeClasses(packages = "server", importOptions = ImportOption.DoNotIncludeTests.class)
 class ArchitectureTest {
   @ArchTest
-  static final ArchRule protocol_is_independent =
+  static final ArchRule shared_is_independent =
       noClasses()
           .that()
-          .resideInAPackage("server.protocol..")
+          .resideInAPackage("server.shared..")
           .should()
           .dependOnClassesThat()
           .resideInAnyPackage("server.agent..", "server.central..");
@@ -27,4 +27,14 @@ class ArchitectureTest {
           .should()
           .dependOnClassesThat()
           .resideInAPackage("server.central..");
+
+  /** 중앙 서버는 Agent의 실행 구현 대신 shared의 통신 계약만 사용한다. */
+  @ArchTest
+  static final ArchRule central_does_not_depend_on_agent =
+      noClasses()
+          .that()
+          .resideInAPackage("server.central..")
+          .should()
+          .dependOnClassesThat()
+          .resideInAPackage("server.agent..");
 }

@@ -12,9 +12,9 @@ import java.util.function.Consumer;
 import server.agent.codec.NativeAfsCodec;
 import server.agent.config.AgentConfig;
 import server.agent.gnss.SerialCaptureService;
-import server.agent.session.transport.UdpSessionService;
-import server.protocol.model.AgentProtocol.*;
-import server.protocol.model.LnisModels.AgentState;
+import server.agent.transport.UdpSessionService;
+import server.shared.model.AgentProtocol.*;
+import server.shared.model.LnisModels.AgentState;
 
 /**
  * 서버 명령을 GNSS 수집 또는 Sender/Receiver UDP 작업으로 분배하는 Agent 핵심 런타임이다.
@@ -29,7 +29,7 @@ public final class AgentRuntime implements AutoCloseable {
   private final ObjectMapper json = new ObjectMapper().findAndRegisterModules();
   private final AtomicReference<AgentState> state = new AtomicReference<>(AgentState.READY);
   private final UdpSessionService udp;
-  private final server.agent.session.dtn.DtnWorker dtn;
+  private final server.agent.dtn.DtnWorker dtn;
   private final Map<UUID, ByteArrayOutputStream> sessionInputs = new ConcurrentHashMap<>();
   private volatile Consumer<Envelope> outbound = ignored -> {};
 
@@ -37,8 +37,8 @@ public final class AgentRuntime implements AutoCloseable {
     this.config = config;
     this.codec = codec;
     this.udp = new UdpSessionService(codec);
-    this.dtn = new server.agent.session.dtn.DtnWorker(
-        new server.agent.session.dtn.DtnProcessor(codec, config.nativeDirectory()),
+    this.dtn = new server.agent.dtn.DtnWorker(
+        new server.agent.dtn.DtnProcessor(codec, config.nativeDirectory()),
         json, config.role(), state, (id, payload) -> send(MessageType.DTN_DATA, id, payload));
     json.disable(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES);
   }
@@ -58,7 +58,7 @@ public final class AgentRuntime implements AutoCloseable {
 
   /** protocol version과 메시지 종류를 확인한 뒤 입력 또는 명령 처리 흐름으로 분기한다. */
   public void handle(Envelope envelope) {
-    if (envelope.protocolVersion() != server.protocol.model.AgentProtocol.PROTOCOL_VERSION) {
+    if (envelope.protocolVersion() != server.shared.model.AgentProtocol.PROTOCOL_VERSION) {
       return;
     }
     try {
@@ -140,7 +140,7 @@ public final class AgentRuntime implements AutoCloseable {
 
   /** Receiver 역할을 확인하고 data port 수신 작업을 가상 thread에서 시작한다. */
   private void startReceiver(UUID sessionId, JsonNode args) throws Exception {
-    if (config.role() != server.protocol.model.LnisModels.AgentRole.RECEIVER) {
+    if (config.role() != server.shared.model.LnisModels.AgentRole.RECEIVER) {
       throw new IllegalStateException("Only RECEIVER can arm UDP reception");
     }
     state.set(AgentState.BUSY);
@@ -155,7 +155,7 @@ public final class AgentRuntime implements AutoCloseable {
 
   /** 전달 완료된 GRAW 입력을 꺼내 Sender UDP 송신 작업을 시작한다. */
   private void startSender(UUID sessionId, JsonNode args) throws Exception {
-    if (config.role() != server.protocol.model.LnisModels.AgentRole.SENDER) {
+    if (config.role() != server.shared.model.LnisModels.AgentRole.SENDER) {
       throw new IllegalStateException("Only SENDER can start UDP transmission");
     }
     ByteArrayOutputStream input = sessionInputs.remove(sessionId);
@@ -185,7 +185,7 @@ public final class AgentRuntime implements AutoCloseable {
 
   /** COM 포트 설정을 역직렬화하고 canonical GRAW 청크 callback을 등록한다. */
   private void startCapture(UUID sessionId, JsonNode args) throws Exception {
-    if (config.role() != server.protocol.model.LnisModels.AgentRole.SENDER) {
+    if (config.role() != server.shared.model.LnisModels.AgentRole.SENDER) {
       throw new IllegalStateException("Only SENDER can capture GNSS");
     }
     var settings = json.treeToValue(args, SerialCaptureService.Settings.class);
@@ -240,7 +240,7 @@ public final class AgentRuntime implements AutoCloseable {
   private void ack(Envelope original, boolean accepted, String message) {
     outbound.accept(
         new Envelope(
-            server.protocol.model.AgentProtocol.PROTOCOL_VERSION,
+            server.shared.model.AgentProtocol.PROTOCOL_VERSION,
             MessageType.COMMAND_ACK,
             UUID.randomUUID(),
             original.messageId(),

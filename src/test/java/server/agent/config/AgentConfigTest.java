@@ -6,7 +6,7 @@ import java.net.URI;
 import java.nio.file.Path;
 import org.junit.jupiter.api.Test;
 import org.springframework.mock.env.MockEnvironment;
-import server.protocol.model.LnisModels.AgentRole;
+import server.shared.model.LnisModels.AgentRole;
 
 class AgentConfigTest {
   @Test

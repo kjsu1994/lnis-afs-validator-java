@@ -19,7 +19,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import server.agent.config.AgentConfig;
 import server.agent.runtime.AgentRuntime;
-import server.protocol.model.AgentProtocol.*;
+import server.shared.model.AgentProtocol.*;
 
 /**
  * 중앙 서버 연결, 재연결, HELLO 및 heartbeat 전송을 관리한다.

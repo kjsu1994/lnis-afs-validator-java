@@ -4,9 +4,9 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.web.socket.config.annotation.EnableWebSocket;
 import org.springframework.web.socket.config.annotation.WebSocketConfigurer;
 import org.springframework.web.socket.config.annotation.WebSocketHandlerRegistry;
-import server.central.agent.websocket.AgentHandshakeInterceptor;
-import server.central.agent.websocket.AgentWebSocketHandler;
-import server.central.realtime.websocket.BrowserWebSocketHandler;
+import server.central.agent.AgentHandshakeInterceptor;
+import server.central.agent.AgentWebSocketHandler;
+import server.central.realtime.BrowserWebSocketHandler;
 
 @Configuration
 @EnableWebSocket

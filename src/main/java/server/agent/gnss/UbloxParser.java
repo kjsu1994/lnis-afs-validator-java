@@ -5,7 +5,7 @@ import java.nio.ByteOrder;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
-import server.protocol.codec.GrawCodec;
+import server.shared.codec.GrawCodec;
 
 /**
  * UBX checksum을 검증하고 RAWX/SFRBX payload를 protocol GNSS 모델로 변환한다.

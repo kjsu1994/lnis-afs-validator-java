@@ -8,7 +8,7 @@ import java.time.Instant;
 import java.util.*;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Consumer;
-import server.protocol.codec.GrawCodec;
+import server.shared.codec.GrawCodec;
 
 /**
  * Windows COM 포트에서 GNSS 데이터를 읽어 canonical GRAW 청크로 변환한다.

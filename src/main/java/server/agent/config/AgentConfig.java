@@ -1,6 +1,6 @@
 package server.agent.config;
 
-import static server.protocol.model.LnisModels.AgentRole;
+import static server.shared.model.LnisModels.AgentRole;
 
 import java.net.URI;
 import java.nio.file.Path;

@@ -67,7 +67,7 @@ Sender와 Receiver 사이의 실제 시험 프레임은 중앙 서버를 경유�
 
 | 경로 | 설명 |
 |---|---|
-| `src/main/java/server/protocol` | 서버/Agent 공유 protocol, LGRW/LAFS wire 계약, CRC32, 결정론적 Drop 로직 |
+| `src/main/java/server/shared` | 서버/Agent 공유 계약, LGRW/LAFS wire 형식, CRC32, 결정론적 Drop 로직 |
 | `src/main/java/server/central` | Controller/DTO/Entity/Service/Repository 및 H2/JPA 연동 |
 | `src/main/java/server/agent` | Windows COM/u-blox, JNA 네이티브 코덱, UDP Sender/Receiver |
 | `src/main/resources/static` | Sender/Receiver HTML, JavaScript, CSS |
@@ -78,18 +78,18 @@ Sender와 Receiver 사이의 실제 시험 프레임은 중앙 서버를 경유�
 
 ### 2.1 단일 프로젝트 내부 경계
 
-`server.protocol`은 일반적인 유틸리티 모음이 아니라 중앙 서버와 Windows Agent 사이의 **공유 계약**입니다.
+`server.shared`는 일반적인 유틸리티 모음이 아니라 중앙 서버와 Windows Agent 사이의 **공유 계약**입니다.
 
 ```text
 central ──┐
-          ├──> protocol
+          ├──> shared
 agent   ──┘
 ```
 
 - Spring Boot, H2/JPA, COM 포트, JNA 같은 실행 환경 의존성을 포함하지 않습니다.
 - WebSocket envelope, 세션/결과 모델, canonical GRAW와 UDP binary 규격만 제공합니다.
 - protocol 변경 시 서버와 Agent가 함께 컴파일되므로 양쪽 규격 불일치를 조기에 발견할 수 있습니다.
-- ArchUnit 테스트가 protocol과 agent의 의존 방향을 자동으로 검사합니다.
+- ArchUnit 테스트가 shared의 독립성과 central/agent 구현 간 상호 참조 금지를 검사합니다.
 
 현재 Agent WebSocket protocol은 **v2**입니다. v2에서는 세션별 AFS PRN 설정과 Receiver의
 SB2 ephemeris 증거가 추가되었습니다. protocol version이 다른 Server와 Agent는 함께 사용할 수
@@ -98,11 +98,11 @@ SB2 ephemeris 증거가 추가되었습니다. protocol version이 다른 Server
 전체 코드는 하나의 Gradle 프로젝트와 하나의 Boot JAR로 빌드됩니다. 같은 JAR을 첫 번째 인수에
 따라 `server`, `sender`, `receiver` 모드로 실행하므로 protocol 규격도 항상 함께 배포됩니다.
 
-백엔드는 공통 계층 폴더에 모든 클래스를 모으는 방식이 아니라, 업무 기능을 먼저 나누고 각 기능 아래에 필요한 계층을 배치하는 **기능 우선(Vertical Slice)** 구조입니다.
+백엔드는 **기능별 패키지** 구조입니다. 같은 기능의 Controller/DTO/Entity/Repository/Service를 한 폴더에 두며, 파일 몇 개를 위해 기술별 하위 폴더를 만들지 않습니다. 클래스 이름으로 역할을 구분합니다.
 
 ```text
 server
-├─ protocol   # 중앙 서버와 Agent가 공유하는 wire/model 계약
+├─ shared     # 중앙 서버와 Agent가 공유하는 model/codec 계약
 ├─ agent      # Windows Sender/Receiver 실행 기능
 ├─ central    # 웹/API/H2/JPA 중앙 서버 기능
 └─ bootstrap  # 실행 모드 선택
@@ -118,13 +118,17 @@ server.agent
 ├─ connection   # 중앙 서버 WebSocket 연결과 heartbeat
 ├─ runtime      # 서버 명령 분배 및 Agent 상태
 ├─ gnss         # COM 포트, u-blox, canonical GRAW 수집
-├─ codec        # JNA 네이티브 AFS 코덱
-└─ session
-   ├─ afs       # AFS frame 생성, 오류 주입, fragment 복원
-   └─ transport # Sender/Receiver UDP 시험
+├─ codec        # JNA 네이티브 AFS/PVT 코덱
+├─ afs          # AFS frame 생성, 오류 주입, fragment 복원
+├─ dtn          # DTN 데이터 처리와 PVT 계산 작업
+└─ transport    # Sender/Receiver UDP 시험
 ```
 
 각 Java 클래스에는 책임을 설명하는 한글 주석을 두고, 복수의 처리문을 한 줄에 압축하지 않는 형식을 사용합니다.
+
+중앙 서버의 기능 패키지는 agent, session, capture, input, artifact, frameevidence,
+realtime, dtn, config, common입니다. 수집과 입력은 AFS/DTN이 공유하므로 AFS 아래로
+합치지 않습니다. 패키지 정리는 실행 모드, REST/JSON, DB 테이블, DLL ABI를 변경하지 않습니다.
 
 ## 3. 요구사항
 
@@ -284,7 +288,7 @@ C:\lnis-compose\STOP.cmd
 - Windows Agent 배포본: `build/distributions/lnis-agent-windows.zip`
 - 독립 운영 폴더: `C:\lnis-compose`
 
-SB2/AFS 설정 또는 `server.protocol`을 변경한 빌드는 서버만 재기동해서는 적용되지 않습니다.
+SB2/AFS 설정 또는 `server.shared`의 통신 규격을 변경한 빌드는 서버만 재기동해서는 적용되지 않습니다.
 두 Windows Agent PC에도 새 Agent 배포본을 복사하고 Sender/Receiver Agent 프로세스를
 재시작해야 합니다. `LnisAfsCodec.dll` ABI는 이번 SB2 payload 변경으로 바뀌지 않았습니다.
 

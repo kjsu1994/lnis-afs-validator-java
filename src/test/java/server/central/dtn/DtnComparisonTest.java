@@ -3,7 +3,7 @@ package server.central.dtn;
 import static org.junit.jupiter.api.Assertions.*;
 import java.util.List;
 import org.junit.jupiter.api.Test;
-import server.protocol.model.DtnModels.Pvt;
+import server.shared.model.DtnModels.Pvt;
 
 /** 전달 성공과 PVT 계산 성공을 구분하고 위치/속도/시각 오류를 검출한다. */
 class DtnComparisonTest {

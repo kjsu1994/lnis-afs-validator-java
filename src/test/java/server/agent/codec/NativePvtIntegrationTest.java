@@ -7,9 +7,9 @@ import java.time.Instant;
 import java.util.*;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.*;
-import server.agent.session.dtn.DtnProcessor;
-import server.protocol.codec.*;
-import server.protocol.model.DtnModels;
+import server.agent.dtn.DtnProcessor;
+import server.shared.codec.*;
+import server.shared.model.DtnModels;
 
 /** 실제 DLL 호출과 AFS 왕복을 검증한다. 항법 부족 입력을 정상 PVT로 오판하지 않아야 한다. */
 @EnabledOnOs(OS.WINDOWS)

@@ -1,7 +1,7 @@
 package server.central.dtn;
 
 import java.util.*;
-import server.protocol.model.DtnModels.Pvt;
+import server.shared.model.DtnModels.Pvt;
 
 /** 관측 시각과 유효성을 검사한 다음 동일 epoch의 PVT 차이를 비교한다. */
 public final class DtnComparison {

@@ -8,8 +8,8 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
-import server.protocol.codec.GrawCodec;
-import server.protocol.model.DtnModels.Pvt;
+import server.shared.codec.GrawCodec;
+import server.shared.model.DtnModels.Pvt;
 
 /** 같은 AFS DLL의 PVT 확장을 호출한다. RTKLIB 구조체와 알고리즘은 Java로 복제하지 않는다. */
 public final class NativePvtCodec implements AutoCloseable {

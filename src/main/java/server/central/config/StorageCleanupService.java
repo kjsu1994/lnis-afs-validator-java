@@ -5,12 +5,12 @@ import java.time.Instant;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import server.central.agent.repository.AgentRepository;
-import server.central.frameevidence.repository.FrameEvidenceRepository;
-import server.central.input.repository.InputBufferRepository;
-import server.central.input.service.InputBufferService;
-import server.central.realtime.repository.RealtimeEventRepository;
-import server.central.session.repository.SessionRepository;
+import server.central.agent.AgentRepository;
+import server.central.frameevidence.FrameEvidenceRepository;
+import server.central.input.InputBufferRepository;
+import server.central.input.InputBufferService;
+import server.central.realtime.RealtimeEventRepository;
+import server.central.session.SessionRepository;
 
 /** 설정된 보존 기간이 지난 H2 행과 GRAW 파일을 참조 순서에 맞춰 정리한다. */
 @Service
