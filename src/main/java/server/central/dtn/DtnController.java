@@ -20,6 +20,7 @@ import org.springframework.web.bind.annotation.*;
 import server.shared.model.DtnModels;
 
 import java.util.*;
+import java.nio.charset.StandardCharsets;
 
 /** DTN 담당자에게 공개하는 callback과 화면용 시험 제어 API다. */
 @RequiredArgsConstructor
@@ -37,6 +38,8 @@ public class DtnController {
         private String senderAgentId;
         @NotBlank
         private String receiverAgentId;
+        @jakarta.validation.constraints.Size(max = 2048)
+        private String sendUrl;
     }
 
     /* DTN 외부 연동 설정 조회 */
@@ -76,8 +79,9 @@ public class DtnController {
     public ResponseEntity<Map<String, Object>> create(@Valid @RequestBody CreateRequest request)
             throws Exception
     {
-        DtnJob dtnJob = dtnService.create(
-                request.getInputId(), request.getSenderAgentId(), request.getReceiverAgentId());
+        DtnJob dtnJob = request.getSendUrl() == null || request.getSendUrl().isBlank()
+                ? dtnService.create(request.getInputId(), request.getSenderAgentId(), request.getReceiverAgentId())
+                : dtnService.create(request.getInputId(), request.getSenderAgentId(), request.getReceiverAgentId(), request.getSendUrl());
 
         Map<String, Object> response = summary(dtnJob);
         return new ResponseEntity<>(response, HttpStatus.ACCEPTED);
@@ -118,6 +122,24 @@ public class DtnController {
         return new ResponseEntity<>(response, HttpStatus.OK);
     }
 
+    /** 송수신 본문을 그대로 반환한다. 다운로드도 같은 바이트를 사용하며 보고서 JSON과 구분한다. */
+    @GetMapping(value = "/tests/{id}/payload/{direction}", produces = MediaType.APPLICATION_JSON_VALUE)
+    public ResponseEntity<byte[]> payload(@PathVariable UUID id, @PathVariable String direction,
+            @RequestParam(defaultValue = "false") boolean download)
+    {
+        DtnService.PayloadResponse payload = dtnService.payload(id, direction);
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(new MediaType("application", "json", StandardCharsets.UTF_8));
+        headers.setCacheControl("no-store");
+        headers.set("X-Content-Type-Options", "nosniff");
+        headers.set("X-LNIS-Payload-Representation", payload.getRepresentation());
+        if (download) {
+            headers.setContentDisposition(ContentDisposition.attachment()
+                    .filename("dtn-" + id + "-" + direction + ".json").build());
+        }
+        return new ResponseEntity<>(payload.getBody(), headers, HttpStatus.OK);
+    }
+
     /* 외부 DTN 수신 결과 접수: 인증 후 크기와 JSON을 검증한다. */
     @PostMapping(value = "/receive", consumes = MediaType.APPLICATION_JSON_VALUE)
     public ResponseEntity<Map<String, Object>> receive(HttpServletRequest request)
@@ -148,10 +170,14 @@ public class DtnController {
         result.put("senderAgentId", job.getSenderAgentId());
         result.put("receiverAgentId", job.getReceiverAgentId());
         result.put("state", job.getState());
+        result.put("sendUrl", job.getSendUrl());
         result.put("message", job.getMessage());
         result.put("createdAt", job.getCreatedAt());
         result.put("updatedAt", job.getUpdatedAt());
         result.put("dtnReceived", job.getReceivedJson() != null);
+        result.put("sentPayloadAvailable", job.getSentJson() != null);
+        result.put("receivedPayloadAvailable", job.getReceivedJson() != null);
+        result.put("receivedOriginalAvailable", job.getReceivedRawJson() != null);
         if (job.getComparisonJson() != null) {
             JsonNode comparison = objectMapper.readTree(job.getComparisonJson());
             result.put("verdict", comparison.path("verdict").asText());

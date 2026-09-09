@@ -30,6 +30,8 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
+import java.nio.ByteBuffer;
+import java.nio.charset.CharacterCodingException;
 import java.security.MessageDigest;
 import java.time.*;
 import java.util.*;
@@ -49,7 +51,8 @@ public class DtnService {
     private final ObjectMapper objectMapper;
     private final Map<UUID, DtnChunks> chunks = new HashMap<>();
     private final HttpClient httpClient =
-            HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(10)).build();
+            HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(10))
+                    .followRedirects(HttpClient.Redirect.NEVER).build();
 
     @Value("${lnis.dtn.send-url:}")
     private String sendUrl;
@@ -66,6 +69,9 @@ public class DtnService {
         return Map.of(
                 "configured",
                 !sendUrl.isBlank() && !receiveToken.isBlank(),
+                "defaultSendUrl", sendUrl,
+                "receiveConfigured", !receiveToken.isBlank(),
+                "defaultSendTokenConfigured", !sendToken.isBlank(),
                 "profile",
                 DtnModels.PROFILE,
                 "maximumInputBytes",
@@ -75,12 +81,15 @@ public class DtnService {
     /* 입력과 Agent를 확인한 뒤 기준 PVT 계산 및 AFS 생성을 요청한다. */
     public synchronized DtnJob create(UUID inputId, String sender, String receiver)
     {
-        if (sendUrl.isBlank() || receiveToken.isBlank()) {
-            throw new IllegalStateException("DTN 송신 URL과 수신 인증 토큰을 설정하세요.");
-        }
-        URI uri = URI.create(sendUrl);
-        if (!List.of("http", "https").contains(uri.getScheme()) || uri.getHost() == null) {
-            throw new IllegalStateException("DTN URL 오류");
+        return create(inputId, sender, receiver, null);
+    }
+
+    /** 기존 API는 환경 설정을 기본값으로 사용하고, 새 화면의 URL은 시험마다 별도로 확정한다. */
+    public synchronized DtnJob create(UUID inputId, String sender, String receiver, String requestedUrl)
+    {
+        URI destination = DtnDestination.resolve(requestedUrl, sendUrl);
+        if (receiveToken.isBlank()) {
+            throw new IllegalStateException("DTN 수신 인증 토큰을 설정하세요.");
         }
         if (!dtnRepository.findByStateIn(ACTIVE).isEmpty()) {
             throw new IllegalStateException("다른 DTN 시험 진행 중");
@@ -108,6 +117,7 @@ public class DtnService {
         }
         DtnJob job = new DtnJob();
         job.setId(UUID.randomUUID());
+        job.setSendUrl(destination.toString());
         job.setInputId(inputId);
         job.setSenderAgentId(sender);
         job.setReceiverAgentId(receiver);
@@ -162,6 +172,14 @@ public class DtnService {
         if (!"WAITING_DTN".equals(job.getState())) {
             throw new IllegalStateException("수신 대기 상태가 아닙니다.");
         }
+        // 내부 계산용 JSON과 사용자 확인용 원문을 분리한다. 중복 callback은 최초 원문을 덮어쓰지 않는다.
+        String receivedOriginal;
+        try {
+            receivedOriginal = StandardCharsets.UTF_8.newDecoder().decode(ByteBuffer.wrap(body)).toString();
+        } catch (CharacterCodingException error) {
+            throw new IllegalArgumentException("DTN JSON 본문은 올바른 UTF-8이어야 합니다.", error);
+        }
+        job.setReceivedRawJson(receivedOriginal);
         job.setReceivedJson(objectMapper.writeValueAsString(received));
         update(job, "WAITING_RECEIVER", "DTN 수신 완료 / Receiver 연결 대기");
         return job;
@@ -177,6 +195,35 @@ public class DtnService {
                         authorization.getBytes(StandardCharsets.UTF_8))) {
             throw new ResponseStatusException(HttpStatus.UNAUTHORIZED);
         }
+    }
+
+    @lombok.Value
+    public static class PayloadResponse {
+        byte[] body;
+        String representation;
+    }
+
+    /** 헤더/토큰이 아닌 실제 JSON 본문만 조회한다. 과거 수신 자료는 정규화된 저장본임을 표시한다. */
+    public PayloadResponse payload(UUID id, String direction)
+    {
+        DtnJob job = get(id);
+        String body;
+        String representation = "original";
+        if ("sent".equals(direction)) {
+            body = job.getSentJson();
+        } else if ("received".equals(direction)) {
+            body = job.getReceivedRawJson();
+            if (body == null) {
+                body = job.getReceivedJson();
+                representation = "legacy-normalized";
+            }
+        } else {
+            throw new IllegalArgumentException("JSON 방향은 sent 또는 received여야 합니다.");
+        }
+        if (body == null) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "아직 해당 JSON 본문이 준비되지 않았습니다.");
+        }
+        return new PayloadResponse(body.getBytes(StandardCharsets.UTF_8), representation);
     }
 
     /** WebSocket 인증 ID를 기준으로 시험 소유 Agent를 재검증한다. */
@@ -298,11 +345,12 @@ public class DtnService {
     private void sendExternal(UUID id, String packet)
     {
         try {
+            URI destination = DtnDestination.resolve(get(id).getSendUrl(), sendUrl);
             HttpRequest.Builder request =
-                    HttpRequest.newBuilder(URI.create(sendUrl))
+                    HttpRequest.newBuilder(destination)
                             .timeout(Duration.ofSeconds(30))
                             .header("Content-Type", "application/json");
-            if (!sendToken.isBlank()) {
+            if (!sendToken.isBlank() && DtnDestination.usesConfiguredToken(destination, sendUrl)) {
                 request.header("Authorization", "Bearer " + sendToken);
             }
             int status =

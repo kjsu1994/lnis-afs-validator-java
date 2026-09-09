@@ -66,7 +66,8 @@ tasks.register('webTest') {
         [
                 'src/test/js/event-log.smoke.mjs',
                 'src/test/js/frame-evidence-selection.smoke.mjs',
-                'src/test/js/result-presentation.smoke.mjs'
+                'src/test/js/result-presentation.smoke.mjs',
+                'src/test/js/dtn-payload.smoke.mjs'
         ].each { script ->
             providers.exec {
                 commandLine 'node', script
@@ -81,6 +82,24 @@ tasks.named('check') {
 
 tasks.named('bootJar') {
     archiveFileName = 'lnis.jar'
+}
+
+// 운영 배포와 분리된 검증 묶음이다. Linux JVM에서 실제 SO와 Java 경계를 함께 시험한다.
+tasks.register('linuxNativeVerificationZip', Zip) {
+    group = 'verification'
+    description = 'Linux SO의 JNA 및 DTN/PVT 회귀 검증용 묶음을 생성한다.'
+    dependsOn tasks.named('testClasses')
+    archiveFileName = 'linux-native-verification.zip'
+    destinationDirectory = layout.buildDirectory.dir('distributions')
+    from(sourceSets.main.output) { into 'classes' }
+    from(sourceSets.test.output) { into 'classes' }
+    from(configurations.testRuntimeClasspath) { into 'lib' }
+    from('build/native-linux/libLnisAfsCodec.so') { into 'native' }
+    doFirst {
+        if (!file('build/native-linux/libLnisAfsCodec.so').isFile()) {
+            throw new GradleException('먼저 native/build-linux.ps1로 Linux 후보 SO를 빌드하세요.')
+        }
+    }
 }
 
 tasks.register('agentDistZip', Zip) {

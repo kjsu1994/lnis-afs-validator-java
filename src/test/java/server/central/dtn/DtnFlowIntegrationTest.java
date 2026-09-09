@@ -42,11 +42,15 @@ import server.shared.model.LnisModels.*;
 class DtnFlowIntegrationTest {
   static final AtomicReference<URI> callback = new AtomicReference<>();
   static final AtomicReference<byte[]> packet = new AtomicReference<>();
+  static final AtomicReference<String> destinationPath = new AtomicReference<>();
+  static final AtomicReference<String> forwardedAuthorization = new AtomicReference<>();
   static final HttpServer external;
   static {
     try {
       external = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
       external.createContext("/transfers", exchange -> {
+        destinationPath.set(exchange.getRequestURI().getPath());
+        forwardedAuthorization.set(exchange.getRequestHeaders().getFirst("Authorization"));
         byte[] body = exchange.getRequestBody().readAllBytes(); packet.set(body);
         try {
           var response = HttpClient.newHttpClient().send(HttpRequest.newBuilder(callback.get())
@@ -60,6 +64,7 @@ class DtnFlowIntegrationTest {
     } catch (Exception e) { throw new ExceptionInInitializerError(e); }
   }
   @DynamicPropertySource static void properties(DynamicPropertyRegistry registry) {
+    registry.add("lnis.dtn.send-token", () -> "configured-secret-not-for-custom-url");
     registry.add("lnis.dtn.send-url", () -> "http://127.0.0.1:" + external.getAddress().getPort() + "/transfers");
   }
   @LocalServerPort int port;
@@ -105,7 +110,8 @@ class DtnFlowIntegrationTest {
       inputs.append(input.inputId(), 0, source); inputs.complete(input.inputId());
       HttpClient client = HttpClient.newHttpClient();
       String body = json.writeValueAsString(Map.of("inputId", input.inputId(),
-          "senderAgentId", "dtn-sender", "receiverAgentId", "dtn-receiver"));
+          "senderAgentId", "dtn-sender", "receiverAgentId", "dtn-receiver",
+          "sendUrl", "http://127.0.0.1:" + external.getAddress().getPort() + "/transfers/selected"));
       var startRequest = HttpRequest.newBuilder(URI.create("http://127.0.0.1:"+port+"/lnis/api/v1/dtn/tests"))
           .header("Content-Type", "application/json").POST(HttpRequest.BodyPublishers.ofString(body)).build();
       var start = client.send(startRequest, HttpResponse.BodyHandlers.ofString());
@@ -114,6 +120,17 @@ class DtnFlowIntegrationTest {
       long deadline = System.nanoTime()+20_000_000_000L;
       while (service.get(id).getReceivedJson() == null && System.nanoTime() < deadline) Thread.sleep(50);
       assertNotNull(service.get(id).getReceivedJson());
+      assertEquals("/transfers/selected", destinationPath.get());
+      assertNull(forwardedAuthorization.get());
+      assertTrue(service.get(id).getSendUrl().endsWith("/transfers/selected"));
+      // H2에서 다시 읽은 원문과 실제 외부 HTTP 본문이 바이트 단위로 일치해야 한다.
+      assertArrayEquals(packet.get(), service.payload(id, "received").getBody());
+      assertArrayEquals(packet.get(), service.payload(id, "sent").getBody());
+      HttpResponse<byte[]> payloadDownload = client.send(HttpRequest.newBuilder(
+          URI.create("http://127.0.0.1:" + port + "/lnis/api/v1/dtn/tests/" + id + "/payload/received?download=true"))
+          .GET().build(), HttpResponse.BodyHandlers.ofByteArray());
+      assertEquals(200, payloadDownload.statusCode());
+      assertArrayEquals(packet.get(), payloadDownload.body());
       service.tick();
       assertEquals("WAITING_RECEIVER", service.get(id).getState());
       when(connections.online("dtn-receiver")).thenReturn(true);

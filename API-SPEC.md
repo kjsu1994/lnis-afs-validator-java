@@ -702,7 +702,32 @@ Receiver가 연결되지 않았으면 대기하며 READY가 되면 전달한다.
 각 단계 실패는 FAILED로 기록한다. 시험 전체 제한 시간은 10분이다.
 동시에 하나의 DTN 시험만 허용한다.
 
+#### 시험별 DTN/HDTN 어댑터 URL 지정
+
+`POST /lnis/api/v1/dtn/tests` 요청에 선택 필드 `sendUrl`을 추가한다.
+
+```json
+{
+  "inputId": "00000000-0000-0000-0000-000000000001",
+  "senderAgentId": "sender-1",
+  "receiverAgentId": "receiver-1",
+  "sendUrl": "http://192.168.1.100:8080/transfers"
+}
+```
+
+- 생략하거나 공백이면 기존 `LNIS_DTN_SEND_URL`을 사용한다. 화면에는 이 설정을 기본값으로 채운다.
+- 화면에서 지정한 URL은 시험 생성 시 DB에 저장하며, 이후 입력란 변경은 진행 중 시험에 영향을 주지 않는다.
+- 서버가 해당 URL로 `POST`, `Content-Type: application/json` 요청을 보낸다. 브라우저에서 어댑터를 직접 호출하지 않는다.
+- `http`/`https`와 유효한 호스트를 요구한다. 최대 2048자이며 URL 내부 인증 정보, fragment, 잘못된 포트는 거부한다.
+- 다른 주소로의 redirect는 따라가지 않는다.
+- `LNIS_DTN_SEND_TOKEN`은 정규화된 전체 URL이 기본 설정과 일치할 때만 사용한다. 다른 URL에 비밀 토큰을 자동 전달하지 않는다.
+- 별도 URL의 인증 헤더 편집 기능은 제공하지 않는다. 인증이 필요한 어댑터는 운영 기본 URL/토큰 설정을 사용한다.
+- `localhost`는 LNIS 서버/컨테이너 기준이다. 접근이 제한된 시험망에서 사용하고 관리 화면/API를 공개망에 노출하지 않는다.
+- 시험 요약/보고서 응답의 `sendUrl`로 실제 선택한 대상을 확인한다. 과거 시험에는 이 값이 없을 수 있다.
+- `/dtn/config`에 `defaultSendUrl`, `receiveConfigured`, `defaultSendTokenConfigured`를 추가한다. 토큰 자체는 반환하지 않는다.
+
 ### 13.5 PVT 의미와 판정
+
 
 현재 계산 프로파일은 GPS L1 C/A 단독 측위다. 다중 GNSS 전체 지원을 의미하지 않는다.
 PocketSDR-AFS 일반 GNSS 경로와 같은 RTKLIB pntpos(), 고도각 15도,
@@ -734,7 +759,8 @@ LNIS_DTN_RECEIVE_TOKEN=<LNIS가 발급해 외부 수신부에 전달할 토큰>
 외부 담당자에게 알릴 callback 주소:
 `http://192.168.1.72:8088/lnis/api/v1/dtn/receive`.
 IP는 실제 중앙 서버 주소에 맞춰 변경한다.
-Receiver PC의 주소를 callback으로 지정하지 않는다.
+기존 `server` 실행 모드에서는 Receiver PC의 주소를 callback으로 지정하지 않는다.
+독립 노드 전환이 완료되면 callback은 수신 노드 주소로 변경한다. 노드 상태 API 추가만으로 DTN callback 소유권이 변경되지는 않는다.
 외부 DTN 미연결 상태의 시험용 왕복 서버는 실제 BPv7 동작을 검증하지 않는다.
 
 ### DTN 역할별 화면 및 최근 시험 조회
@@ -746,3 +772,75 @@ Receiver PC의 주소를 callback으로 지정하지 않는다.
   원본 프레임과 전체 PVT는 포함하지 않는다. 상세 결과는 기존 report API를 사용한다.
 - Receiver 화면은 2초마다 조회하며 수집·전송·계산 명령을 실행하지 않는다.
   별도 PC에서도 중앙 서버에 저장된 시험을 조회할 수 있다.
+
+### DTN 송신·수신 JSON 본문 조회 및 다운로드
+
+`GET /lnis/api/v1/dtn/tests/{testId}/payload/{direction}?download=false`
+
+- `direction`: `sent` 또는 `received`. 다른 값은 `400`.
+- 정상 응답: `200`, `Content-Type: application/json;charset=UTF-8`. 별도 응답 객체로 감싸지 않은 JSON 본문이다.
+- `download=true`: 같은 본문을 `dtn-{testId}-{direction}.json` 첨부 파일로 반환한다.
+- `Cache-Control: no-store`, `X-Content-Type-Options: nosniff`를 적용한다.
+- `X-LNIS-Payload-Representation`: `original` 또는 `legacy-normalized`.
+- 아직 본문이 준비되지 않았으면 `409`. 시험이 존재하지 않으면 기존 시험 조회와 같은 오류를 반환한다.
+
+송신 본문은 외부 DTN/HDTN에 전달할 준비된 요청 JSON이다. 본문이 있다는 사실만으로 외부 전송 성공을 의미하지 않는다.
+수신 원문은 인증·동일성 검증을 통과해 최초 접수된 UTF-8 본문을 공백과 줄바꿈까지 보존한다.
+중복 callback은 최초 원문을 덮어쓰지 않는다. 인증 실패나 검증 거절 본문은 이 조회 API에 보관하지 않는다.
+변경 이전 시험은 정규화된 `receivedJson`만 남아 있을 수 있으며, 이 경우 `legacy-normalized`로 표시한다.
+요청의 인증 헤더·토큰은 본문 조회에 포함하지 않는다.
+
+시험 요약에는 다음 필드가 추가된다.
+
+| 필드 | 의미 |
+| --- | --- |
+| `sentPayloadAvailable` | 송신 요청 JSON 준비 여부 |
+| `receivedPayloadAvailable` | 수신 저장본 조회 가능 여부 |
+| `receivedOriginalAvailable` | 공백·줄바꿈까지 보존한 수신 원문 존재 여부 |
+
+양쪽 DTN 화면에 송신/수신 JSON 보기 버튼, 원문/정렬 표시 선택, 다운로드를 제공한다.
+정렬은 브라우저 표시에만 적용하며 다운로드 파일과 저장된 원문은 변경하지 않는다.
+
+## 14. 독립 노드 관리 API — 전환 작업 중
+
+`node` 실행 모드에서만 활성화된다. 기존 `server`, `sender`, `receiver` 실행 계약은 유지한다.
+현재 구현은 로컬 실행기 시작과 상태 조회까지이며, 원격 시험 제어와 DTN 수신 DB 분리는 아직 전환 중이다.
+기존 운영 Compose 설정은 아직 변경하지 않는다.
+
+### 14.1 설정
+
+| 환경 변수 | 의미 |
+| --- | --- |
+| `LNIS_NODE_ROLE` | 시작 시 고정하는 `sender` 또는 `receiver` 역할 |
+| `LNIS_AGENT_ID` | 로컬 실행기 ID. 기본 `sender-1` 또는 `receiver-1` |
+| `LNIS_NATIVE_DIR` | 운영체제별 DLL/SO가 있는 디렉터리 |
+| `LNIS_NODE_BASE_URL` | 자신의 경로 없는 `http(s)://호스트:포트` 주소 |
+| `LNIS_NODE_PEER_URL` | 상대 노드의 고정 기본 주소 |
+| `LNIS_NODE_PEER_ID` | 상대 ID. 기본은 반대 역할 ID |
+| `LNIS_NODE_MANAGEMENT_TOKEN` | 양쪽이 공유하는 관리 전용 Bearer 토큰. 외부 DTN 토큰과 별도 |
+
+주소에는 사용자 정보, 경로, query 또는 fragment를 지정할 수 없다.
+상대 주소나 관리 토큰이 없으면 원격 상태 조회를 거부한다. HTTP redirect는 따르지 않는다.
+
+### 14.2 상태 조회
+
+- `GET /lnis/api/v1/node`: 로컬 화면용 상태 조회.
+- `GET /lnis/api/v1/node/peer/status`: 상대 노드용 조회. `Authorization: Bearer <관리 토큰>` 필수이며 누락·불일치·미설정은 `401`.
+
+정상 응답은 `200 OK`이며 다음과 같다.
+
+```json
+{
+  "protocolVersion": 1,
+  "agentId": "sender-1",
+  "role": "SENDER",
+  "state": "READY",
+  "online": true,
+  "codecAbiVersion": 1,
+  "baseUrl": "http://192.168.1.72:8088"
+}
+```
+
+`online`은 실제 실행기 등록 여부다. 저장된 과거 상태가 READY여도 `online=false`이면 실행 가능 상태가 아니다.
+클라이언트는 상대 ID, 반대 역할, 관리 프로토콜 버전을 검증한다.
+상태 응답에는 토큰, 관측 원본, AFS 프레임, 기준 PVT를 포함하지 않는다.

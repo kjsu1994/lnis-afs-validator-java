@@ -1,6 +1,8 @@
 // Receiver 화면은 조회만 수행한다. Sender의 수집 상태나 전송 동작에는 관여하지 않는다.
+import {createPayloadViewer} from './dtn-payload.js?v=20260909';
 const api = '/lnis/api/v1';
 const $ = id => document.getElementById(id);
+const payloadViewer = createPayloadViewer($('dtn-payload'));
 let tests = [];
 async function get(path) {
   const response = await fetch(api + path, {cache: 'no-store'});
@@ -9,6 +11,7 @@ async function get(path) {
 }
 function render() {
   const job = tests.find(item => item.testId === $('dtn-tests').value);
+  payloadViewer.setJob(job);
   $('dtn-report').hidden = !job;
   if (!job) { $('dtn-result').textContent = '시험 대기'; return; }
   $('dtn-result').textContent = [

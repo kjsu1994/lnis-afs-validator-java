@@ -25,7 +25,7 @@ public final class NativePvtCodec implements AutoCloseable {
   private final Pointer context;
 
   public NativePvtCodec(Path directory) {
-    api = Native.load(directory.resolve("LnisAfsCodec.dll").toAbsolutePath().toString(), Api.class);
+    api = Native.load(NativeLibraryPath.resolve(directory).toString(), Api.class);
     if (api.lnis_pvt_get_abi_version() != 1) throw new IllegalStateException("PVT DLL ABI mismatch");
     context = api.lnis_pvt_create();
     if (context == null) throw new IllegalStateException("PVT context allocation failed");

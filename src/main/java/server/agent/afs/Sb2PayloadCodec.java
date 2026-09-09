@@ -64,7 +64,9 @@ public final class Sb2PayloadCodec {
     EphemerisProfile profile = profile(prn);
     byte[] bits = new byte[DATA_BITS];
 
-    for (int index = 0; index < bits.length; index++) bits[index] = (byte) (index & 1);
+    for (int index = 0; index < bits.length; index++){
+      bits[index] = (byte)(index & 1);
+    }
     write(bits, 0, 13, week);
     write(bits, 13, 9, afsIntervalOfWeek);
     writeEphemeris(bits, profile);

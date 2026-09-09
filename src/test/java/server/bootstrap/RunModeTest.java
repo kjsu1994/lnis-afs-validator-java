@@ -6,6 +6,17 @@ import org.junit.jupiter.api.Test;
 
 class RunModeTest {
   @Test
+  void nodeEnablesWebAndLocalProfileWithoutStartingLegacyAgentProfile() {
+    RunMode.Selection selection = RunMode.select(new String[] {"node"});
+    assertEquals(RunMode.NODE, selection.mode());
+    assertTrue(selection.mode().webEnabled());
+    assertArrayEquals(new String[] {"server", "node"}, selection.mode().profiles());
+    assertFalse(RunMode.SENDER.webEnabled());
+    assertFalse(RunMode.RECEIVER.webEnabled());
+    assertTrue(RunMode.SERVER.webEnabled());
+  }
+
+  @Test
   void separatesModeFromSpringArguments() {
     var selection = RunMode.select(new String[] {"sender", "--lnis.agent.id=sender-a"});
 

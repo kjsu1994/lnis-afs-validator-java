@@ -1,0 +1,19 @@
+.dtn-payload-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+.dtn-payload-controls label { margin: 0; }
+.dtn-payload-controls input[type="checkbox"] { width: auto; }
+.dtn-payload-text {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 320px;
+  white-space: pre;
+  overflow: auto;
+  resize: vertical;
+  font-family: Consolas, monospace;
+  font-size: 13px;
+}

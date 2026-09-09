@@ -20,6 +20,9 @@ public class DtnJob {
     private String state;
     private Instant createdAt;
     private Instant updatedAt;
+    /** 생성 시 확정한 전송 대상이다. 이후 화면 URL을 바꿔도 진행 중인 시험에는 영향을 주지 않는다. */
+    @Column(length = 2048)
+    private String sendUrl;
 
     @Column(length = 2048)
     private String message;
@@ -28,6 +31,9 @@ public class DtnJob {
     private String sentJson;
     @Lob
     private String receivedJson;
+    /** 검증을 통과한 최초 UTF-8 수신 본문이다. 공백과 줄바꿈을 바꾸지 않고 보관한다. */
+    @Lob
+    private String receivedRawJson;
     @Lob
     private String referenceJson;
     @Lob

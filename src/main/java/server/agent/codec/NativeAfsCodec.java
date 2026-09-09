@@ -105,11 +105,7 @@ public final class NativeAfsCodec implements AutoCloseable {
   }
 
   public static NativeAfsCodec load(Path directory) {
-    String name =
-        System.getProperty("os.name", "").toLowerCase().contains("win")
-            ? "LnisAfsCodec.dll"
-            : "libLnisAfsCodec.so";
-    Path library = directory.resolve(name).toAbsolutePath();
+    Path library = NativeLibraryPath.resolve(directory);
     return new NativeAfsCodec(Native.load(library.toString(), Api.class));
   }
 

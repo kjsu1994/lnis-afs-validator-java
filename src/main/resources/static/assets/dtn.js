@@ -1,6 +1,8 @@
 // DTN 화면 전용 코드다. 기존 AFS 화면의 DOM/이벤트 코드는 공유하지 않는다.
+import {createPayloadViewer} from './dtn-payload.js?v=20260909';
 const api = '/lnis/api/v1';
 const $ = id => document.getElementById(id);
+const payloadViewer = createPayloadViewer($('dtn-payload'));
 let captureId = sessionStorage.getItem('dtn.capture');
 let captureSender = sessionStorage.getItem('dtn.captureSender');
 let inputId = sessionStorage.getItem('dtn.input');
@@ -20,7 +22,7 @@ function message(text) { $('dtn-message').textContent = text; }
 function buttons() {
   $('dtn-start').disabled = busy || !!captureId || !socket || socket.readyState !== WebSocket.OPEN;
   $('dtn-stop').disabled = busy || !captureId || stopping;
-  $('dtn-send').disabled = busy || !!captureId || !inputId || !configured;
+  $('dtn-send').disabled = busy || !!captureId || !inputId || !configured || !$('dtn-send-url').value.trim();
 }
 async function action(work) {
   busy = true; buttons();
@@ -101,10 +103,14 @@ $('dtn-start').onclick = () => action(async () => {
   message('COM 수집 중. ' + seconds + '초 후 자동 종료합니다. 이 화면을 유지해주세요.');
 });
 $('dtn-stop').onclick = () => action(stop);
+$('dtn-send-url').oninput = buttons;
 $('dtn-send').onclick = () => action(async () => {
+  if (!$('dtn-send-url').reportValidity()) throw new Error('DTN/HDTN 어댑터의 전체 REST URL을 입력하세요.');
+  const sendUrl = $('dtn-send-url').value.trim();
   const result = await post('/dtn/tests', {inputId, senderAgentId: $('dtn-sender').value,
-    receiverAgentId: $('dtn-receiver').value});
+    receiverAgentId: $('dtn-receiver').value, sendUrl});
   testId = result.testId; sessionStorage.setItem('dtn.test', testId);
+  payloadViewer.setJob(result);
   $('dtn-result').textContent = result.message;
   // 동일 수집 재전송 UI는 이번 범위에 포함하지 않는다.
   inputId = null; sessionStorage.removeItem('dtn.input');
@@ -113,7 +119,9 @@ async function poll() {
   try {
     if (testId) {
       const result = await request('/dtn/tests/' + testId);
+      payloadViewer.setJob(result);
       $('dtn-result').textContent = result.state + '\n' + result.message +
+        (result.sendUrl ? '\nPOST URL: ' + result.sendUrl : '') +
         '\nDTN 수신: ' + (result.dtnReceived ? '완료' : '대기') +
         (result.verdict ? '\n판정: ' + result.verdict + '\n위치 비교 epoch: ' + result.comparableEpochs +
           '\n속도 비교 epoch: ' + result.velocityComparableEpochs : '');
@@ -125,9 +133,10 @@ async function poll() {
 }
 connect();
 action(async () => {
-  const config = await request('/dtn/config'); configured = config.configured;
-  $('dtn-config').textContent = configured ? 'DTN 외부 연동 설정 완료' :
-    '외부 연동 설정 필요: LNIS_DTN_SEND_URL / LNIS_DTN_RECEIVE_TOKEN';
+  const config = await request('/dtn/config'); configured = config.receiveConfigured ?? config.configured;
+  $('dtn-send-url').value = config.defaultSendUrl || '';
+  $('dtn-config').textContent = configured ? '수신 인증 설정 완료 · 전송할 DTN/HDTN 어댑터 URL을 확인하세요.' :
+    '수신 인증 설정 필요: LNIS_DTN_RECEIVE_TOKEN';
   await agents();
   if (captureId) message('진행 중이던 수집이 있습니다. 수집 종료 버튼으로 확정하세요.');
 }).then(poll);

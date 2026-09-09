@@ -4,6 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>LNIS DTN Sender</title>
+  <link rel="stylesheet" href="/lnis/assets/dtn-payload.css?v=20260909">
   <link rel="stylesheet" href="/lnis/assets/app.css?v=20260902-test-suite-tabs">
 </head>
 <body data-page="dtn-sender">
@@ -41,13 +42,21 @@
     </section>
     <section class="card">
       <h2>2. DTN 전송 및 PVT 비교</h2>
+      <label>DTN / HDTN 어댑터 REST URL (POST)
+        <input id="dtn-send-url" type="url" maxlength="2048" required spellcheck="false"
+          placeholder="http://192.168.1.100:8080/transfers" aria-describedby="dtn-url-help">
+      </label>
+      <p id="dtn-url-help">입력한 주소로 서버가 JSON을 POST합니다. 실제 어댑터의 전체 경로를 입력하세요.
+        localhost는 브라우저 PC가 아니라 LNIS 서버/컨테이너를 가리킵니다.
+        기본 설정과 다른 URL에는 기존 송신 인증 토큰을 자동으로 보내지 않습니다.</p>
       <p>수집 종료 후 기준 PVT 계산과 AFS 생성을 수행합니다. 외부 DTN이 돌려준 데이터는 Receiver PC에서 처리합니다.</p>
       <button id="dtn-send" type="button" class="primary" disabled>전송 및 시험 시작</button>
       <pre id="dtn-result" aria-live="polite">시험 대기</pre>
       <a id="dtn-report" hidden target="_blank" rel="noopener">상세 PVT / 비교 JSON 보기</a>
     </section>
   </div>
+  <section id="dtn-payload" class="card" aria-label="DTN 송수신 JSON 확인"></section>
 </main>
-<script type="module" src="/lnis/assets/dtn.js"></script>
+<script type="module" src="/lnis/assets/dtn.js?v=20260909-url"></script>
 </body>
 </html>
