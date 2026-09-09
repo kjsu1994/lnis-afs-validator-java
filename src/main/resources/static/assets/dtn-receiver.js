@@ -20,9 +20,11 @@ function render() {
     '상태: ' + job.state,
     'DTN 수신: ' + (job.dtnReceived ? '완료' : '대기'),
     job.message || '',
-    '판정: ' + (job.verdict || '대기'),
-    '위치 비교 epoch: ' + (job.comparableEpochs ?? 0),
-    '속도 비교 epoch: ' + (job.velocityComparableEpochs ?? 0)
+    ...(job.comparisonOnSender
+      ? ['수신 PVT epoch: ' + (job.receivedEpochs ?? 0), '최종 비교 판정은 Sender 화면에서 확인하세요.']
+      : ['판정: ' + (job.verdict || '대기'),
+         '위치 비교 epoch: ' + (job.comparableEpochs ?? 0),
+         '속도 비교 epoch: ' + (job.velocityComparableEpochs ?? 0)])
   ].join('\n');
   $('dtn-report').href = api + '/dtn/tests/' + encodeURIComponent(job.testId) + '/report';
 }

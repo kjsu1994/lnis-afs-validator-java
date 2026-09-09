@@ -63,14 +63,30 @@ public class DtnService {
     @Value("${lnis.dtn.receive-token:}")
     private String receiveToken;
 
+    private DtnNodeLink nodeLink;
+
+    /** 기존 중앙 서버 모드는 그대로 두고 독립 노드 모드에서만 관리 통신을 연결한다. */
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    public void setNodeLink(DtnNodeLink nodeLink)
+    {
+        this.nodeLink = nodeLink;
+    }
+
+    private boolean sendingNode()
+    {
+        return nodeLink != null && nodeLink.sender();
+    }
+
     /* 외부 연동 준비 여부와 지원 규격 조회 */
     public Map<String, Object> configuration()
     {
         return Map.of(
                 "configured",
-                !sendUrl.isBlank() && !receiveToken.isBlank(),
+                !sendUrl.isBlank() && (sendingNode() || !receiveToken.isBlank()),
                 "defaultSendUrl", sendUrl,
                 "receiveConfigured", !receiveToken.isBlank(),
+                "sendReady", sendingNode() || !receiveToken.isBlank(),
+                "nodeRole", nodeLink == null ? "CENTRAL" : (sendingNode() ? "SENDER" : "RECEIVER"),
                 "defaultSendTokenConfigured", !sendToken.isBlank(),
                 "profile",
                 DtnModels.PROFILE,
@@ -88,7 +104,13 @@ public class DtnService {
     public synchronized DtnJob create(UUID inputId, String sender, String receiver, String requestedUrl)
     {
         URI destination = DtnDestination.resolve(requestedUrl, sendUrl);
-        if (receiveToken.isBlank()) {
+        if (nodeLink != null) {
+            if (!nodeLink.sender()) {
+                throw new IllegalStateException("시험 전송은 송신 노드에서 시작하세요.");
+            }
+            nodeLink.validateParticipants(sender, receiver);
+        }
+        if (!sendingNode() && receiveToken.isBlank()) {
             throw new IllegalStateException("DTN 수신 인증 토큰을 설정하세요.");
         }
         if (!dtnRepository.findByStateIn(ACTIVE).isEmpty()) {
@@ -156,14 +178,19 @@ public class DtnService {
     public synchronized DtnJob receive(String authorization, byte[] body) throws Exception
     {
         authenticate(authorization);
+        if (sendingNode()) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "DTN callback은 수신 노드로 보내세요.");
+        }
         if (body.length > DtnModels.MAX_JSON_BYTES) {
             throw new IllegalArgumentException("DTN JSON 크기 초과");
         }
         JsonNode received = objectMapper.readTree(body);
         UUID id = UUID.fromString(received.path("testId").asText());
         DtnJob job = get(id);
-        if (job.getSentJson() == null
-                || !received.equals(objectMapper.readTree(job.getSentJson()))) {
+        boolean samePayload = nodeLink == null
+                ? job.getSentJson() != null && received.equals(objectMapper.readTree(job.getSentJson()))
+                : DtnPayloadDigest.sha256(objectMapper, received).equals(job.getExpectedPayloadSha256());
+        if (!samePayload) {
             throw new IllegalArgumentException("전송 JSON과 수신 JSON이 다릅니다.");
         }
         if (job.getReceivedJson() != null) {
@@ -181,6 +208,7 @@ public class DtnService {
         }
         job.setReceivedRawJson(receivedOriginal);
         job.setReceivedJson(objectMapper.writeValueAsString(received));
+        job.setReceivedAt(Instant.now());
         update(job, "WAITING_RECEIVER", "DTN 수신 완료 / Receiver 연결 대기");
         return job;
     }
@@ -272,16 +300,12 @@ public class DtnService {
                         .start(() -> sendExternal(job.getId(), packet));
             } else {
                 job.setReceiverJson(objectMapper.writeValueAsString(result.getPvt()));
-                List<Pvt> reference =
-                        objectMapper.readValue(job.getReferenceJson(), new TypeReference<>() {});
-                Map<String, Object> comparison = DtnComparison.compare(reference, result.getPvt());
-                job.setComparisonJson(objectMapper.writeValueAsString(comparison));
-                update(
-                        job,
-                        "INCONCLUSIVE".equals(comparison.get("verdict"))
-                                ? "INCONCLUSIVE"
-                                : "COMPLETED",
-                        "PVT 비교 완료: " + comparison.get("verdict"));
+                if (nodeLink != null && !nodeLink.sender()) {
+                    // 수신 노드에는 기준 PVT가 없다. 비교는 송신 노드에서만 수행한다.
+                    update(job, "COMPLETED", "수신 AFS 복호화 및 PVT 계산 완료");
+                } else {
+                    compare(job, result.getPvt());
+                }
             }
         } catch (Exception e) {
             fail(job, e);
@@ -321,6 +345,10 @@ public class DtnService {
                 fail(job, new IllegalStateException("DTN 시험 제한 시간 10분 초과"));
                 continue;
             }
+            if (sendingNode() && "WAITING_DTN".equals(job.getState())) {
+                pollReceiver(job);
+                continue;
+            }
             if ("WAITING_RECEIVER".equals(job.getState())
                     && agentConnectionRegistry.online(job.getReceiverAgentId())
                     && agentRepository
@@ -345,6 +373,10 @@ public class DtnService {
     private void sendExternal(UUID id, String packet)
     {
         try {
+            if (sendingNode()) {
+                // 수신 DB 등록이 성공한 뒤에만 실제 본문을 외부 DTN에 전달한다.
+                nodeLink.register(get(id));
+            }
             URI destination = DtnDestination.resolve(get(id).getSendUrl(), sendUrl);
             HttpRequest.Builder request =
                     HttpRequest.newBuilder(destination)
@@ -366,11 +398,48 @@ public class DtnService {
             synchronized (this) {
                 DtnJob job = get(id);
                 // callback이 먼저 도착했다면 전달 성공 상태를 뒤늦은 HTTP 오류로 되돌리지 않는다.
-                if ("WAITING_DTN".equals(job.getState())) {
+                if ("WAITING_DTN".equals(job.getState()) && job.getReceivedAt() == null) {
                     fail(job, e);
                 }
             }
         }
+    }
+
+    /** 관리 연결의 일시 중단은 재전송 없이 다음 상태 조회까지 기다린다. 전체 제한 시간은 유지한다. */
+    private void pollReceiver(DtnJob job)
+    {
+        DtnRemoteResult result;
+        try {
+            result = nodeLink.result(job.getId());
+        } catch (RuntimeException unavailable) {
+            return;
+        }
+        if (result.getReceivedAt() != null && job.getReceivedAt() == null) {
+            job.setReceivedAt(result.getReceivedAt());
+            update(job, "WAITING_DTN", "수신 노드 접수 완료 / PVT 계산 결과 대기");
+        }
+        if ("FAILED".equals(result.getState())) {
+            fail(job, new IllegalStateException("수신 노드 실패: " + result.getMessage()));
+        } else if ("COMPLETED".equals(result.getState())) {
+            try {
+                if (result.getReceivedAt() == null || result.getPvt() == null || result.getPvt().isEmpty()) {
+                    throw new IllegalArgumentException("수신 노드의 완료 결과가 불완전합니다.");
+                }
+                job.setReceiverJson(objectMapper.writeValueAsString(result.getPvt()));
+                compare(job, result.getPvt());
+            } catch (Exception error) {
+                fail(job, error);
+            }
+        }
+    }
+
+    private void compare(DtnJob job, List<Pvt> receiverPvt) throws Exception
+    {
+        List<Pvt> reference = objectMapper.readValue(job.getReferenceJson(), new TypeReference<>() {});
+        Map<String, Object> comparison = DtnComparison.compare(reference, receiverPvt);
+        job.setComparisonJson(objectMapper.writeValueAsString(comparison));
+        update(job, "INCONCLUSIVE".equals(comparison.get("verdict")) ? "INCONCLUSIVE" : "COMPLETED",
+                "PVT 비교 완료: " + comparison.get("verdict"));
     }
 
     /* WebSocket 크기 제한에 맞춰 동일한 순서로 청크를 전달한다. */

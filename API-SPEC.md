@@ -760,7 +760,7 @@ LNIS_DTN_RECEIVE_TOKEN=<LNIS가 발급해 외부 수신부에 전달할 토큰>
 `http://192.168.1.72:8088/lnis/api/v1/dtn/receive`.
 IP는 실제 중앙 서버 주소에 맞춰 변경한다.
 기존 `server` 실행 모드에서는 Receiver PC의 주소를 callback으로 지정하지 않는다.
-독립 노드 전환이 완료되면 callback은 수신 노드 주소로 변경한다. 노드 상태 API 추가만으로 DTN callback 소유권이 변경되지는 않는다.
+`node` 실행 모드에서는 callback을 **수신 노드 주소**로 지정한다. 기존 `server` 모드와 callback 소유권이 다르다.
 외부 DTN 미연결 상태의 시험용 왕복 서버는 실제 BPv7 동작을 검증하지 않는다.
 
 ### DTN 역할별 화면 및 최근 시험 조회
@@ -801,11 +801,11 @@ IP는 실제 중앙 서버 주소에 맞춰 변경한다.
 양쪽 DTN 화면에 송신/수신 JSON 보기 버튼, 원문/정렬 표시 선택, 다운로드를 제공한다.
 정렬은 브라우저 표시에만 적용하며 다운로드 파일과 저장된 원문은 변경하지 않는다.
 
-## 14. 독립 노드 관리 API — 전환 작업 중
+## 14. 독립 노드 관리 API
 
 `node` 실행 모드에서만 활성화된다. 기존 `server`, `sender`, `receiver` 실행 계약은 유지한다.
-현재 구현은 로컬 실행기 시작과 상태 조회까지이며, 원격 시험 제어와 DTN 수신 DB 분리는 아직 전환 중이다.
-기존 운영 Compose 설정은 아직 변경하지 않는다.
+로컬 실행기, 원격 AFS 준비·취소·결과 조회 및 DTN 수신 DB 분리를 지원한다.
+Linux 독립 노드 Compose는 `deployment/node`에 있으며 기존 중앙 서버용 Compose와 분리한다.
 
 ### 14.1 설정
 
@@ -844,3 +844,58 @@ IP는 실제 중앙 서버 주소에 맞춰 변경한다.
 `online`은 실제 실행기 등록 여부다. 저장된 과거 상태가 READY여도 `online=false`이면 실행 가능 상태가 아니다.
 클라이언트는 상대 ID, 반대 역할, 관리 프로토콜 버전을 검증한다.
 상태 응답에는 토큰, 관측 원본, AFS 프레임, 기준 PVT를 포함하지 않는다.
+
+### 14.3 AFS 원격 준비·취소 및 결과
+
+아래 모든 API는 `Authorization: Bearer <관리 토큰>`이 필요하다. 송신/수신 ID는 시작 시 지정한 상대와 일치해야 한다.
+
+- `POST /lnis/api/v1/node/peer/afs/commands`: 기존 Agent protocol v2 `COMMAND` envelope 사용. 수신 노드의 `ARM_RECEIVER`, `CANCEL_SESSION`만 허용한다. 최대 32 KiB. 응답 `200`은 SessionSnapshot이다.
+- ARM 인수는 기존 CreateSessionRequest와 같지만 입력 파일을 전송하지 않는다. 수신 PC의 DB/활성 잠금 저장 후 로컬 UDP 수신기를 준비한다.
+- 같은 시험 ID와 동일 설정의 ARM 재호출은 소켓을 재실행하지 않는다. 다른 설정 또는 종료된 시험 ID는 `409`.
+- 존재하지 않는 시험 취소는 `404`, 종료된 시험 취소는 기존 결과를 반환한다. 부분 준비 실패는 취소·DB 상태 기록·잠금 해제를 수행한다.
+- `GET /lnis/api/v1/node/peer/afs/sessions/{id}`: 수신 SessionSnapshot. 수신 PC에서 먼저 자체 결과를 완료하고 송신 PC가 TX/RX 종합 판정을 수행한다.
+- `GET /lnis/api/v1/node/peer/afs/sessions/{id}/evidence?after=-1`: `frameIndex > after`인 Receiver 프레임 증거를 오름차순 최대 32건 반환한다. 빈 배열이면 끝이다. AFS 분석 증거 전용이며 DTN 본문은 제공하지 않는다.
+
+입력 청크, START_SENDER, DTN_PROCESS는 관리 채널에서 거부한다. AFS 실제 시험 데이터는 기존 UDP로 전송한다.
+
+### 14.4 DTN 사전 등록
+
+`POST /lnis/api/v1/node/peer/dtn/tests` — 관리 토큰 필수, 수신 노드 전용, 최대 8 KiB.
+
+```json
+{
+  "testId": "2b23c8bb-f002-4b83-a8e1-8ec7fe1eeb59",
+  "senderAgentId": "sender-1",
+  "receiverAgentId": "receiver-1",
+  "profile": "POCKETSDR-GPS-L1CA-SPP-v1",
+  "payloadSha256": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+}
+```
+
+`payloadSha256`는 JSON 객체 필드를 이름순으로 재귀 정렬한 뒤 compact JSON UTF-8을 SHA-256 처리한 소문자 64자리 값이다. 배열 순서 및 값은 유지한다. 실제 전송 원문은 정렬하거나 바꾸지 않는다.
+
+응답은 `202`와 14.5의 상태 객체다. 같은 ID/해시/참여자의 재등록은 최초 상태를 유지하며, 변경된 등록은 `409`다. 수신 DB에는 송신 JSON, 입력 ID/파일, 기준 PVT를 보관하지 않는다.
+
+송신 노드는 사전 등록 성공 후에만 외부 DTN/HDTN URL로 기존 Transfer JSON을 POST한다. 외부 wire schema는 변경하지 않는다. 외부 수신 callback은 기존 `/lnis/api/v1/dtn/receive`를 **수신 PC**에서 호출한다. 외부 callback 토큰과 관리 토큰은 별개다.
+
+### 14.5 DTN 수신 결과 조회
+
+`GET /lnis/api/v1/node/peer/dtn/tests/{testId}` — 관리 토큰 필수, 수신 노드 전용.
+
+```json
+{
+  "testId": "2b23c8bb-f002-4b83-a8e1-8ec7fe1eeb59",
+  "state": "WAITING_DTN",
+  "message": "외부 DTN/HDTN 수신 대기"
+}
+```
+
+접수 후 `receivedAt`(UTC), 계산 완료 후 `pvt`(기존 Pvt 배열)가 추가된다. `state=COMPLETED`는 **수신 계산 완료**이며 비교 판정이 아니다. 송신 PC가 해당 PVT와 자체 기준 PVT를 비교하여 최종 verdict를 저장한다. 원본 JSON 및 AFS 프레임은 응답에 포함하지 않는다.
+
+송신 화면의 `dtnReceived=true`는 원격 수신 접수를 뜻하며 송신 DB에 수신 원문이 있다는 뜻이 아니다. `sentPayloadAvailable`/`receivedPayloadAvailable`은 **현재 PC의 DB**를 기준으로 한다. 반대쪽 원문은 Sender/Receiver 버튼으로 해당 PC로 이동해 확인한다.
+
+### 14.6 재시작 및 연결 실패
+
+관리 요청은 고정된 상대 주소만 사용하며 자동 재송신·리다이렉트를 하지 않는다. 연결 실패 중에는 다음 상태 조회를 기다리고 전체 시험 제한 시간을 유지한다. 재시작으로 사라진 AFS 실행은 취소하고, 메모리에서 진행하던 DTN PREPARING/CALCULATING은 FAILED로 기록한다. 영속 저장된 WAITING_DTN/WAITING_RECEIVER는 기존 접수 대기를 계속한다. 수신 대기 제한은 시험 등록 후 10분이다.
+
+역할 선택 화면은 상대 노드 URL로 이동한다. 수신 PC에서 수집/업로드/전송 시작 API를 호출하면 `409`로 거부한다. 기존 `server` 모드의 화면 및 API 동작은 유지한다.

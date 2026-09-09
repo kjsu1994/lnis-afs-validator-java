@@ -63,7 +63,7 @@ public class AgentConnectionRegistry {
                 .orElse(false);
     }
 
-    public synchronized void send(String agentId, Envelope message)
+    public void send(String agentId, Envelope message)
     {
         CommandEndpoint endpoint = endpoints.get(agentId);
         if (endpoint != null) {
@@ -79,7 +79,10 @@ public class AgentConnectionRegistry {
         }
         try {
             // Spring WebSocketSession의 동시 send를 피하려고 registry 수준에서 전송을 직렬화한다.
-            session.sendMessage(new TextMessage(objectMapper.writeValueAsString(message)));
+            // 원격 HTTP 대기 중 로컬 실행기까지 전역 잠금으로 막지 않는다. 소켓별 전송만 직렬화한다.
+            synchronized (session) {
+                session.sendMessage(new TextMessage(objectMapper.writeValueAsString(message)));
+            }
         } catch (Exception e) {
             throw new IllegalStateException("Unable to send agent command", e);
         }

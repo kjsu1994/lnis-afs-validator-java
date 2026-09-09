@@ -133,9 +133,11 @@ async function poll() {
 }
 connect();
 action(async () => {
-  const config = await request('/dtn/config'); configured = config.receiveConfigured ?? config.configured;
+  const config = await request('/dtn/config'); configured = config.sendReady ?? config.receiveConfigured ?? config.configured;
   $('dtn-send-url').value = config.defaultSendUrl || '';
-  $('dtn-config').textContent = configured ? '수신 인증 설정 완료 · 전송할 DTN/HDTN 어댑터 URL을 확인하세요.' :
+  $('dtn-config').textContent = config.nodeRole === 'SENDER'
+    ? '독립 송신 노드 · callback은 수신 PC로 전달됩니다. 전송할 DTN/HDTN 어댑터 URL을 확인하세요.'
+    : configured ? '수신 인증 설정 완료 · 전송할 DTN/HDTN 어댑터 URL을 확인하세요.' :
     '수신 인증 설정 필요: LNIS_DTN_RECEIVE_TOKEN';
   await agents();
   if (captureId) message('진행 중이던 수집이 있습니다. 수집 종료 버튼으로 확정하세요.');

@@ -44,9 +44,22 @@ public class SessionService {
     private final ActiveSessionLockRepository activeSessionLockRepository;
     private final ObjectMapper objectMapper;
 
+    private server.central.node.NodeProperties nodeProperties;
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    public void setNodeProperties(server.central.node.NodeProperties properties)
+    {
+        this.nodeProperties = properties;
+    }
+
     /** 요청 검증, 단일 시험 lock 획득, Receiver 준비 및 Sender 시작을 원자적인 흐름으로 수행한다. */
     public TestSessionEntity create(CreateSessionRequest request)
     {
+        if (nodeProperties != null && (nodeProperties.getRole() != AgentRole.SENDER
+                || !nodeProperties.getAgentId().equals(request.senderAgentId())
+                || !nodeProperties.getPeerAgentId().equals(request.receiverAgentId()))) {
+            throw new IllegalArgumentException("시험은 설정된 송신 노드에서 상대 수신 노드로 시작해야 합니다.");
+        }
         // 1. H2 잠금을 잡기 전에 요청을 검증해야 잘못된 요청이 활성 시험 자리를 차지하지 않는다.
         validate(request);
         UUID id = UUID.randomUUID();
@@ -254,8 +267,8 @@ public class SessionService {
             CreateSessionRequest request =
                     objectMapper.readValue(session.requestJson(), CreateSessionRequest.class);
             // 대용량 GRAW를 WebSocket으로 옮기는 시간은 입력 크기에 비례해 별도 여유로 잡는다.
-            long inputMegabytes =
-                    Math.max(
+            long inputMegabytes = nodeProperties != null && nodeProperties.getRole() == AgentRole.RECEIVER
+                    ? 300 : Math.max(
                             1,
                             (inputBufferService.get(session.inputId()).receivedSize() + 1_048_575)
                                     / 1_048_576);
@@ -307,6 +320,20 @@ public class SessionService {
         }
         Optional<RoleResult> tx = sessionRepository.result(id, AgentRole.SENDER);
         Optional<RoleResult> rx = sessionRepository.result(id, AgentRole.RECEIVER);
+        if (nodeProperties != null && nodeProperties.getRole() == AgentRole.RECEIVER && rx.isPresent()) {
+            // 수신 PC는 자체 결과 저장 후 장치를 해제한다. 양쪽 종합 판정은 송신 PC가 수행한다.
+            RoleResult result = rx.get();
+            SessionState receiverState = result.verdict() == Verdict.INCONCLUSIVE
+                    ? SessionState.INCONCLUSIVE : SessionState.COMPLETED;
+            TestSessionEntity completed = new TestSessionEntity(id, receiverState, current.testType(),
+                    current.senderAgentId(), current.receiverAgentId(), current.inputId(), 100,
+                    "수신 시험 완료 / 종합 판정은 송신 노드에서 확인", result.verdict(),
+                    current.requestJson(), current.createdAt(), Instant.now());
+            sessionRepository.save(completed);
+            release(id);
+            eventService.publish(EventType.SESSION_STATUS, null, null, id, completed);
+            return;
+        }
         // ROLE_RESULT는 양쪽 WebSocket에서 독립적으로 도착하므로 첫 결과만으로 세션을 끝내지 않는다.
         if (tx.isEmpty() || rx.isEmpty()) {
             return;
@@ -376,6 +403,16 @@ public class SessionService {
                                 () -> new IllegalArgumentException("Receiver agent not found"));
         if (sender.role() != AgentRole.SENDER || receiver.role() != AgentRole.RECEIVER) {
             throw new IllegalArgumentException("Agent role mismatch");
+        }
+        validateSettings(request);
+    }
+
+    /** 원격 수신 준비에서도 입력 파일 없이 동일한 시험 설정 검증을 재사용한다. */
+    public static void validateSettings(CreateSessionRequest request)
+    {
+        if (request == null || request.transport() == null || request.afs() == null
+                || request.options() == null || request.options().testType() == null) {
+            throw new IllegalArgumentException("시험 설정 필수 항목이 없습니다.");
         }
         TransportSettings t = request.transport();
         if (t.dataPort() < 1

@@ -16,7 +16,6 @@ export function createPayloadViewer(container) {
     return element;
   };
   const title = create('h2', '송수신 JSON 본문');
-  const description = create('p', '송신 요청 본문과 검증을 통과해 최초 접수된 수신 본문을 확인합니다. 인증 헤더와 토큰은 포함하지 않습니다.');
   const controls = create('div');
   controls.className = 'dtn-payload-controls';
   const sent = create('button', '송신 JSON 보기');
@@ -46,7 +45,7 @@ export function createPayloadViewer(container) {
   text.className = 'dtn-payload-text';
   text.setAttribute('aria-label', '선택한 시험의 JSON 본문');
   panel.append(caption, toolbar, text);
-  container.append(title, description, controls, status, panel);
+  container.append(title, controls, status, panel);
   let job = null, original = '', generation = 0, pending = null;
 
   function reset() {

@@ -1,0 +1,7 @@
+*
+!Dockerfile
+!lnis.jar
+!native/
+!native/libLnisAfsCodec.so
+!licenses/
+!licenses/**

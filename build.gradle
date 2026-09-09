@@ -102,6 +102,48 @@ tasks.register('linuxNativeVerificationZip', Zip) {
     }
 }
 
+// 독립 Linux 노드는 기존 Windows/중앙 서버 배포 작업과 명시적으로 분리한다.
+tasks.register('nativeLinuxSourcesZip', Zip) {
+    group = 'distribution'
+    description = 'SO 재빌드 자료 및 LDPC 원본 라이선스를 함께 보관한다.'
+    archiveFileName = 'native-sources.zip'
+    destinationDirectory = layout.buildDirectory.dir('distributions')
+    def nativeStage = providers.gradleProperty('linuxNativeStage')
+    from(nativeStage.orElse('build/missing-native-stage')) {
+        include '*.c', '*.h', 'build-linux.sh', 'rtk/**', 'pocketsdr/**', 'ldpc/**'
+        exclude '**/.git/**'
+    }
+    from('native/THIRD-PARTY-NOTICES.txt')
+    from('native/RTKLIB-README.txt')
+    doFirst {
+        if (!nativeStage.isPresent() || !file(nativeStage.get() + '/ldpc/COPYRIGHT').isFile()) {
+            throw new GradleException('native/build-linux.ps1 출력의 Build staging 경로를 -PlinuxNativeStage=...로 지정하세요.')
+        }
+    }
+}
+
+tasks.register('linuxNodeDistZip', Zip) {
+    group = 'distribution'
+    description = '동일 이미지로 송신/수신 PC에서 실행할 Linux Compose 묶음을 생성한다.'
+    dependsOn tasks.named('bootJar'), tasks.named('check'), tasks.named('nativeLinuxSourcesZip')
+    archiveFileName = 'lnis-node-linux.zip'
+    destinationDirectory = layout.buildDirectory.dir('distributions')
+    from('deployment/node')
+    from(tasks.named('bootJar').flatMap { it.archiveFile })
+    from('build/native-linux/libLnisAfsCodec.so') { into 'native' }
+    from(tasks.named('nativeLinuxSourcesZip').flatMap { it.archiveFile }) { into 'licenses' }
+    from(['native/THIRD-PARTY-NOTICES.txt', 'native/RTKLIB-README.txt']) { into 'licenses' }
+    from(providers.gradleProperty('linuxNativeStage').map { it + '/ldpc' }) {
+        include 'COPYRIGHT', 'LGPL'
+        into 'licenses/ldpc'
+    }
+    doFirst {
+        if (!file('build/native-linux/libLnisAfsCodec.so').isFile()) {
+            throw new GradleException('먼저 native/build-linux.ps1로 Linux SO를 빌드하세요.')
+        }
+    }
+}
+
 tasks.register('agentDistZip', Zip) {
     dependsOn tasks.named('bootJar')
     archiveFileName = 'lnis-agent-windows.zip'

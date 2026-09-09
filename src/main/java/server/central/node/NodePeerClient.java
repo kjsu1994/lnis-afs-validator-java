@@ -32,30 +32,47 @@ public class NodePeerClient {
 
     public NodeDto.StatusResponse status()
     {
+        NodeDto.StatusResponse status = exchange("/lnis/api/v1/node/peer/status", null,
+                NodeDto.StatusResponse.class, MAX_STATUS_BYTES);
+        if (status.getProtocolVersion() != NodeStatusService.PROTOCOL_VERSION
+                || !nodeProperties.getPeerAgentId().equals(status.getAgentId())
+                || status.getRole() == null || status.getRole() == nodeProperties.getRole()) {
+            throw new IllegalStateException("상대 노드의 ID, 역할 또는 관리 프로토콜이 일치하지 않습니다.");
+        }
+        return status;
+    }
+
+    /** 호출 경로는 내부 코드만 지정한다. 리다이렉트와 자동 재시도를 허용하지 않는다. */
+    public <T> T exchange(String path, Object body, Class<T> responseType, int maximumBytes)
+    {
         if (!nodeProperties.peerConfigured()) {
             throw new IllegalStateException("상대 노드 주소와 관리 토큰을 설정하세요.");
         }
-        HttpRequest request = HttpRequest.newBuilder(nodeProperties.getPeerBaseUrl()
-                        .resolve("/lnis/api/v1/node/peer/status"))
+        if (!path.startsWith("/lnis/api/v1/node/peer/")) {
+            throw new IllegalArgumentException("관리 API 경로가 아닙니다.");
+        }
+        HttpRequest.Builder builder = HttpRequest.newBuilder(nodeProperties.getPeerBaseUrl().resolve(path))
                 .timeout(Duration.ofSeconds(5))
-                .header("Authorization", "Bearer " + nodeProperties.getManagementToken())
-                .GET().build();
-        CompletableFuture<HttpResponse<byte[]>> pending = httpClient.sendAsync(request,
-                information -> new LimitedBodySubscriber(MAX_STATUS_BYTES));
+                .header("Authorization", "Bearer " + nodeProperties.getManagementToken());
+        try {
+            if (body == null) {
+                builder.GET();
+            } else {
+                builder.header("Content-Type", "application/json")
+                        .POST(HttpRequest.BodyPublishers.ofByteArray(objectMapper.writeValueAsBytes(body)));
+            }
+        } catch (java.io.IOException error) {
+            throw new IllegalArgumentException("관리 요청을 직렬화할 수 없습니다.", error);
+        }
+        CompletableFuture<HttpResponse<byte[]>> pending = httpClient.sendAsync(builder.build(),
+                information -> new LimitedBodySubscriber(maximumBytes));
         try {
             // 헤더 이후 본문이 멈추는 경우도 포함해 전체 조회 시간에 제한을 둔다.
             HttpResponse<byte[]> response = pending.get(5, TimeUnit.SECONDS);
-            if (response.statusCode() != 200) {
+            if (response.statusCode() < 200 || response.statusCode() >= 300) {
                 throw new IllegalStateException("상대 노드 상태 조회 실패: HTTP " + response.statusCode());
             }
-            byte[] bytes = response.body();
-            NodeDto.StatusResponse status = objectMapper.readValue(bytes, NodeDto.StatusResponse.class);
-            if (status.getProtocolVersion() != NodeStatusService.PROTOCOL_VERSION
-                    || !nodeProperties.getPeerAgentId().equals(status.getAgentId())
-                    || status.getRole() == null || status.getRole() == nodeProperties.getRole()) {
-                throw new IllegalStateException("상대 노드의 ID, 역할 또는 관리 프로토콜이 일치하지 않습니다.");
-            }
-            return status;
+            return objectMapper.readValue(response.body(), responseType);
         } catch (InterruptedException error) {
             Thread.currentThread().interrupt();
             throw new IllegalStateException("상대 노드 조회가 중단되었습니다.", error);

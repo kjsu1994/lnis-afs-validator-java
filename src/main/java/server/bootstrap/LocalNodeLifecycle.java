@@ -54,7 +54,7 @@ public class LocalNodeLifecycle implements ApplicationListener<ApplicationReadyE
             Hello hello = new Hello("1.0.0", agentRuntime.codecAbiVersion(),
                     System.getProperty("os.name"), System.getProperty("os.arch"),
                     Map.of("com", agentConfig.role() == AgentRole.SENDER, "udp", true,
-                            "local", true), List.of());
+                            "local", true), localIpv4Addresses());
             receive(Envelope.of(MessageType.HELLO, agentConfig.agentId(), agentConfig.role(),
                     null, objectMapper.valueToTree(hello)));
             log.info("로컬 {} 실행기 시작 완료: {}", agentConfig.role(), agentConfig.agentId());
@@ -93,6 +93,23 @@ public class LocalNodeLifecycle implements ApplicationListener<ApplicationReadyE
         } catch (Exception error) {
             throw new IllegalStateException("로컬 실행 결과 저장 실패", error);
         }
+    }
+
+    /** Linux에서도 AFS 대상 주소 자동 선택에 사용할 실제 IPv4 목록을 제공한다. */
+    private List<String> localIpv4Addresses() throws java.net.SocketException
+    {
+        java.util.ArrayList<String> addresses = new java.util.ArrayList<>();
+        for (java.net.NetworkInterface network : java.util.Collections.list(java.net.NetworkInterface.getNetworkInterfaces())) {
+            if (!network.isUp() || network.isLoopback()) {
+                continue;
+            }
+            for (java.net.InetAddress address : java.util.Collections.list(network.getInetAddresses())) {
+                if (address instanceof java.net.Inet4Address && !address.isLoopbackAddress()) {
+                    addresses.add(address.getHostAddress());
+                }
+            }
+        }
+        return addresses.stream().distinct().toList();
     }
 
     @Override

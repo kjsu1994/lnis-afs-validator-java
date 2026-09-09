@@ -17,7 +17,10 @@ class Element {
 globalThis.document = {createElement: tag => new Element(tag), createTextNode: text => ({textContent: text})};
 const container = new Element('section');
 const viewer = createPayloadViewer(container);
-const [title, description, controls, status, panel] = container.children;
+// 안내 문구 추가/삭제와 무관하게 실제 제어 요소로 찾는다.
+const controls = container.children.find(element => element.className === 'dtn-payload-controls');
+const status = container.children.find(element => element.role === 'status');
+const panel = container.children.find(element => element.children?.some(child => child.tag === 'textarea'));
 const [sent, received] = controls.children;
 const [caption, toolbar, text] = panel.children;
 const [prettyLabel, download, close] = toolbar.children;

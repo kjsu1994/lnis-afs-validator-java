@@ -174,10 +174,12 @@ public class DtnController {
         result.put("message", job.getMessage());
         result.put("createdAt", job.getCreatedAt());
         result.put("updatedAt", job.getUpdatedAt());
-        result.put("dtnReceived", job.getReceivedJson() != null);
+        result.put("dtnReceived", job.getReceivedJson() != null || job.getReceivedAt() != null);
         result.put("sentPayloadAvailable", job.getSentJson() != null);
         result.put("receivedPayloadAvailable", job.getReceivedJson() != null);
         result.put("receivedOriginalAvailable", job.getReceivedRawJson() != null);
+        result.put("comparisonOnSender", job.getExpectedPayloadSha256() != null);
+        result.put("receivedEpochs", job.getReceiverJson() == null ? 0 : objectMapper.readTree(job.getReceiverJson()).size());
         if (job.getComparisonJson() != null) {
             JsonNode comparison = objectMapper.readTree(job.getComparisonJson());
             result.put("verdict", comparison.path("verdict").asText());

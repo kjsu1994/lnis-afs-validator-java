@@ -1,5 +1,18 @@
 # LNIS AFS Validator 웹 시스템
 
+## Linux 독립 송신·수신 노드 (신규)
+
+두 Linux x86-64 PC에서 같은 Spring Boot 서비스를 `sender`/`receiver` 역할로 각각 실행할 수 있습니다. 각 컨테이너 안에서 웹과 로컬 실행기가 **하나의 JVM**으로 동작하므로 별도 BAT/Agent 실행이 필요 없습니다. 네이티브 알고리즘은 기존 C 코드를 Linux SO로 빌드해 사용합니다.
+
+- 실행 묶음: `build/distributions/lnis-node-linux.zip`
+- 설정 및 실행: [deployment/node/README.md](deployment/node/README.md)
+- 관리 API 및 독립 DB 계약: [API-SPEC.md 14절](API-SPEC.md#14-독립-노드-관리-api)
+- 개발 빌드: `native/build-linux.ps1`로 SO를 만든 뒤 `gradlew.bat linuxNodeDistZip -PlinuxNativeStage=빌드임시경로` 실행. 전체 테스트를 통과해야 배포 ZIP을 만듭니다. 이 작업은 기존 `C:\lnis-compose`를 변경하지 않습니다.
+
+각 PC에서 `.env`의 역할·주소·토큰 설정 후 `docker compose up -d --build`로 시작합니다. 실제 GNSS 수집은 송신 PC의 Linux 장치 매핑 설정이 추가로 필요합니다. DB는 PC별 `DB` 폴더에 분리하며 공유하지 않습니다. DTN callback은 수신 PC로 보냅니다. 실제 GNSS 하드웨어와 외부 DTN/HDTN 연동은 현장 확인이 필요합니다.
+
+아래 내용은 기존 **Windows Agent + 중앙 서버** 운영 방식에 대한 설명이며 계속 지원합니다. 기존 운영 배포는 자동으로 독립 노드 구성으로 바꾸지 않습니다.
+
 DTN 송수신/PVT 비교 기능은 `/lnis/dtntest/sender`에서 사용합니다.
 EVK-F9T COM 수집 종료 후 전송 버튼으로 시험하며 현재 PVT 어댑터는 GPS L1 C/A를 지원합니다.
 외부 DTN 연동 설정과 전달 JSON 계약은 [API-SPEC.md](API-SPEC.md)의 13절을 참고하세요.
