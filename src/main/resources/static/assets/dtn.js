@@ -586,7 +586,6 @@ document
                     const state =
                         $('dtn-transport-mode-state');
 
-
                     if (state) {
 
                         state.textContent =

@@ -183,6 +183,13 @@ tasks.register('deployComposeBundle') {
     dependsOn tasks.named('agentDistZip')
     dependsOn tasks.named('check')
 
+    doFirst {
+        File existingCompose = new File(file(lnisComposeDirectory.get()), 'docker-compose.yml')
+        if (existingCompose.isFile() && existingCompose.getText('UTF-8').contains('LNIS_NODE_ROLE:')) {
+            throw new GradleException('대상 폴더는 독립 노드입니다. 중앙 서버 배포로 덮어쓰지 않습니다. linuxNodeDistZip 배포본을 사용하세요.')
+        }
+    }
+
     doLast {
         File target = file(lnisComposeDirectory.get())
         target.mkdirs()

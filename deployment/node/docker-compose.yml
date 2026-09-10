@@ -23,7 +23,8 @@ services:
     environment:
       LNIS_NODE_ROLE: ${LNIS_NODE_ROLE:?sender 또는 receiver를 설정하세요}
       LNIS_NODE_BASE_URL: ${LNIS_NODE_BASE_URL:?현재 PC의 URL을 설정하세요}
-      LNIS_NODE_PEER_URL: ${LNIS_NODE_PEER_URL:?상대 PC의 URL을 설정하세요}
+      # 상대 PC 미설정 시 로컬 노드만 시작한다. 시험 실행 전 상대 주소를 설정해야 한다.
+      LNIS_NODE_PEER_URL: ${LNIS_NODE_PEER_URL:-}
       LNIS_NODE_MANAGEMENT_TOKEN: ${LNIS_NODE_MANAGEMENT_TOKEN:?양쪽 관리 토큰을 설정하세요}
       LNIS_NATIVE_DIR: /app/native
       LNIS_DB_URL: jdbc:h2:file:/app/data/lnis

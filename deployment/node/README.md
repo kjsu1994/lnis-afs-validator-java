@@ -9,6 +9,12 @@
 
 Java와 네이티브 실행기는 같은 컨테이너/JVM에서 동작합니다. BAT 또는 별도 Agent 실행은 필요 없습니다. 초기 DB 권한 준비 컨테이너는 작업 후 종료됩니다.
 
+상대 PC 주소를 아직 정하지 않았다면 `LNIS_NODE_PEER_URL`을 비워 로컬 실행기와 화면만 먼저 시작할 수 있습니다. 송수신 시험 전에는 실제 상대 주소와 양쪽 공통 관리 토큰을 설정해야 합니다.
+
+Windows의 WSL Docker에서 실행할 때는 `START.cmd`/`STOP.cmd`를 편의상 사용할 수 있습니다. 이 도우미는 Docker만 제어하며 Windows Agent를 실행하지 않습니다. USB 연결과 LAN UDP 통신은 자동 구성하지 않습니다. WSL NAT에서는 웹 포트 전달만으로 다른 PC와 AFS UDP 통신까지 보장되지 않으므로 네트워크/장치 구성을 별도 확인해야 합니다.
+
+기존 중앙 서버용 `gradlew.bat build`는 독립 노드로 전환된 운영 폴더를 덮어쓰지 않도록 중단됩니다. 독립 노드 배포는 `linuxNodeDistZip` 산출물을 사용하며 기존 `.env`와 `DB`는 유지하세요.
+
 ## 실제 GNSS 수집
 
 송신 PC에 EVK-F9T를 연결하고 `.env` 끝의 `COMPOSE_FILE`, `LNIS_SERIAL_DEVICE`, `LNIS_SERIAL_GID`를 활성화합니다. 장치는 `/dev/serial/by-id/...`의 실제 경로를 지정하고 그룹 번호는 호스트의 장치 소유 그룹 번호를 사용합니다. 컨테이너 화면에서는 `/dev/ttyUSB0`을 선택합니다. 장치를 다시 꽂거나 경로가 변경되면 컨테이너를 재생성하세요.
