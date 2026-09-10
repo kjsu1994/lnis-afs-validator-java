@@ -3,60 +3,445 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
+
   <title>LNIS DTN Sender</title>
-  <link rel="stylesheet" href="/lnis/assets/dtn-payload.css?v=20260909">
-  <link rel="stylesheet" href="/lnis/assets/app.css?v=20260902-test-suite-tabs">
+
+  <link rel="stylesheet" href="/lnis/assets/app.css">
+  <link rel="stylesheet" href="/lnis/assets/dtn-payload.css">
+  <link rel="stylesheet" href="/lnis/assets/dtn-ui.css">
 </head>
+
 <body data-page="dtn-sender">
+
 <header>
   <div>
     <span class="eyebrow">LNIS DTN VALIDATOR</span>
     <h1>DTN 송수신 시험</h1>
-    <!-- DTN 기능 구현 전에도 AFS 시험과 동일한 최상위 화면 이동 구조를 제공한다. -->
-    <nav class="test-suite-tabs" aria-label="시험 대분류">
+
+    <nav class="test-suite-tabs">
       <a href="/lnis/afstest/sender">AFS Frame 시험</a>
-      <a class="active" href="/lnis/dtntest/sender" aria-current="page">DTN 송수신 시험</a>
+      <a class="active"
+         href="/lnis/dtntest/sender"
+         aria-current="page">
+        DTN 송수신 시험
+      </a>
     </nav>
   </div>
-  <nav class="role-nav" aria-label="DTN 시험 역할">
-    <a class="active" href="/lnis/dtntest/sender" aria-current="page">Sender</a>
-    <a href="/lnis/dtntest/receiver">Receiver</a>
+
+  <nav class="role-nav">
+    <a class="active"
+       href="/lnis/dtntest/sender">
+      Sender
+    </a>
+
+    <a href="/lnis/dtntest/receiver">
+      Receiver
+    </a>
   </nav>
 </header>
-<!-- 기존 AFS 화면과 독립된 DTN 시험 영역이다. -->
+
+
 <main>
-  <p id="dtn-config" role="status">설정 확인 중</p>
-  <p>GPS L1 C/A 단독 측위 · PocketSDR/RTKLIB · 입력 최대 1 MiB · I/Q/RF 없이 AFS 프레임을 전달합니다.</p>
-  <div class="grid two">
-    <section class="card">
-      <h2>1. GNSS 데이터 수집</h2>
-      <label>Sender Agent<select id="dtn-sender"></select></label>
-      <label>Receiver Agent<select id="dtn-receiver"></select></label>
-      <button id="dtn-refresh" type="button">Agent / COM 새로고침</button>
-      <label>COM 포트<select id="dtn-port"></select></label>
-      <label>Baud rate<input id="dtn-baud" type="number" value="115200"></label>
-      <label>수집 시간(초)<input id="dtn-seconds" type="number" min="1" max="300" value="60"></label>
-      <button id="dtn-start" type="button" disabled>수집 시작</button>
-      <button id="dtn-stop" type="button" disabled>수집 종료</button>
-      <p id="dtn-message" role="status" aria-live="polite">수집 후 전송 버튼을 눌러 시험합니다.</p>
-    </section>
-    <section class="card">
-      <h2>2. DTN 전송 및 PVT 비교</h2>
-      <label>DTN / HDTN 어댑터 REST URL (POST)
-        <input id="dtn-send-url" type="url" maxlength="2048" required spellcheck="false"
-          placeholder="http://192.168.1.100:8080/transfers" aria-describedby="dtn-url-help">
+
+  <!-- 전체 연결 상태 -->
+  <section class="status-strip">
+
+        <span id="dtn-server-status"
+              class="pill warning">
+            서버 연결 확인 중
+        </span>
+
+    <span id="dtn-sender-status"
+          class="pill">
+            송신 서비스 확인 중
+        </span>
+
+    <span id="dtn-receiver-status"
+          class="pill">
+            수신 서비스 확인 중
+        </span>
+
+    <span id="dtn-test-status"
+          class="pill">
+            시험 대기
+        </span>
+
+  </section>
+
+
+  <!-- 시험 종류 + 연결정보 -->
+  <section class="card">
+
+    <div class="card-title">
+      <h2>시험 설정</h2>
+
+      <div class="connection-summary">
+
+        <div class="connection-item">
+                    <span id="sender-dot"
+                          class="connection-dot offline"></span>
+
+          <span>송신 서비스</span>
+
+          <strong id="sender-agent-name">-</strong>
+        </div>
+
+        <div class="connection-item">
+                    <span id="receiver-dot"
+                          class="connection-dot offline"></span>
+
+          <span>수신 서비스</span>
+
+          <strong id="receiver-agent-name">-</strong>
+        </div>
+
+      </div>
+    </div>
+
+
+    <div class="test-type-selector">
+
+      <button type="button"
+              class="test-type-button"
+              data-test-type="GNSS_RAW">
+        GNSS RAW Data
+      </button>
+
+      <button type="button"
+              class="test-type-button active"
+              data-test-type="AFS_METADATA">
+        AFS Frame + Metadata
+      </button>
+
+      <button type="button"
+              class="test-type-button"
+              data-test-type="IQ_SAMPLE">
+        I/Q Sample
+      </button>
+
+    </div>
+
+
+    <!-- Agent ID는 사용자에게 노출하지 않고 내부 선택용 -->
+    <select id="dtn-sender" hidden></select>
+    <select id="dtn-receiver" hidden></select>
+
+
+    <div class="destination-row">
+
+      <label>
+        수신측 IP
+
+        <input id="dtn-receiver-ip"
+               type="text"
+               placeholder="192.168.0.20"
+               autocomplete="off">
       </label>
-      <p id="dtn-url-help">입력한 주소로 서버가 JSON을 POST합니다. 실제 어댑터의 전체 경로를 입력하세요.
-        localhost는 브라우저 PC가 아니라 LNIS 서버/컨테이너를 가리킵니다.
-        기본 설정과 다른 URL에는 기존 송신 인증 토큰을 자동으로 보내지 않습니다.</p>
-      <p>수집 종료 후 기준 PVT 계산과 AFS 생성을 수행합니다. 외부 DTN이 돌려준 데이터는 Receiver PC에서 처리합니다.</p>
-      <button id="dtn-send" type="button" class="primary" disabled>전송 및 시험 시작</button>
-      <pre id="dtn-result" aria-live="polite">시험 대기</pre>
-      <a id="dtn-report" hidden target="_blank" rel="noopener">상세 PVT / 비교 JSON 보기</a>
+
+
+      <label class="port-field">
+        Port
+
+        <input id="dtn-receiver-port"
+               type="number"
+               min="1"
+               max="65535"
+               value="8080">
+      </label>
+
+
+      <div class="destination-status">
+
+                <span id="destination-dot"
+                      class="connection-dot offline"></span>
+
+        <div>
+          <small>양방향 연결 상태</small>
+
+          <strong id="destination-state">
+            확인 전
+          </strong>
+        </div>
+
+      </div>
+
+    </div>
+
+  </section>
+
+
+  <div class="grid two">
+
+    <!-- GNSS INPUT -->
+    <section class="card">
+
+      <h2>GNSS 입력</h2>
+
+
+      <div class="compact-tabs">
+
+        <button type="button"
+                class="input-mode active"
+                data-input-mode="capture">
+          COM 포트
+        </button>
+
+        <button type="button"
+                class="input-mode"
+                data-input-mode="upload">
+          capture.graw
+        </button>
+
+      </div>
+
+
+      <!-- COM -->
+      <div id="dtn-capture-panel">
+
+        <label>
+          COM 포트
+
+          <div class="inline">
+
+            <select id="dtn-port">
+              <option value="">
+                포트 선택
+              </option>
+            </select>
+
+            <button id="dtn-refresh"
+                    type="button">
+              새로고침
+            </button>
+
+          </div>
+        </label>
+
+
+        <details class="advanced-settings">
+
+          <summary>
+            통신 설정
+          </summary>
+
+          <label>
+            Baud Rate
+
+            <select id="dtn-baud">
+              <option>9600</option>
+              <option>38400</option>
+              <option>57600</option>
+              <option selected>115200</option>
+              <option>230400</option>
+              <option>460800</option>
+              <option>921600</option>
+            </select>
+          </label>
+
+        </details>
+
+
+        <button id="dtn-start"
+                type="button"
+                class="primary full-button"
+                disabled>
+          GNSS 수집
+        </button>
+
+      </div>
+
+
+      <!-- GRAW -->
+      <div id="dtn-upload-panel"
+           class="hidden">
+
+        <label>
+          capture.graw
+
+          <input id="dtn-graw-file"
+                 type="file"
+                 accept=".graw,application/octet-stream">
+        </label>
+
+        <button id="dtn-upload"
+                type="button"
+                class="primary full-button">
+          파일 적용
+        </button>
+
+        <progress id="dtn-upload-progress"
+                  max="100"
+                  value="0">
+        </progress>
+
+      </div>
+
+
+      <div class="data-summary">
+
+        <span>입력 상태</span>
+
+        <strong id="dtn-input-state">
+          데이터 없음
+        </strong>
+
+      </div>
+
     </section>
+
+
+    <!-- PVT -->
+    <section class="card">
+
+      <div class="card-title">
+
+        <h2>기준 PVT</h2>
+
+        <div class="gnss-time">
+
+          <span>GNSS 기준 시간</span>
+
+          <strong id="dtn-gnss-time">
+            -
+          </strong>
+
+        </div>
+
+      </div>
+
+
+      <div class="pvt-grid">
+
+        <div class="pvt-value">
+          <span>ECEF X</span>
+          <strong id="pvt-x">-</strong>
+          <small>m</small>
+        </div>
+
+        <div class="pvt-value">
+          <span>ECEF Y</span>
+          <strong id="pvt-y">-</strong>
+          <small>m</small>
+        </div>
+
+        <div class="pvt-value">
+          <span>ECEF Z</span>
+          <strong id="pvt-z">-</strong>
+          <small>m</small>
+        </div>
+
+
+        <div class="pvt-value">
+          <span>Velocity X</span>
+          <strong id="pvt-vx">-</strong>
+          <small>m/s</small>
+        </div>
+
+        <div class="pvt-value">
+          <span>Velocity Y</span>
+          <strong id="pvt-vy">-</strong>
+          <small>m/s</small>
+        </div>
+
+        <div class="pvt-value">
+          <span>Velocity Z</span>
+          <strong id="pvt-vz">-</strong>
+          <small>m/s</small>
+        </div>
+
+
+        <div class="pvt-value">
+          <span>사용 위성</span>
+          <strong id="pvt-satellites">-</strong>
+        </div>
+
+        <div class="pvt-value">
+          <span>Receiver Clock Bias</span>
+          <strong id="pvt-clock">-</strong>
+          <small>s</small>
+        </div>
+
+      </div>
+
+    </section>
+
   </div>
-  <section id="dtn-payload" class="card" aria-label="DTN 송수신 JSON 확인"></section>
+
+
+  <!-- 전송 -->
+  <section class="card test-action-card">
+
+    <div>
+
+      <h2>DTN 전송 시험</h2>
+
+      <p id="dtn-message">
+        GNSS 데이터를 준비하면 시험을 시작할 수 있습니다.
+      </p>
+
+    </div>
+
+
+    <button id="dtn-send"
+            type="button"
+            class="primary test-start-button"
+            disabled>
+      전송 시험 시작
+    </button>
+
+  </section>
+
+
+  <!-- 결과 -->
+  <section class="card">
+
+    <h2>시험 결과</h2>
+
+    <pre id="dtn-result"
+         class="result-console">
+시험 대기
+        </pre>
+
+    <a id="dtn-report"
+       hidden
+       target="_blank"
+       rel="noopener">
+      상세 PVT 결과
+    </a>
+
+  </section>
+
+
+  <!-- 로그 -->
+  <section class="card">
+
+    <div class="card-title">
+
+      <h2>송수신 로그</h2>
+
+      <button id="dtn-log-clear"
+              type="button">
+        로그 지우기
+      </button>
+
+    </div>
+
+    <pre id="dtn-log"
+         class="log"></pre>
+
+  </section>
+
+  <!-- 기존 JSON Viewer 그대로 사용 -->
+  <section id="dtn-payload"
+           class="card">
+  </section>
+
 </main>
-<script type="module" src="/lnis/assets/dtn.js?v=20260909-url"></script>
+
+
+<script type="module"
+        src="/lnis/assets/dtn.js">
+</script>
+
 </body>
 </html>

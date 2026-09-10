@@ -1,144 +1,1326 @@
-// DTN 화면 전용 코드다. 기존 AFS 화면의 DOM/이벤트 코드는 공유하지 않는다.
-import {createPayloadViewer} from './dtn-payload.js?v=20260909';
+import {
+  createPayloadViewer
+} from './dtn-payload.js';
+
+
 const api = '/lnis/api/v1';
-const $ = id => document.getElementById(id);
-const payloadViewer = createPayloadViewer($('dtn-payload'));
-let captureId = sessionStorage.getItem('dtn.capture');
-let captureSender = sessionStorage.getItem('dtn.captureSender');
-let inputId = sessionStorage.getItem('dtn.input');
-let testId = sessionStorage.getItem('dtn.test');
-let stopping = false, busy = false, configured = false, timer, stopResolve, stopReject;
-async function request(path, options = {}) {
-  const response = await fetch(api + path, options);
-  const body = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(body.detail || body.message || ('HTTP ' + response.status));
+
+const $ = (id) =>
+    document.getElementById(id);
+
+
+const payloadViewer =
+    createPayloadViewer(
+        $('dtn-payload')
+    );
+
+
+let agentCache = [];
+
+let inputId = null;
+
+let testId = null;
+
+let selectedTestType = 'AFS_METADATA';
+
+let busy = false;
+
+
+
+/* =========================================================
+ * API
+ * ========================================================= */
+
+async function request(
+    path,
+    options = {}
+) {
+
+  const response =
+      await fetch(
+          api + path,
+          options
+      );
+
+
+  const body =
+      await response
+          .json()
+          .catch(() => ({}));
+
+
+  if (!response.ok) {
+
+    throw new Error(
+        body.detail
+        || body.message
+        || `HTTP ${response.status}`
+    );
+
+  }
+
+
   return body;
 }
-function post(path, body) {
-  return request(path, {method: 'POST', headers: {'Content-Type': 'application/json'},
-    body: body === undefined ? undefined : JSON.stringify(body)});
+
+
+function post(
+    path,
+    body
+) {
+
+  return request(
+      path,
+      {
+        method: 'POST',
+
+        headers: {
+          'Content-Type':
+              'application/json'
+        },
+
+        body:
+            body === undefined
+                ? undefined
+                : JSON.stringify(body)
+      }
+  );
+
 }
-function message(text) { $('dtn-message').textContent = text; }
-function buttons() {
-  $('dtn-start').disabled = busy || !!captureId || !socket || socket.readyState !== WebSocket.OPEN;
-  $('dtn-stop').disabled = busy || !captureId || stopping;
-  $('dtn-send').disabled = busy || !!captureId || !inputId || !configured || !$('dtn-send-url').value.trim();
+
+
+
+/* =========================================================
+ * LOG
+ * ========================================================= */
+
+function log(
+    message,
+    level = 'INFO'
+) {
+
+  const now =
+      new Date();
+
+
+  const time =
+      now.toLocaleTimeString(
+          'ko-KR',
+          {
+            hour12: false,
+            hour: '2-digit',
+            minute: '2-digit',
+            second: '2-digit'
+          }
+      );
+
+
+  const line =
+      `${time} [${level}] ${message}`;
+
+
+  const target =
+      $('dtn-log');
+
+
+  target.textContent +=
+      `${line}\n`;
+
+
+  target.scrollTop =
+      target.scrollHeight;
 }
-async function action(work) {
-  busy = true; buttons();
-  try { await work(); } catch (error) { message(error.message); }
-  finally { busy = false; buttons(); }
+
+
+$('dtn-log-clear').onclick =
+    () => {
+
+      $('dtn-log').textContent = '';
+
+    };
+
+
+
+/* =========================================================
+ * STATUS
+ * ========================================================= */
+
+function setDot(
+    id,
+    online
+) {
+
+  const dot = $(id);
+
+  dot.classList.toggle(
+      'online',
+      online
+  );
+
+  dot.classList.toggle(
+      'offline',
+      !online
+  );
+
 }
-function options(id, agents, role) {
-  const select = $(id), old = select.value;
-  select.replaceChildren(...agents.filter(a => a.role === role).map(a =>
-    new Option(a.agentId + ' (' + a.state + ')', a.agentId)));
-  if ([...select.options].some(o => o.value === old)) select.value = old;
+
+
+function setPill(
+    id,
+    text,
+    state = ''
+) {
+
+  const target = $(id);
+
+  target.textContent = text;
+
+  target.className =
+      `pill ${state}`.trim();
+
 }
-async function agents() {
-  const list = await request('/agents');
-  options('dtn-sender', list, 'SENDER'); options('dtn-receiver', list, 'RECEIVER');
+
+
+
+/* =========================================================
+ * AGENT
+ * ========================================================= */
+
+function fillAgentSelect(
+    selectId,
+    role
+) {
+
+  const select =
+      $(selectId);
+
+
+  const old =
+      select.value;
+
+
+  const agents =
+      agentCache.filter(
+          agent =>
+              agent.role === role
+      );
+
+
+  select.replaceChildren();
+
+
+  agents.forEach(
+      agent => {
+
+        select.add(
+            new Option(
+                agent.agentId,
+                agent.agentId
+            )
+        );
+
+      }
+  );
+
+
+  if (
+      [...select.options]
+          .some(
+              option =>
+                  option.value === old
+          )
+  ) {
+
+    select.value = old;
+
+  }
+
+
+  return agents[0] || null;
+
 }
+
+
+function applyReceiverAddress() {
+
+  const receiver =
+      agentCache.find(
+          agent =>
+              agent.agentId
+              === $('dtn-receiver').value
+      );
+
+
+  if (!receiver)
+    return;
+
+
+  const addresses =
+      receiver.ipv4Addresses
+          ?.filter(Boolean)
+      || [];
+
+
+  if (!addresses.length)
+    return;
+
+
+  const serverOctets =
+      location.hostname.split('.');
+
+
+  const prefix =
+      serverOctets.length === 4
+          ? `${serverOctets
+              .slice(0, 3)
+              .join('.')}.`
+          : null;
+
+
+  const best =
+      addresses.find(
+          address =>
+              prefix
+              && address.startsWith(prefix)
+      )
+      || addresses[0];
+
+
+  $('dtn-receiver-ip').value =
+      best;
+
+}
+
+
+
+async function refreshAgents() {
+
+  agentCache =
+      await request('/agents');
+
+
+  const sender =
+      fillAgentSelect(
+          'dtn-sender',
+          'SENDER'
+      );
+
+
+  const receiver =
+      fillAgentSelect(
+          'dtn-receiver',
+          'RECEIVER'
+      );
+
+
+  const senderReady =
+      sender?.state === 'READY';
+
+
+  const receiverReady =
+      receiver?.state === 'READY';
+
+
+  $('sender-agent-name').textContent =
+      sender?.agentId || '-';
+
+
+  $('receiver-agent-name').textContent =
+      receiver?.agentId || '-';
+
+
+  setDot(
+      'sender-dot',
+      senderReady
+  );
+
+
+  setDot(
+      'receiver-dot',
+      receiverReady
+  );
+
+
+  setPill(
+      'dtn-sender-status',
+      senderReady
+          ? '송신 서비스 연결됨'
+          : '송신 서비스 연결 안 됨',
+      senderReady
+          ? 'online'
+          : 'error'
+  );
+
+
+  setPill(
+      'dtn-receiver-status',
+      receiverReady
+          ? '수신 서비스 연결됨'
+          : '수신 서비스 연결 안 됨',
+      receiverReady
+          ? 'online'
+          : 'error'
+  );
+
+
+  applyReceiverAddress();
+
+
+  updateControls();
+
+}
+
+
+
+/* =========================================================
+ * TEST TYPE
+ * ========================================================= */
+
+document
+    .querySelectorAll(
+        '.test-type-button'
+    )
+    .forEach(
+        button => {
+
+          button.onclick = () => {
+
+            document
+                .querySelectorAll(
+                    '.test-type-button'
+                )
+                .forEach(
+                    item =>
+                        item.classList
+                            .remove('active')
+                );
+
+
+            button.classList
+                .add('active');
+
+
+            selectedTestType =
+                button.dataset.testType;
+
+
+            log(
+                `시험 유형 선택: ${button.textContent.trim()}`
+            );
+
+
+            updateControls();
+
+          };
+
+        }
+    );
+
+
+
+/* =========================================================
+ * INPUT MODE
+ * ========================================================= */
+
+document
+    .querySelectorAll(
+        '.input-mode'
+    )
+    .forEach(
+        button => {
+
+          button.onclick = () => {
+
+            document
+                .querySelectorAll(
+                    '.input-mode'
+                )
+                .forEach(
+                    item =>
+                        item.classList
+                            .remove('active')
+                );
+
+
+            button.classList
+                .add('active');
+
+
+            const capture =
+                button.dataset.inputMode
+                === 'capture';
+
+
+            $('dtn-capture-panel')
+                .classList.toggle(
+                'hidden',
+                !capture
+            );
+
+
+            $('dtn-upload-panel')
+                .classList.toggle(
+                'hidden',
+                capture
+            );
+
+          };
+
+        }
+    );
+
+
+
+/* =========================================================
+ * COM PORT
+ * ========================================================= */
+
+$('dtn-refresh').onclick =
+    async () => {
+
+      try {
+
+        const senderId =
+            $('dtn-sender').value;
+
+
+        if (!senderId)
+          throw new Error(
+              '송신 서비스가 연결되어 있지 않습니다.'
+          );
+
+
+        await post(
+            `/agents/${encodeURIComponent(senderId)}/serial-ports/refresh`
+        );
+
+
+        log(
+            `COM 포트 조회 요청: ${senderId}`
+        );
+
+      }
+      catch (error) {
+
+        log(
+            error.message,
+            'ERROR'
+        );
+
+      }
+
+    };
+
+
+
+/* =========================================================
+ * WebSocket
+ * ========================================================= */
+
 let socket;
-function connect() {
-  socket = new WebSocket((location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host + '/lnis/ws/status');
-  socket.onopen = buttons;
-  socket.onclose = () => {
-    if (stopReject) stopReject(new Error('수집 종료 확인 연결이 끊겼습니다. 다시 종료를 눌러주세요.'));
-    buttons(); setTimeout(connect, 2000);
-  };
-  socket.onmessage = event => {
-    const data = JSON.parse(event.data);
-    if (data.agentId === $('dtn-sender').value && data.payload?.ports) {
-      $('dtn-port').replaceChildren(...data.payload.ports.map(p => new Option(p.name, p.name)));
-    }
-    if (data.sessionId !== captureId) return;
-    if (data.type === 'ERROR') {
-      message(data.payload?.message || 'Agent 수집 오류');
-      if (stopReject) stopReject(new Error('수집 오류가 발생했습니다.'));
-    }
-    if (data.type === 'GNSS_STATUS') {
-      message(data.payload.message || data.payload.stage);
-      if (data.payload.stage === 'Stopped' && stopResolve) stopResolve();
-    }
-  };
+
+
+function connectSocket() {
+
+  const protocol =
+      location.protocol === 'https:'
+          ? 'wss://'
+          : 'ws://';
+
+
+  socket =
+      new WebSocket(
+          protocol
+          + location.host
+          + '/lnis/ws/status'
+      );
+
+
+  socket.onopen =
+      () => {
+
+        setPill(
+            'dtn-server-status',
+            '서버 연결됨',
+            'online'
+        );
+
+
+        log(
+            '중앙 서버 WebSocket 연결'
+        );
+
+      };
+
+
+  socket.onclose =
+      () => {
+
+        setPill(
+            'dtn-server-status',
+            '서버 연결 끊김',
+            'error'
+        );
+
+
+        log(
+            '중앙 서버 연결 끊김',
+            'ERROR'
+        );
+
+
+        setTimeout(
+            connectSocket,
+            2000
+        );
+
+      };
+
+
+  socket.onmessage =
+      event => {
+
+        const data =
+            JSON.parse(
+                event.data
+            );
+
+
+        /*
+         * 기존 Agent COM 포트 응답 재사용
+         */
+        if (
+            data.agentId
+            === $('dtn-sender').value
+            && data.payload?.ports
+        ) {
+
+          $('dtn-port')
+              .replaceChildren(
+                  new Option(
+                      '포트 선택',
+                      ''
+                  ),
+
+                  ...data.payload
+                      .ports
+                      .map(
+                          port =>
+                              new Option(
+                                  port.name,
+                                  port.name
+                              )
+                      )
+              );
+
+
+          log(
+              `COM 포트 ${data.payload.ports.length}개 확인`
+          );
+
+        }
+
+      };
+
 }
-async function stop() {
-  if (!captureId || stopping) return;
-  stopping = true; buttons(); clearTimeout(timer);
+
+
+
+/* =========================================================
+ * GRAW UPLOAD
+ * 기존 AFS Sender의 API 흐름 그대로 사용
+ * ========================================================= */
+
+$('dtn-upload').onclick =
+    async () => {
+
+      const file =
+          $('dtn-graw-file').files[0];
+
+
+      if (!file) {
+
+        log(
+            'capture.graw 파일을 선택하세요.',
+            'WARN'
+        );
+
+        return;
+
+      }
+
+
+      try {
+
+        busy = true;
+
+        updateControls();
+
+
+        const input =
+            await request(
+                '/inputs',
+                {
+                  method: 'POST',
+
+                  body: JSON.stringify({
+                    fileName: file.name,
+                    size: file.size,
+                    kind: 'GRAW_UPLOAD'
+                  })
+                }
+            );
+
+
+        inputId =
+            input.inputId;
+
+
+        const chunkSize =
+            1024 * 1024;
+
+
+        for (
+            let offset = 0, index = 0;
+            offset < file.size;
+            offset += chunkSize, index++
+        ) {
+
+          const bytes =
+              new Uint8Array(
+                  await file
+                      .slice(
+                          offset,
+                          offset + chunkSize
+                      )
+                      .arrayBuffer()
+              );
+
+
+          await request(
+              `/inputs/${inputId}/chunks/${index}`,
+              {
+                method: 'PUT',
+                body: bytes
+              }
+          );
+
+
+          $('dtn-upload-progress').value =
+              Math.round(
+                  (
+                      Math.min(
+                          file.size,
+                          offset + bytes.length
+                      )
+                      / file.size
+                  )
+                  * 100
+              );
+
+        }
+
+
+        const complete =
+            await request(
+                `/inputs/${inputId}/complete`,
+                {
+                  method: 'POST'
+                }
+            );
+
+
+        $('dtn-input-state')
+            .textContent =
+            `${complete.recordCount} records`;
+
+
+        log(
+            `GRAW 입력 완료: ${complete.recordCount} records`
+        );
+
+
+        /*
+         * 현재 백엔드에는 입력 직후 PVT 조회 API가
+         * 따로 없으므로 실제 전송 시험 후 report에서 표시한다.
+         */
+
+      }
+      catch (error) {
+
+        log(
+            error.message,
+            'ERROR'
+        );
+
+      }
+      finally {
+
+        busy = false;
+
+        updateControls();
+
+      }
+
+    };
+
+
+
+/* =========================================================
+ * ONE-SHOT GNSS CAPTURE
+ *
+ * 현재 backend는 start/stop capture 구조다.
+ * UI는 one-shot 형태로 먼저 구성한다.
+ * backend one-shot API 구현 후 이 함수만 변경하면 된다.
+ * ========================================================= */
+
+$('dtn-start').onclick =
+    async () => {
+
+      if (
+          selectedTestType !== 'AFS_METADATA'
+          && selectedTestType !== 'GNSS_RAW'
+      ) {
+
+        log(
+            'I/Q Sample 수집 기능은 아직 구현되지 않았습니다.',
+            'WARN'
+        );
+
+        return;
+
+      }
+
+
+      const port =
+          $('dtn-port').value;
+
+
+      if (!port) {
+
+        log(
+            'COM 포트를 선택하세요.',
+            'WARN'
+        );
+
+        return;
+
+      }
+
+
+      log(
+          `GNSS 단일 Epoch 수집 요청: ${port}`
+      );
+
+
+      /*
+       * TODO
+       *
+       * 향후 backend:
+       *
+       * POST /dtn/captures/one-shot
+       *
+       * 구현 후 연결.
+       *
+       * 현재 연속 capture API를 자동 종료시키면
+       * 정확히 1 Epoch라는 보장이 없으므로
+       * 임의로 구현하지 않는다.
+       */
+
+    };
+
+
+
+/* =========================================================
+ * DESTINATION
+ * ========================================================= */
+
+function buildSendUrl() {
+
+  const ip =
+      $('dtn-receiver-ip')
+          .value
+          .trim();
+
+
+  const port =
+      Number(
+          $('dtn-receiver-port').value
+      );
+
+
+  if (!ip || !port)
+    return null;
+
+
+  /*
+   * 현재 Adapter endpoint 유지.
+   *
+   * 추후 설정 API에서 path를 반환하도록
+   * 만드는 것이 가장 좋다.
+   */
+  return `http://${ip}:${port}/transfers`;
+
+}
+
+
+function updateDestinationState() {
+
+  const receiver =
+      agentCache.find(
+          agent =>
+              agent.agentId
+              === $('dtn-receiver').value
+      );
+
+
+  const online =
+      receiver?.state === 'READY';
+
+
+  setDot(
+      'destination-dot',
+      online
+  );
+
+
+  $('destination-state')
+      .textContent =
+      online
+          ? '연결됨'
+          : '연결 안 됨';
+
+}
+
+
+
+$('dtn-receiver-ip').oninput =
+    updateControls;
+
+
+$('dtn-receiver-port').oninput =
+    updateControls;
+
+
+
+/* =========================================================
+ * SEND
+ * ========================================================= */
+
+$('dtn-send').onclick =
+    async () => {
+
+      /*
+       * 현재 실제 backend가 구현된 것은
+       * AFS Frame + metadata 흐름뿐이다.
+       */
+      if (
+          selectedTestType
+          !== 'AFS_METADATA'
+      ) {
+
+        log(
+            selectedTestType
+            === 'GNSS_RAW'
+                ? 'GNSS RAW Data DTN 전송 기능은 아직 구현되지 않았습니다.'
+                : 'I/Q Sample DTN 전송 기능은 아직 구현되지 않았습니다.',
+            'WARN'
+        );
+
+        return;
+
+      }
+
+
+      try {
+
+        busy = true;
+
+        updateControls();
+
+
+        const sendUrl =
+            buildSendUrl();
+
+
+        const result =
+            await post(
+                '/dtn/tests',
+                {
+                  inputId,
+
+                  senderAgentId:
+                  $('dtn-sender').value,
+
+                  receiverAgentId:
+                  $('dtn-receiver').value,
+
+                  sendUrl
+                }
+            );
+
+
+        testId =
+            result.testId;
+
+
+        payloadViewer.setJob(
+            result
+        );
+
+
+        $('dtn-result')
+            .textContent =
+            result.message
+            || result.state;
+
+
+        setPill(
+            'dtn-test-status',
+            '시험 진행 중',
+            'warning'
+        );
+
+
+        log(
+            `DTN 시험 시작: ${testId}`,
+            'SEND'
+        );
+
+      }
+      catch (error) {
+
+        log(
+            error.message,
+            'ERROR'
+        );
+
+      }
+      finally {
+
+        busy = false;
+
+        updateControls();
+
+      }
+
+    };
+
+
+
+/* =========================================================
+ * PVT
+ * ========================================================= */
+
+function formatNumber(
+    value,
+    digits = 3
+) {
+
+  if (
+      value === null
+      || value === undefined
+      || Number.isNaN(Number(value))
+  )
+    return '-';
+
+
+  return Number(value)
+      .toFixed(digits);
+
+}
+
+
+function renderPvt(
+    pvt
+) {
+
+  if (!pvt) {
+
+    return;
+
+  }
+
+
+  $('dtn-gnss-time')
+      .textContent =
+      `Week ${pvt.week} / TOW ${formatNumber(pvt.towSeconds, 3)} s`;
+
+
+  const ecef =
+      pvt.ecefMeters || [];
+
+
+  const velocity =
+      pvt.velocityMetersPerSecond
+      || [];
+
+
+  $('pvt-x').textContent =
+      formatNumber(ecef[0]);
+
+
+  $('pvt-y').textContent =
+      formatNumber(ecef[1]);
+
+
+  $('pvt-z').textContent =
+      formatNumber(ecef[2]);
+
+
+  $('pvt-vx').textContent =
+      formatNumber(velocity[0]);
+
+
+  $('pvt-vy').textContent =
+      formatNumber(velocity[1]);
+
+
+  $('pvt-vz').textContent =
+      formatNumber(velocity[2]);
+
+
+  $('pvt-satellites')
+      .textContent =
+      pvt.satellitesUsed ?? '-';
+
+
+  $('pvt-clock')
+      .textContent =
+      formatNumber(
+          pvt.receiverClockBiasSeconds,
+          9
+      );
+
+}
+
+
+
+/* =========================================================
+ * POLLING
+ * ========================================================= */
+
+async function pollTest() {
+
+  if (!testId) {
+
+    setTimeout(
+        pollTest,
+        2000
+    );
+
+    return;
+
+  }
+
+
   try {
-    if (socket.readyState !== WebSocket.OPEN) throw new Error('서버 상태 연결을 기다려주세요.');
-    // 마지막 수집 청크가 서버에 도착한 Stopped 이벤트 이후에만 입력을 확정한다.
-    let timeout;
-    const stopped = new Promise((resolve, reject) => {
-      stopResolve = resolve; stopReject = reject;
-      timeout = setTimeout(() => reject(new Error('수집 종료 확인 시간 초과. 다시 종료를 눌러주세요.')), 15000);
-    });
-    const command = post('/dtn/captures/' + captureId + '/stop?senderAgentId=' + encodeURIComponent(captureSender));
-    try { await Promise.all([stopped, command]); }
-    finally { clearTimeout(timeout); stopResolve = stopReject = null; }
-    const input = await post('/captures/' + captureId + '/complete');
-    inputId = input.inputId; sessionStorage.setItem('dtn.input', inputId);
-    captureId = null; sessionStorage.removeItem('dtn.capture'); sessionStorage.removeItem('dtn.captureSender');
-    message('수집 완료: ' + input.recordCount + ' 레코드 / ' + input.receivedSize + ' bytes. 전송 버튼으로 시험하세요.');
-  } finally { stopping = false; buttons(); }
-}
-$('dtn-refresh').onclick = () => action(async () => {
-  await agents();
-  if (!$('dtn-sender').value) throw new Error('Sender Agent가 없습니다.');
-  await post('/agents/' + encodeURIComponent($('dtn-sender').value) + '/serial-ports/refresh');
-});
-$('dtn-start').onclick = () => action(async () => {
-  const seconds = Number($('dtn-seconds').value);
-  if (!Number.isInteger(seconds) || seconds < 1 || seconds > 300) throw new Error('수집 시간은 1~300초입니다.');
-  if (!$('dtn-sender').value || !$('dtn-port').value) throw new Error('Sender와 COM 포트를 선택하세요.');
-  captureSender = $('dtn-sender').value;
-  const input = await post('/captures', {senderAgentId: captureSender, portName: $('dtn-port').value,
-    baudRate: Number($('dtn-baud').value), protocolId: 'ubx', receiverModel: 'EVK-F9T',
-    firmwareVersion: 'auto', sessionName: 'DTN capture', dtrEnabled: false, rtsEnabled: false});
-  captureId = input.inputId; inputId = null;
-  sessionStorage.setItem('dtn.capture', captureId); sessionStorage.setItem('dtn.captureSender', captureSender);
-  sessionStorage.removeItem('dtn.input');
-  timer = setTimeout(() => action(stop), seconds*1000);
-  message('COM 수집 중. ' + seconds + '초 후 자동 종료합니다. 이 화면을 유지해주세요.');
-});
-$('dtn-stop').onclick = () => action(stop);
-$('dtn-send-url').oninput = buttons;
-$('dtn-send').onclick = () => action(async () => {
-  if (!$('dtn-send-url').reportValidity()) throw new Error('DTN/HDTN 어댑터의 전체 REST URL을 입력하세요.');
-  const sendUrl = $('dtn-send-url').value.trim();
-  const result = await post('/dtn/tests', {inputId, senderAgentId: $('dtn-sender').value,
-    receiverAgentId: $('dtn-receiver').value, sendUrl});
-  testId = result.testId; sessionStorage.setItem('dtn.test', testId);
-  payloadViewer.setJob(result);
-  $('dtn-result').textContent = result.message;
-  // 동일 수집 재전송 UI는 이번 범위에 포함하지 않는다.
-  inputId = null; sessionStorage.removeItem('dtn.input');
-});
-async function poll() {
-  try {
-    if (testId) {
-      const result = await request('/dtn/tests/' + testId);
-      payloadViewer.setJob(result);
-      $('dtn-result').textContent = result.state + '\n' + result.message +
-        (result.sendUrl ? '\nPOST URL: ' + result.sendUrl : '') +
-        '\nDTN 수신: ' + (result.dtnReceived ? '완료' : '대기') +
-        (result.verdict ? '\n판정: ' + result.verdict + '\n위치 비교 epoch: ' + result.comparableEpochs +
-          '\n속도 비교 epoch: ' + result.velocityComparableEpochs : '');
-      $('dtn-report').href = api + '/dtn/tests/' + testId + '/report';
-      $('dtn-report').hidden = false;
+
+    const result =
+        await request(
+            `/dtn/tests/${testId}`
+        );
+
+
+    payloadViewer.setJob(
+        result
+    );
+
+
+    $('dtn-result').textContent =
+        [
+          `상태 : ${result.state}`,
+          `DTN 수신 : ${result.dtnReceived ? '완료' : '대기'}`,
+          result.verdict
+              ? `판정 : ${result.verdict}`
+              : ''
+        ]
+            .filter(Boolean)
+            .join('\n');
+
+
+    if (
+        result.dtnReceived
+        && !result._loggedReceive
+    ) {
+
+      log(
+          `DTN 수신 완료: ${testId}`,
+          'RECV'
+      );
+
     }
-  } catch (error) { message(error.message); }
-  setTimeout(poll, 2000);
+
+
+    if (
+        result.verdict
+    ) {
+
+      const report =
+          await request(
+              `/dtn/tests/${testId}/report`
+          );
+
+
+      /*
+       * referencePvt는 List<Pvt>
+       */
+      renderPvt(
+          report.referencePvt?.[0]
+      );
+
+
+      setPill(
+          'dtn-test-status',
+          `시험 완료 · ${result.verdict}`,
+          result.verdict === 'PASS'
+              ? 'online'
+              : 'error'
+      );
+
+
+      $('dtn-report').href =
+          `${api}/dtn/tests/${testId}/report`;
+
+
+      $('dtn-report').hidden =
+          false;
+
+    }
+
+  }
+  catch (error) {
+
+    log(
+        `시험 상태 조회 실패: ${error.message}`,
+        'ERROR'
+    );
+
+  }
+
+
+  setTimeout(
+      pollTest,
+      2000
+  );
+
 }
-connect();
-action(async () => {
-  const config = await request('/dtn/config'); configured = config.sendReady ?? config.receiveConfigured ?? config.configured;
-  $('dtn-send-url').value = config.defaultSendUrl || '';
-  $('dtn-config').textContent = config.nodeRole === 'SENDER'
-    ? '독립 송신 노드 · callback은 수신 PC로 전달됩니다. 전송할 DTN/HDTN 어댑터 URL을 확인하세요.'
-    : configured ? '수신 인증 설정 완료 · 전송할 DTN/HDTN 어댑터 URL을 확인하세요.' :
-    '수신 인증 설정 필요: LNIS_DTN_RECEIVE_TOKEN';
-  await agents();
-  if (captureId) message('진행 중이던 수집이 있습니다. 수집 종료 버튼으로 확정하세요.');
-}).then(poll);
+
+
+
+/* =========================================================
+ * CONTROL
+ * ========================================================= */
+
+function updateControls() {
+
+  const sender =
+      agentCache.find(
+          agent =>
+              agent.agentId
+              === $('dtn-sender').value
+      );
+
+
+  const receiver =
+      agentCache.find(
+          agent =>
+              agent.agentId
+              === $('dtn-receiver').value
+      );
+
+
+  $('dtn-start').disabled =
+      busy
+      || sender?.state !== 'READY';
+
+
+  $('dtn-send').disabled =
+      busy
+      || !inputId
+      || sender?.state !== 'READY'
+      || receiver?.state !== 'READY'
+      || !buildSendUrl();
+
+
+  updateDestinationState();
+
+}
+
+
+
+/* =========================================================
+ * INIT
+ * ========================================================= */
+
+async function init() {
+
+  try {
+
+    const config =
+        await request(
+            '/dtn/config'
+        );
+
+
+    /*
+     * 기존 전체 URL이 설정돼 있으면
+     * UI에는 IP/Port만 분리하여 표시한다.
+     */
+    if (config.defaultSendUrl) {
+
+      try {
+
+        const url =
+            new URL(
+                config.defaultSendUrl
+            );
+
+
+        $('dtn-receiver-ip').value =
+            url.hostname;
+
+
+        $('dtn-receiver-port').value =
+            url.port
+            || (
+                url.protocol === 'https:'
+                    ? 443
+                    : 80
+            );
+
+      }
+      catch {
+        // 설정값 파싱 실패 시 빈 상태 유지
+      }
+
+    }
+
+
+    await refreshAgents();
+
+
+    connectSocket();
+
+
+    log(
+        'DTN Sender 화면 준비 완료'
+    );
+
+
+    pollTest();
+
+  }
+  catch (error) {
+
+    log(
+        error.message,
+        'ERROR'
+    );
+
+  }
+
+}
+
+
+init();

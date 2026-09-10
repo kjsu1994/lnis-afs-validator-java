@@ -18,12 +18,12 @@ export function createPayloadViewer(container) {
   const title = create('h2', '송수신 JSON 본문');
   const controls = create('div');
   controls.className = 'dtn-payload-controls';
-  const sent = create('button', '송신 JSON 보기');
-  const received = create('button', '수신 JSON 보기');
+  const sent = create('button', '송신 원문');
+  const received = create('button', '수신 원문');
   sent.type = received.type = 'button';
   sent.disabled = received.disabled = true;
   controls.append(sent, received);
-  const status = create('p', '시험을 선택하면 준비된 JSON을 확인할 수 있습니다.');
+  const status = create('p', '');
   status.setAttribute('role', 'status');
   const panel = create('div');
   panel.hidden = true;

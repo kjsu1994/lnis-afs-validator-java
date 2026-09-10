@@ -1,0 +1,332 @@
+.connection-summary {
+    display: flex;
+    gap: 18px;
+    align-items: center;
+    flex-wrap: wrap;
+}
+
+.connection-item {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    font-size: 12px;
+}
+
+.connection-item strong {
+    color: var(--ink);
+}
+
+.connection-dot {
+    display: inline-block;
+
+    width: 10px;
+    height: 10px;
+
+    border-radius: 50%;
+
+    background: #9caeb5;
+}
+
+.connection-dot.online {
+    background: #19a974;
+
+    box-shadow:
+            0 0 0 3px rgba(25, 169, 116, .15);
+}
+
+.connection-dot.offline {
+    background: #d54b4b;
+
+    box-shadow:
+            0 0 0 3px rgba(213, 75, 75, .12);
+}
+
+
+.test-type-selector {
+    display: grid;
+
+    grid-template-columns:
+        repeat(3, minmax(0, 1fr));
+
+    gap: 9px;
+
+    margin-bottom: 20px;
+}
+
+.test-type-button {
+    padding: 14px;
+
+    background: #f5f8f8;
+
+    border: 1px solid var(--line);
+}
+
+.test-type-button.active {
+    background: var(--teal);
+
+    border-color: var(--teal);
+
+    color: #fff;
+}
+
+
+.destination-row {
+    display: grid;
+
+    grid-template-columns:
+        minmax(240px, 2fr)
+        minmax(110px, .5fr)
+        minmax(190px, 1fr);
+
+    gap: 14px;
+
+    align-items: end;
+}
+
+.port-field input {
+    text-align: center;
+}
+
+.destination-status {
+    display: flex;
+
+    align-items: center;
+
+    gap: 10px;
+
+    min-height: 42px;
+
+    padding: 8px 12px;
+
+    border: 1px solid var(--line);
+
+    border-radius: 8px;
+
+    background: #fbfcfc;
+}
+
+.destination-status small,
+.destination-status strong {
+    display: block;
+}
+
+.destination-status small {
+    color: var(--muted);
+}
+
+.destination-status strong {
+    margin-top: 2px;
+    font-size: 13px;
+}
+
+
+.compact-tabs {
+    display: flex;
+
+    gap: 5px;
+
+    margin-bottom: 18px;
+}
+
+.input-mode {
+    padding: 7px 13px;
+
+    font-size: 12px;
+}
+
+.input-mode.active {
+    background: var(--navy);
+
+    border-color: var(--navy);
+
+    color: #fff;
+}
+
+
+.advanced-settings {
+    margin: 14px 0;
+
+    padding: 10px 12px;
+
+    border: 1px solid var(--line);
+
+    border-radius: 8px;
+}
+
+.advanced-settings summary {
+    cursor: pointer;
+
+    font-size: 12px;
+
+    font-weight: 700;
+
+    color: var(--muted);
+}
+
+.advanced-settings label {
+    margin-top: 12px;
+}
+
+
+.full-button {
+    width: 100%;
+
+    margin-top: 15px;
+
+    padding: 12px;
+}
+
+
+.data-summary {
+    margin-top: 16px;
+
+    padding: 12px;
+
+    border: 1px solid var(--line);
+
+    border-radius: 9px;
+
+    background: #f8faf9;
+}
+
+.data-summary span,
+.data-summary strong {
+    display: block;
+}
+
+.data-summary span {
+    font-size: 11px;
+
+    color: var(--muted);
+}
+
+.data-summary strong {
+    margin-top: 4px;
+}
+
+
+.gnss-time {
+    text-align: right;
+}
+
+.gnss-time span,
+.gnss-time strong {
+    display: block;
+}
+
+.gnss-time span {
+    font-size: 11px;
+
+    color: var(--muted);
+}
+
+.gnss-time strong {
+    margin-top: 3px;
+
+    color: var(--navy);
+}
+
+
+.pvt-grid {
+    display: grid;
+
+    grid-template-columns:
+        repeat(3, minmax(0, 1fr));
+
+    gap: 10px;
+}
+
+.pvt-value {
+    padding: 13px;
+
+    border: 1px solid var(--line);
+
+    border-radius: 9px;
+
+    background: #fbfcfc;
+}
+
+.pvt-value span,
+.pvt-value strong,
+.pvt-value small {
+    display: block;
+}
+
+.pvt-value span {
+    color: var(--muted);
+
+    font-size: 11px;
+}
+
+.pvt-value strong {
+    margin-top: 4px;
+
+    font-size: 16px;
+}
+
+.pvt-value small {
+    margin-top: 2px;
+}
+
+
+.test-action-card {
+    display: flex;
+
+    align-items: center;
+
+    justify-content: space-between;
+
+    gap: 20px;
+}
+
+.test-action-card h2 {
+    margin-bottom: 4px;
+}
+
+.test-action-card p {
+    margin: 0;
+
+    color: var(--muted);
+}
+
+.test-start-button {
+    min-width: 210px;
+
+    padding: 13px 20px;
+}
+
+
+.result-console {
+    min-height: 80px;
+
+    padding: 14px;
+
+    border-radius: 8px;
+
+    background: #f7f9f9;
+
+    white-space: pre-wrap;
+}
+
+
+@media(max-width: 900px) {
+
+    .destination-row {
+        grid-template-columns: 1fr;
+    }
+
+    .pvt-grid {
+        grid-template-columns:
+            repeat(2, 1fr);
+    }
+
+    .test-action-card {
+        display: block;
+    }
+
+    .test-start-button {
+        width: 100%;
+
+        margin-top: 15px;
+    }
+}
