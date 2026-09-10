@@ -82,9 +82,9 @@ export function createPayloadViewer(container) {
       panel.hidden = false;
       const legacy = response.headers.get('X-LNIS-Payload-Representation') === 'legacy-normalized';
       status.textContent = legacy
-        ? '과거 시험의 정규화된 저장본입니다. 당시 원문의 공백·줄바꿈은 보관되지 않았습니다.'
+        ? '과거 시험의 정규화된 저장본입니다.'
         : direction === 'sent'
-          ? '외부 DTN/HDTN에 전달할 요청 본문입니다. 본문 준비 자체가 전송 성공을 뜻하지는 않습니다.'
+          ? '외부 DTN/HDTN에 전달할 요청 본문입니다.'
           : '접수 당시 원문입니다. 정렬 보기는 표시만 바꾸며, 다운로드는 원문을 유지합니다.';
     } catch (error) {
       if (requestGeneration === generation && error.name !== 'AbortError') status.textContent = 'JSON 조회 실패: ' + error.message;

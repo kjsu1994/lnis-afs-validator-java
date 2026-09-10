@@ -29,6 +29,7 @@ import java.nio.charset.StandardCharsets;
 public class DtnController {
     private final DtnService dtnService;
     private final ObjectMapper objectMapper;
+    private final DtnAdapterControlService dtnAdapterControlService;
 
     @Data
     public static class CreateRequest {
@@ -40,6 +41,75 @@ public class DtnController {
         private String receiverAgentId;
         @jakarta.validation.constraints.Size(max = 2048)
         private String sendUrl;
+        @Data
+        public static class AdapterModeRequest {
+            @NotBlank
+            private String senderMode;
+            @NotBlank
+            private String receiverMode;
+        }
+    }
+
+    /* 송신/수신 Adapter의 DTN/HDTN 동작 모드 설정 */
+    @PostMapping("/adapter-mode")
+    public ResponseEntity<Map<String, Object>> changeAdapterMode(
+            @Valid @RequestBody DtnController.CreateRequest.AdapterModeRequest request)
+    {
+        String senderMode =
+                normalizeAdapterMode(
+                        request.getSenderMode()
+                );
+        String receiverMode =
+                normalizeAdapterMode(
+                        request.getReceiverMode()
+                );
+        dtnAdapterControlService.changeMode(
+                senderMode,
+                receiverMode
+        );
+        Map<String, Object> response =
+                new LinkedHashMap<>();
+        response.put(
+                "senderMode",
+                senderMode
+        );
+        response.put(
+                "receiverMode",
+                receiverMode
+        );
+        response.put(
+                "accepted",
+                true
+        );
+        response.put(
+                "message",
+                senderMode
+                        + " → "
+                        + receiverMode
+                        + " 설정 완료"
+        );
+        return ResponseEntity.ok(
+                response
+        );
+    }
+
+    private String normalizeAdapterMode(
+            String value)
+    {
+        String mode =
+                value
+                        .trim()
+                        .toUpperCase(Locale.ROOT);
+        if (
+                !"DTN".equals(mode)
+                        &&
+                        !"HDTN".equals(mode)
+        ) {
+            throw new IllegalArgumentException(
+                    "Adapter mode는 DTN 또는 HDTN이어야 합니다."
+            );
+        }
+        return mode;
     }
 
     /* DTN 외부 연동 설정 조회 */

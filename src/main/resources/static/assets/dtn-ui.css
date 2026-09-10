@@ -1,20 +1,30 @@
 .connection-summary {
     display: flex;
+
     gap: 18px;
+
     align-items: center;
+
     flex-wrap: wrap;
 }
 
+
 .connection-item {
     display: flex;
+
     align-items: center;
+
     gap: 7px;
+
     font-size: 12px;
 }
+
 
 .connection-item strong {
     color: var(--ink);
 }
+
+
 
 .connection-dot {
     display: inline-block;
@@ -27,12 +37,14 @@
     background: #9caeb5;
 }
 
+
 .connection-dot.online {
     background: #19a974;
 
     box-shadow:
             0 0 0 3px rgba(25, 169, 116, .15);
 }
+
 
 .connection-dot.offline {
     background: #d54b4b;
@@ -41,6 +53,11 @@
             0 0 0 3px rgba(213, 75, 75, .12);
 }
 
+
+
+/* =========================================================
+ * 시험 데이터 종류
+ * ========================================================= */
 
 .test-type-selector {
     display: grid;
@@ -53,6 +70,7 @@
     margin-bottom: 20px;
 }
 
+
 .test-type-button {
     padding: 14px;
 
@@ -60,6 +78,7 @@
 
     border: 1px solid var(--line);
 }
+
 
 .test-type-button.active {
     background: var(--teal);
@@ -69,6 +88,109 @@
     color: #fff;
 }
 
+
+
+/* =========================================================
+ * DTN / HDTN 전송 방식
+ * ========================================================= */
+
+.transport-mode-section {
+    margin-bottom: 20px;
+
+    padding: 14px;
+
+    border: 1px solid var(--line);
+
+    border-radius: 9px;
+
+    background: #fbfcfc;
+}
+
+
+.transport-mode-title {
+    display: flex;
+
+    justify-content: space-between;
+
+    align-items: center;
+
+    margin-bottom: 10px;
+}
+
+
+.transport-mode-title span {
+    color: var(--muted);
+
+    font-size: 12px;
+
+    font-weight: 700;
+}
+
+
+.transport-mode-title strong {
+    color: var(--navy);
+
+    font-size: 13px;
+}
+
+
+.transport-mode-selector {
+    display: grid;
+
+    grid-template-columns:
+        repeat(4, minmax(0, 1fr));
+
+    gap: 8px;
+}
+
+
+.transport-mode-button {
+    padding: 11px 10px;
+
+    border: 1px solid var(--line);
+
+    background: #f5f8f8;
+
+    font-weight: 700;
+
+    cursor: pointer;
+}
+
+
+.transport-mode-button:hover {
+    border-color: var(--teal);
+}
+
+
+.transport-mode-button.active {
+    border-color: var(--teal);
+
+    background: var(--teal);
+
+    color: #fff;
+}
+
+
+.transport-mode-button:disabled {
+    cursor: not-allowed;
+
+    opacity: .6;
+}
+
+
+.transport-mode-message {
+    margin: 10px 0 0;
+
+    color: var(--muted);
+
+    font-size: 12px;
+}
+
+
+
+/* =========================================================
+ * 목적지
+ * ========================================================= */
 
 .destination-row {
     display: grid;
@@ -83,9 +205,11 @@
     align-items: end;
 }
 
+
 .port-field input {
     text-align: center;
 }
+
 
 .destination-status {
     display: flex;
@@ -105,20 +229,29 @@
     background: #fbfcfc;
 }
 
+
 .destination-status small,
 .destination-status strong {
     display: block;
 }
 
+
 .destination-status small {
     color: var(--muted);
 }
 
+
 .destination-status strong {
     margin-top: 2px;
+
     font-size: 13px;
 }
 
+
+
+/* =========================================================
+ * 입력 방식
+ * ========================================================= */
 
 .compact-tabs {
     display: flex;
@@ -128,11 +261,13 @@
     margin-bottom: 18px;
 }
 
+
 .input-mode {
     padding: 7px 13px;
 
     font-size: 12px;
 }
+
 
 .input-mode.active {
     background: var(--navy);
@@ -142,6 +277,11 @@
     color: #fff;
 }
 
+
+
+/* =========================================================
+ * 상세 통신 설정
+ * ========================================================= */
 
 .advanced-settings {
     margin: 14px 0;
@@ -153,6 +293,7 @@
     border-radius: 8px;
 }
 
+
 .advanced-settings summary {
     cursor: pointer;
 
@@ -163,10 +304,16 @@
     color: var(--muted);
 }
 
+
 .advanced-settings label {
     margin-top: 12px;
 }
 
+
+
+/* =========================================================
+ * 공통 버튼
+ * ========================================================= */
 
 .full-button {
     width: 100%;
@@ -176,6 +323,11 @@
     padding: 12px;
 }
 
+
+
+/* =========================================================
+ * 입력 상태
+ * ========================================================= */
 
 .data-summary {
     margin-top: 16px;
@@ -189,10 +341,12 @@
     background: #f8faf9;
 }
 
+
 .data-summary span,
 .data-summary strong {
     display: block;
 }
+
 
 .data-summary span {
     font-size: 11px;
@@ -200,19 +354,27 @@
     color: var(--muted);
 }
 
+
 .data-summary strong {
     margin-top: 4px;
 }
 
 
+
+/* =========================================================
+ * GNSS 시간
+ * ========================================================= */
+
 .gnss-time {
     text-align: right;
 }
+
 
 .gnss-time span,
 .gnss-time strong {
     display: block;
 }
+
 
 .gnss-time span {
     font-size: 11px;
@@ -220,12 +382,18 @@
     color: var(--muted);
 }
 
+
 .gnss-time strong {
     margin-top: 3px;
 
     color: var(--navy);
 }
 
+
+
+/* =========================================================
+ * PVT
+ * ========================================================= */
 
 .pvt-grid {
     display: grid;
@@ -235,6 +403,7 @@
 
     gap: 10px;
 }
+
 
 .pvt-value {
     padding: 13px;
@@ -246,11 +415,13 @@
     background: #fbfcfc;
 }
 
+
 .pvt-value span,
 .pvt-value strong,
 .pvt-value small {
     display: block;
 }
+
 
 .pvt-value span {
     color: var(--muted);
@@ -258,16 +429,23 @@
     font-size: 11px;
 }
 
+
 .pvt-value strong {
     margin-top: 4px;
 
     font-size: 16px;
 }
 
+
 .pvt-value small {
     margin-top: 2px;
 }
 
+
+
+/* =========================================================
+ * 전송 시험
+ * ========================================================= */
 
 .test-action-card {
     display: flex;
@@ -279,9 +457,11 @@
     gap: 20px;
 }
 
+
 .test-action-card h2 {
     margin-bottom: 4px;
 }
+
 
 .test-action-card p {
     margin: 0;
@@ -289,12 +469,18 @@
     color: var(--muted);
 }
 
+
 .test-start-button {
     min-width: 210px;
 
     padding: 13px 20px;
 }
 
+
+
+/* =========================================================
+ * 시험 결과
+ * ========================================================= */
 
 .result-console {
     min-height: 80px;
@@ -309,20 +495,39 @@
 }
 
 
+
+/* =========================================================
+ * Responsive
+ * ========================================================= */
+
 @media(max-width: 900px) {
+
+    .test-type-selector {
+        grid-template-columns: 1fr;
+    }
+
+
+    .transport-mode-selector {
+        grid-template-columns:
+            repeat(2, minmax(0, 1fr));
+    }
+
 
     .destination-row {
         grid-template-columns: 1fr;
     }
+
 
     .pvt-grid {
         grid-template-columns:
             repeat(2, 1fr);
     }
 
+
     .test-action-card {
         display: block;
     }
+
 
     .test-start-button {
         width: 100%;

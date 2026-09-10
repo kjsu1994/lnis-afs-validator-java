@@ -30,6 +30,7 @@ class DtnPayloadTest {
             mock(AgentRepository.class), mock(AgentConnectionRegistry.class),
             mock(InputBufferService.class), objectMapper);
     private final DtnJob job = new DtnJob();
+    private final DtnAdapterControlService dtnAdapterControlService = mock(DtnAdapterControlService.class);
     private String original;
 
     @BeforeEach
@@ -81,7 +82,7 @@ class DtnPayloadTest {
     void downloadReturnsOriginalBytesWithoutAdditionalJsonWrapping() throws Exception
     {
         service.receive("Bearer test-token", original.getBytes(StandardCharsets.UTF_8));
-        MockMvc mvc = MockMvcBuilders.standaloneSetup(new DtnController(service, objectMapper))
+        MockMvc mvc = MockMvcBuilders.standaloneSetup(new DtnController(service, objectMapper, dtnAdapterControlService))
                 .setMessageConverters(new ByteArrayHttpMessageConverter()).build();
         mvc.perform(get("/lnis/api/v1/dtn/tests/" + job.getId() + "/payload/received?download=true"))
                 .andExpect(status().isOk())

@@ -34,6 +34,7 @@ class ServerResponseContractTest {
     private final AgentRepository agentRepository = mock(AgentRepository.class);
     private final AgentCommandService commands = mock(AgentCommandService.class);
     private final DtnService dtnService = mock(DtnService.class);
+    private final DtnAdapterControlService dtnAdapterControlService = mock(DtnAdapterControlService.class);
     private MockMvc mvc;
 
     @BeforeEach
@@ -43,7 +44,7 @@ class ServerResponseContractTest {
                 new SessionController(sessionService),
                 new InputController(inputService),
                 new AgentController(agentRepository, commands),
-                new DtnController(dtnService, objectMapper),
+                new DtnController(dtnService, objectMapper, dtnAdapterControlService),
                 new DiscoveryController())
                 .setControllerAdvice(new ApiExceptionHandler())
                 .setMessageConverters(new MappingJackson2HttpMessageConverter(objectMapper))
