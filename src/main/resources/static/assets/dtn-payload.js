@@ -9,19 +9,21 @@ export function displayedJson(original, pretty) {
   return pretty ? JSON.stringify(JSON.parse(original), null, 2) : original;
 }
 
-export function createPayloadViewer(container) {
+export function createPayloadViewer(container, {receivedOnly = false} = {}) {
   const create = (tag, text) => {
     const element = document.createElement(tag);
     if (text !== undefined) element.textContent = text;
     return element;
   };
-  const title = create('h2', '송수신 JSON 본문');
+  const title = create('h2', receivedOnly ? '수신 JSON 원문' : '송수신 JSON 본문');
   const controls = create('div');
   controls.className = 'dtn-payload-controls';
   const sent = create('button', '송신 원문');
   const received = create('button', '수신 원문');
   sent.type = received.type = 'button';
   sent.disabled = received.disabled = true;
+  // 수신 노드에는 송신 원문이 없으므로 불필요한 버튼을 노출하지 않는다.
+  sent.hidden = receivedOnly;
   controls.append(sent, received);
   const status = create('p', '');
   status.setAttribute('role', 'status');
@@ -103,7 +105,9 @@ export function createPayloadViewer(container) {
     setJob(nextJob) {
       if (job?.testId !== nextJob?.testId) {
         reset();
-        status.textContent = nextJob ? '준비된 송신 또는 수신 JSON을 선택하세요.' : '시험을 선택하세요.';
+        status.textContent = nextJob
+          ? (receivedOnly ? '수신 원문 버튼으로 접수 당시 JSON을 확인하세요.' : '준비된 송신 또는 수신 JSON을 선택하세요.')
+          : '시험을 선택하세요.';
       }
       job = nextJob || null;
       sent.disabled = !job?.sentPayloadAvailable;

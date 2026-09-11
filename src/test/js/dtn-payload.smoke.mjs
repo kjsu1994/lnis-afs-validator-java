@@ -56,3 +56,17 @@ assert.equal(download.href, undefined);
 close.onclick();
 assert.equal(panel.hidden, true);
 console.log('PASS: DTN JSON original/pretty/download, availability and stale-response guards');
+
+// 수신 전용 화면에서 송신 버튼만 숨기고 원문 조회·다운로드 계약은 동일하게 유지한다.
+const receiverContainer = new Element('section');
+const receiverViewer = createPayloadViewer(receiverContainer, {receivedOnly: true});
+const receiverControls = receiverContainer.children.find(element => element.className === 'dtn-payload-controls');
+assert.equal(receiverControls.children[0].hidden, true);
+receiverViewer.setJob({testId: 'received-test', receivedPayloadAvailable: true});
+assert.equal(receiverControls.children[1].disabled, false);
+globalThis.fetch = async () => ({ok: true, text: async () => original, headers: {get: () => 'original'}});
+await receiverControls.children[1].onclick();
+const receiverPanel = receiverContainer.children.find(element => element.children?.some(child => child.tag === 'textarea'));
+assert.equal(receiverPanel.children[2].value, original);
+assert.equal(receiverPanel.children[1].children[1].href, payloadUrl('received-test', 'received', true));
+console.log('PASS: receiver-only original JSON and download');

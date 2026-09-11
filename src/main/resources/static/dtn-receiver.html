@@ -1,466 +1,106 @@
 <!doctype html>
 <html lang="ko">
-
 <head>
-
   <meta charset="utf-8">
-
-  <meta name="viewport"
-        content="width=device-width,initial-scale=1">
-
+  <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>LNIS DTN Receiver</title>
-
-  <link rel="stylesheet"
-        href="/lnis/assets/app.css">
-
-  <link rel="stylesheet"
-        href="/lnis/assets/dtn-payload.css">
-
-  <link rel="stylesheet"
-        href="/lnis/assets/dtn-ui.css">
-
+  <link rel="stylesheet" href="/lnis/assets/app.css?v=20260911-receiver">
+  <link rel="stylesheet" href="/lnis/assets/dtn-payload.css">
+  <link rel="stylesheet" href="/lnis/assets/dtn-ui.css">
+  <link rel="stylesheet" href="/lnis/assets/dtn-receiver.css?v=20260911-receiver">
 </head>
-
-
 <body data-page="dtn-receiver">
-
-
 <header>
-
   <div>
-
-        <span class="eyebrow">
-            LNIS DTN VALIDATOR
-        </span>
-
-    <h1>
-      DTN 송수신 시험
-    </h1>
-
-
-    <nav class="test-suite-tabs">
-
-      <a href="/lnis/afstest/receiver">
-        AFS Frame 시험
-      </a>
-
-      <a class="active"
-         href="/lnis/dtntest/receiver">
-
-        DTN 송수신 시험
-
-      </a>
-
+    <span class="eyebrow">LNIS DTN VALIDATOR</span>
+    <h1>DTN 송수신 시험</h1>
+    <nav class="test-suite-tabs" aria-label="시험 대분류">
+      <a href="/lnis/afstest/receiver">AFS Frame 시험</a>
+      <a class="active" href="/lnis/dtntest/receiver" aria-current="page">DTN 송수신 시험</a>
     </nav>
-
   </div>
-
-
-  <nav class="role-nav">
-
-    <a href="/lnis/dtntest/sender">
-      Sender
-    </a>
-
-    <a class="active"
-       href="/lnis/dtntest/receiver">
-      Receiver
-    </a>
-
+  <nav class="role-nav" aria-label="시험 역할">
+    <a href="/lnis/dtntest/sender">Sender</a>
+    <a class="active" href="/lnis/dtntest/receiver" aria-current="page">Receiver</a>
   </nav>
-
 </header>
-
-
 <main>
-
-
-  <section class="status-strip">
-
-        <span id="dtn-server-status"
-              class="pill warning">
-            서버 연결 확인 중
-        </span>
-
-    <span id="dtn-sender-status"
-          class="pill">
-            송신 서비스 확인 중
-        </span>
-
-    <span id="dtn-receiver-status"
-          class="pill">
-            수신 서비스 확인 중
-        </span>
-
-    <span id="dtn-test-status"
-          class="pill">
-            수신 대기
-        </span>
-
+  <section class="status-strip" aria-label="연결 상태">
+    <span id="dtn-server-status" class="pill warning">서버 연결 확인 중</span>
+    <span id="dtn-sender-status" class="pill">송신 노드 확인 중</span>
+    <span id="dtn-receiver-status" class="pill">수신 실행기 확인 중</span>
   </section>
 
-
-
-  <section class="card">
-
+  <section class="card receiver-overview">
     <div class="card-title">
-
-      <h2>
-        시험 설정
-      </h2>
-
-
-      <div class="connection-summary">
-
-        <div class="connection-item">
-
-                    <span id="sender-dot"
-                          class="connection-dot offline">
-                    </span>
-
-          <span>
-                        송신 서비스
-                    </span>
-
-          <strong id="sender-agent-name">
-            -
-          </strong>
-
-        </div>
-
-
-        <div class="connection-item">
-
-                    <span id="receiver-dot"
-                          class="connection-dot offline">
-                    </span>
-
-          <span>
-                        수신 서비스
-                    </span>
-
-          <strong id="receiver-agent-name">
-            -
-          </strong>
-
-        </div>
-
-      </div>
-
+      <h2>DTN 수신 시험</h2>
+      <small>AFS Frame + Metadata · 수신 후 자동 복호화·PVT 계산</small>
     </div>
-
-
-    <div class="test-type-selector">
-
-      <button type="button"
-              class="test-type-button"
-              disabled>
-        GNSS RAW Data
-      </button>
-
-      <button type="button"
-              class="test-type-button active"
-              disabled>
-        AFS Frame + Metadata
-      </button>
-
-      <button type="button"
-              class="test-type-button"
-              disabled>
-        I/Q Sample
-      </button>
-
+    <!-- 외부 어댑터가 호출할 주소다. 관리 API나 송신 어댑터의 /transfers와 구분한다. -->
+    <div class="receiver-endpoint">
+      <label for="receive-url">수신 API <span class="pill">POST</span></label>
+      <input id="receive-url" readonly aria-label="외부 DTN 또는 HDTN 어댑터에서 호출할 수신 API 주소">
+      <button id="copy-receive-url" type="button">주소 복사</button>
+      <span id="receive-auth" class="pill warning">인증 설정 확인 중</span>
     </div>
+    <small id="receive-help" role="status">외부 DTN/HDTN 수신 어댑터가 이 주소로 JSON을 전달합니다.</small>
 
-
-    <div class="destination-row">
-
-      <label>
-        Receiver IP
-
-        <input id="receiver-ip"
-               readonly
-               value="-">
-      </label>
-
-
-      <label class="port-field">
-        Port
-
-        <input id="receiver-port"
-               readonly
-               value="-">
-      </label>
-
-
-      <div class="destination-status">
-
-                <span id="destination-dot"
-                      class="connection-dot offline">
-                </span>
-
-        <div>
-
-          <small>
-            송수신 연결 상태
-          </small>
-
-          <strong id="destination-state">
-            연결 안 됨
-          </strong>
-
-        </div>
-
-      </div>
-
+    <div class="receiver-selection">
+      <label for="dtn-tests">시험 기록</label>
+      <select id="dtn-tests"><option value="">등록된 시험 없음</option></select>
+      <button id="dtn-refresh" type="button">새로고침</button>
+      <small id="last-updated">2초마다 자동 갱신</small>
     </div>
-
+    <ol class="receiver-flow" aria-label="수신 처리 단계">
+      <li id="step-register">① 시험 등록</li>
+      <li id="step-receive">② JSON 수신</li>
+      <li id="step-process">③ AFS 복호화·PVT 계산</li>
+    </ol>
+    <div class="receiver-result-line">
+      <strong id="receive-state" role="status" aria-live="polite">수신 대기</strong>
+      <span id="receive-message">송신 화면에서 수집을 마친 뒤 전송하면 시험이 등록됩니다.</span>
+    </div>
+    <div class="receiver-meta">
+      <span>시험 ID <code id="test-id">-</code></span>
+      <span>갱신 시각 <span id="test-updated">-</span></span>
+    </div>
   </section>
 
-
-
-  <div class="grid two">
-
-
-    <section class="card">
-
-      <h2>
-        수신 시험
-      </h2>
-
-
-      <label>
-        시험 기록
-
-        <select id="dtn-tests">
-
-          <option value="">
-            시험 없음
-          </option>
-
-        </select>
-
-      </label>
-
-
-      <div class="data-summary">
-
-                <span>
-                    수신 상태
-                </span>
-
-        <strong id="receive-state">
-          데이터 없음
-        </strong>
-
-      </div>
-
-
-      <button id="dtn-process"
-              type="button"
-              class="primary full-button"
-              disabled>
-
-        수신 데이터 PVT 계산
-
-      </button>
-
-    </section>
-
-
-
-    <section class="card">
-
-      <div class="card-title">
-
-        <h2>
-          수신 PVT
-        </h2>
-
-
-        <div class="gnss-time">
-
-                    <span>
-                        GNSS 기준 시간
-                    </span>
-
-          <strong id="dtn-gnss-time">
-            -
-          </strong>
-
-        </div>
-
-      </div>
-
-
-      <div class="pvt-grid">
-
-        <div class="pvt-value">
-
-          <span>ECEF X</span>
-
-          <strong id="pvt-x">
-            -
-          </strong>
-
-          <small>m</small>
-
-        </div>
-
-
-        <div class="pvt-value">
-
-          <span>ECEF Y</span>
-
-          <strong id="pvt-y">
-            -
-          </strong>
-
-          <small>m</small>
-
-        </div>
-
-
-        <div class="pvt-value">
-
-          <span>ECEF Z</span>
-
-          <strong id="pvt-z">
-            -
-          </strong>
-
-          <small>m</small>
-
-        </div>
-
-
-        <div class="pvt-value">
-
-          <span>Velocity X</span>
-
-          <strong id="pvt-vx">
-            -
-          </strong>
-
-          <small>m/s</small>
-
-        </div>
-
-
-        <div class="pvt-value">
-
-          <span>Velocity Y</span>
-
-          <strong id="pvt-vy">
-            -
-          </strong>
-
-          <small>m/s</small>
-
-        </div>
-
-
-        <div class="pvt-value">
-
-          <span>Velocity Z</span>
-
-          <strong id="pvt-vz">
-            -
-          </strong>
-
-          <small>m/s</small>
-
-        </div>
-
-
-        <div class="pvt-value">
-
-          <span>사용 위성</span>
-
-          <strong id="pvt-satellites">
-            -
-          </strong>
-
-        </div>
-
-
-        <div class="pvt-value">
-
-          <span>Clock Bias</span>
-
-          <strong id="pvt-clock">
-            -
-          </strong>
-
-          <small>s</small>
-
-        </div>
-
-      </div>
-
-    </section>
-
-  </div>
-
-
-
-  <section class="card">
-
-    <h2>
-      시험 결과
-    </h2>
-
-    <pre id="dtn-result"
-         class="result-console">
-시험 대기
-        </pre>
-
-
-    <a id="dtn-report"
-       hidden
-       target="_blank"
-       rel="noopener">
-
-      상세 PVT 결과
-
-    </a>
-
-  </section>
-
-  <section class="card">
-
+  <section class="card receiver-pvt">
     <div class="card-title">
-
-      <h2>
-        송수신 로그
-      </h2>
-
-      <button id="dtn-log-clear"
-              type="button">
-        로그 지우기
-      </button>
-
+      <h2>복원 데이터로 계산한 PVT</h2>
+      <div class="receiver-result-links">
+        <a id="dtn-report" hidden target="_blank" rel="noopener">전체 PVT 보고서</a>
+        <a href="/lnis/dtntest/sender">송신 측 비교 결과 보기 →</a>
+      </div>
     </div>
-
-
-    <pre id="dtn-log"
-         class="log">
-        </pre>
-
+    <small>기준 PVT와의 차이·최종 판정은 송신 서버에서 확인합니다. 수신 계산 완료는 PASS 판정과 다릅니다.</small>
+    <div class="receiver-epoch-row">
+      <label for="pvt-epoch">관측 시각</label>
+      <select id="pvt-epoch" disabled><option value="">계산 결과 없음</option></select>
+      <span id="pvt-count">0개 관측</span>
+      <span id="pvt-validity" class="pill">결과 대기</span>
+    </div>
+    <div class="pvt-grid">
+      <div class="pvt-value"><span>ECEF X</span><strong id="pvt-x">-</strong><small>m</small></div>
+      <div class="pvt-value"><span>ECEF Y</span><strong id="pvt-y">-</strong><small>m</small></div>
+      <div class="pvt-value"><span>ECEF Z</span><strong id="pvt-z">-</strong><small>m</small></div>
+      <div class="pvt-value"><span>수신기 시계 오차</span><strong id="pvt-clock">-</strong><small>s</small></div>
+      <div class="pvt-value"><span>속도 X</span><strong id="pvt-vx">-</strong><small>m/s</small></div>
+      <div class="pvt-value"><span>속도 Y</span><strong id="pvt-vy">-</strong><small>m/s</small></div>
+      <div class="pvt-value"><span>속도 Z</span><strong id="pvt-vz">-</strong><small>m/s</small></div>
+      <div class="pvt-value"><span>사용 위성</span><strong id="pvt-satellites">-</strong><small>개</small></div>
+    </div>
+    <small id="pvt-message">관측 시각은 DTN 도착 시각이 아닌 GNSS Week/TOW입니다.</small>
   </section>
 
-  <section id="dtn-payload"
-           class="card">
-  </section>
-
-
+  <section id="dtn-payload" class="card receiver-payload"></section>
+  <details class="card receiver-log">
+    <summary>수신 화면 로그</summary>
+    <div class="receiver-log-actions"><button id="dtn-log-clear" type="button">로그 지우기</button></div>
+    <pre id="dtn-log" class="log"></pre>
+  </details>
 </main>
-
-
-<script type="module"
-        src="/lnis/assets/dtn-receiver.js">
-</script>
-
-
+<script type="module" src="/lnis/assets/dtn-receiver.js?v=20260911-receiver"></script>
 </body>
 </html>

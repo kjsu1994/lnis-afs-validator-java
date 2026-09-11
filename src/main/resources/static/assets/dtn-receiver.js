@@ -1,542 +1,191 @@
-import {
-  createPayloadViewer
-} from './dtn-payload.js';
+import {createPayloadViewer} from './dtn-payload.js?v=20260911-receiver';
 
-
-const api =
-    '/lnis/api/v1';
-
-
-const $ =
-    id =>
-        document.getElementById(id);
-
-
-const payloadViewer =
-    createPayloadViewer(
-        $('dtn-payload')
-    );
-
-
-let tests = [];
-
-let agents = [];
-
-
+const api = '/lnis/api/v1';
+const $ = id => document.getElementById(id);
+const payloadViewer = createPayloadViewer($('dtn-payload'), {receivedOnly: true});
+let tests = [], epochs = [], selectedId = '', renderVersion = 0, polling = false;
+let reportKey = '', lastEvent = '';
 
 async function get(path) {
-
-  const response =
-      await fetch(
-          api + path,
-          {
-            cache: 'no-store'
-          }
-      );
-
-
-  if (!response.ok)
-    throw new Error(
-        `HTTP ${response.status}`
-    );
-
-
+  const response = await fetch(api + path, {cache: 'no-store'});
+  if (!response.ok) throw new Error('HTTP ' + response.status);
   return response.json();
-
 }
 
-
-
-function log(
-    message,
-    level = 'INFO'
-) {
-
-  const time =
-      new Date()
-          .toLocaleTimeString(
-              'ko-KR',
-              {
-                hour12: false,
-                hour: '2-digit',
-                minute: '2-digit',
-                second: '2-digit'
-              }
-          );
-
-
-  const target =
-      $('dtn-log');
-
-
-  target.textContent +=
-      `${time} [${level}] ${message}\n`;
-
-
-  target.scrollTop =
-      target.scrollHeight;
-
+function log(message) {
+  // 자동 갱신으로 브라우저 로그가 무한히 늘어나지 않도록 최근 내역만 유지한다.
+  const target = $('dtn-log');
+  target.textContent = (target.textContent + new Date().toLocaleTimeString('ko-KR') + ' ' + message + '\n').slice(-12000);
+  target.scrollTop = target.scrollHeight;
 }
 
-
-$('dtn-log-clear').onclick =
-    () => {
-
-      $('dtn-log').textContent = '';
-
-    };
-
-
-
-function dot(
-    id,
-    online
-) {
-
-  const element =
-      $(id);
-
-
-  element.classList.toggle(
-      'online',
-      online
-  );
-
-
-  element.classList.toggle(
-      'offline',
-      !online
-  );
-
+function pill(id, text, state = '') {
+  $(id).textContent = text;
+  $(id).className = ('pill ' + state).trim();
 }
 
-
-
-function pill(
-    id,
-    text,
-    state = ''
-) {
-
-  const element =
-      $(id);
-
-
-  element.textContent =
-      text;
-
-
-  element.className =
-      `pill ${state}`.trim();
-
+function number(value, digits = 3) {
+  return typeof value === 'number' && Number.isFinite(value) ? value.toFixed(digits) : '-';
 }
 
-
-
-function formatNumber(
-    value,
-    digits = 3
-) {
-
-  if (
-      value === undefined
-      || value === null
-  )
-    return '-';
-
-
-  return Number(value)
-      .toFixed(digits);
-
+function time(value) {
+  if (!value) return '-';
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? '-' : date.toLocaleString('ko-KR');
 }
 
-
-
-function renderPvt(pvt) {
-
-  if (!pvt)
-    return;
-
-
-  $('dtn-gnss-time')
-      .textContent =
-      `Week ${pvt.week} / TOW ${formatNumber(pvt.towSeconds)} s`;
-
-
-  const xyz =
-      pvt.ecefMeters
-      || [];
-
-
-  const velocity =
-      pvt.velocityMetersPerSecond
-      || [];
-
-
-  $('pvt-x').textContent =
-      formatNumber(xyz[0]);
-
-
-  $('pvt-y').textContent =
-      formatNumber(xyz[1]);
-
-
-  $('pvt-z').textContent =
-      formatNumber(xyz[2]);
-
-
-  $('pvt-vx').textContent =
-      formatNumber(velocity[0]);
-
-
-  $('pvt-vy').textContent =
-      formatNumber(velocity[1]);
-
-
-  $('pvt-vz').textContent =
-      formatNumber(velocity[2]);
-
-
-  $('pvt-satellites')
-      .textContent =
-      pvt.satellitesUsed
-      ?? '-';
-
-
-  $('pvt-clock')
-      .textContent =
-      formatNumber(
-          pvt.receiverClockBiasSeconds,
-          9
-      );
-
+function renderEpoch() {
+  const pvt = epochs[Number($('pvt-epoch').value)];
+  const position = pvt?.positionValid === true;
+  const velocity = pvt?.velocityValid === true;
+  ['x', 'y', 'z'].forEach((axis, index) => {
+    $('pvt-' + axis).textContent = number(position ? pvt.ecefMeters?.[index] : null);
+    $('pvt-v' + axis).textContent = number(velocity ? pvt.velocityMetersPerSecond?.[index] : null);
+  });
+  $('pvt-satellites').textContent = pvt?.satellitesUsed ?? '-';
+  $('pvt-clock').textContent = number(position ? pvt.receiverClockBiasSeconds : null, 9);
+  pill('pvt-validity', !pvt ? '결과 대기' : '위치 ' + (position ? '유효' : '무효') + ' · 속도 ' + (velocity ? '유효' : '무효'),
+    !pvt ? '' : position && velocity ? 'online' : 'warning');
+  $('pvt-message').textContent = pvt?.message || '관측 시각은 DTN 도착 시각이 아닌 GNSS Week/TOW입니다.';
 }
 
-
-
-function paintAgents() {
-
-  const sender =
-      agents.find(
-          agent =>
-              agent.role === 'SENDER'
-      );
-
-
-  const receiver =
-      agents.find(
-          agent =>
-              agent.role === 'RECEIVER'
-      );
-
-
-  const senderReady =
-      sender?.state === 'READY';
-
-
-  const receiverReady =
-      receiver?.state === 'READY';
-
-
-  $('sender-agent-name')
-      .textContent =
-      sender?.agentId || '-';
-
-
-  $('receiver-agent-name')
-      .textContent =
-      receiver?.agentId || '-';
-
-
-  dot(
-      'sender-dot',
-      senderReady
-  );
-
-
-  dot(
-      'receiver-dot',
-      receiverReady
-  );
-
-
-  dot(
-      'destination-dot',
-      senderReady
-      && receiverReady
-  );
-
-
-  pill(
-      'dtn-sender-status',
-      senderReady
-          ? '송신 서비스 연결됨'
-          : '송신 서비스 연결 안 됨',
-      senderReady
-          ? 'online'
-          : 'error'
-  );
-
-
-  pill(
-      'dtn-receiver-status',
-      receiverReady
-          ? '수신 서비스 연결됨'
-          : '수신 서비스 연결 안 됨',
-      receiverReady
-          ? 'online'
-          : 'error'
-  );
-
-
-  $('destination-state')
-      .textContent =
-      senderReady
-      && receiverReady
-          ? '연결됨'
-          : '연결 안 됨';
-
-
-  const address =
-      receiver?.ipv4Addresses?.[0];
-
-
-  $('receiver-ip').value =
-      address || '-';
-
+function setEpochs(values, preserve = false) {
+  const selected = preserve ? $('pvt-epoch').value : '0';
+  epochs = Array.isArray(values) ? values : [];
+  $('pvt-epoch').replaceChildren(...(epochs.length
+    ? epochs.map((pvt, index) => new Option((index + 1) + ' · Week ' + pvt.week + ' / TOW ' + number(pvt.towSeconds) + ' s', String(index)))
+    : [new Option('계산 결과 없음', '')]));
+  $('pvt-epoch').disabled = !epochs.length;
+  if (epochs.length) $('pvt-epoch').value = Number(selected) < epochs.length ? selected : '0';
+  $('pvt-count').textContent = epochs.length + '개 관측';
+  renderEpoch();
 }
 
+function renderSummary(job) {
+  const failed = ['FAILED', 'CANCELLED', 'INCONCLUSIVE'].includes(job?.state);
+  const completed = job?.state === 'COMPLETED';
+  const received = !!job?.dtnReceived;
+  const states = {
+    PREPARING: '시험 준비 중', WAITING_DTN: '외부 JSON 수신 대기',
+    WAITING_RECEIVER: '수신 실행기 대기', CALCULATING: 'AFS 복호화·PVT 계산 중',
+    COMPLETED: '수신 계산 완료', FAILED: '처리 실패', CANCELLED: '시험 취소',
+    INCONCLUSIVE: '판정 불가'
+  };
+  $('receive-state').textContent = job ? (states[job.state] || job.state) : '수신 대기';
+  $('receive-state').className = failed ? 'receiver-error' : '';
+  $('receive-message').textContent = job?.message || '송신 화면에서 수집을 마친 뒤 전송하면 시험이 등록됩니다.';
+  $('test-id').textContent = job?.testId || '-';
+  $('test-updated').textContent = time(job?.updatedAt);
+  // 서버가 복호화/계산의 개별 진척률을 제공하지 않으므로 하나의 처리 단계로 표시한다.
+  const classes = [job ? 'done' : '', received ? 'done' : job && !failed ? 'active' : '',
+    completed ? 'done' : received && !failed ? 'active' : ''];
+  if (failed) classes[received ? 2 : 1] = 'failed';
+  ['step-register', 'step-receive', 'step-process'].forEach((id, index) => $(id).className = classes[index]);
+}
 
-
-async function renderTest() {
-
-  const testId =
-      $('dtn-tests').value;
-
-
-  const job =
-      tests.find(
-          item =>
-              item.testId === testId
-      );
-
-
+async function renderTest(force = false) {
+  const version = ++renderVersion;
+  const job = tests.find(item => item.testId === $('dtn-tests').value);
+  const changed = selectedId !== (job?.testId || '');
+  selectedId = job?.testId || '';
   payloadViewer.setJob(job);
-
-
-  if (!job) {
-
-    $('dtn-result')
-        .textContent =
-        '시험 대기';
-
-
-    $('receive-state')
-        .textContent =
-        '데이터 없음';
-
-
-    return;
-
+  renderSummary(job);
+  if (changed || !job) {
+    reportKey = '';
+    setEpochs([]);
+    $('dtn-report').hidden = true;
+    $('dtn-report').removeAttribute('href');
   }
-
-
-  $('receive-state')
-      .textContent =
-      job.dtnReceived
-          ? '수신 완료'
-          : '수신 대기';
-
-
-  $('dtn-process')
-      .disabled =
-      !job.dtnReceived;
-
-
-  $('dtn-result')
-      .textContent =
-      [
-        `시험 : ${job.testId}`,
-        `상태 : ${job.state}`,
-        `DTN 수신 : ${job.dtnReceived ? '완료' : '대기'}`,
-        job.verdict
-            ? `판정 : ${job.verdict}`
-            : ''
-      ]
-          .filter(Boolean)
-          .join('\n');
-
-
-  $('dtn-report').href =
-      `${api}/dtn/tests/${job.testId}/report`;
-
-
-  $('dtn-report').hidden =
-      false;
-
-
-  if (job.dtnReceived) {
-
-    try {
-
-      const report =
-          await get(
-              `/dtn/tests/${job.testId}/report`
-          );
-
-
-      renderPvt(
-          report.receivedPvt?.[0]
-      );
-
-    }
-    catch (error) {
-
-      log(
-          `PVT 조회 실패: ${error.message}`,
-          'ERROR'
-      );
-
-    }
-
-  }
-
-}
-
-
-
-/*
- * 현재 Receiver Agent에서 DTN 수신 후
- * PVT 계산은 자동 수행된다.
- *
- * 따라서 이 버튼은 현재는 결과 재조회 역할만 한다.
- *
- * 추후 별도 PVT 계산 API가 생기면
- * 여기만 POST 요청으로 변경하면 된다.
- */
-$('dtn-process').onclick =
-    async () => {
-
-      log(
-          '수신 PVT 결과 조회'
-      );
-
-
-      await renderTest();
-
-    };
-
-
-
-$('dtn-tests').onchange =
-    renderTest;
-
-
-
-async function poll() {
-
+  if (!job) return;
+  const event = job.testId + ':' + job.state + ':' + job.updatedAt;
+  if (event !== lastEvent) { log(job.testId + ' · ' + job.state + ' · ' + (job.message || '')); lastEvent = event; }
+  if (!job.receivedEpochs) return;
+  $('dtn-report').href = api + '/dtn/tests/' + encodeURIComponent(job.testId) + '/report';
+  $('dtn-report').hidden = false;
+  if (!force && reportKey === event) return;
   try {
-
-    const [
-      nextAgents,
-      nextTests,
-      config
-    ] =
-        await Promise.all([
-          get('/agents'),
-          get('/dtn/tests'),
-          get('/dtn/config')
-        ]);
-
-
-    agents =
-        nextAgents;
-
-
-    tests =
-        nextTests;
-
-
-    pill(
-        'dtn-server-status',
-        '서버 연결됨',
-        'online'
-    );
-
-
-    paintAgents();
-
-
-    if (config.receivePort) {
-
-      $('receiver-port').value =
-          config.receivePort;
-
-    }
-
-
-    const selected =
-        $('dtn-tests').value;
-
-
-    $('dtn-tests')
-        .replaceChildren(
-            ...tests.map(
-                job =>
-                    new Option(
-                        `${job.createdAt} · ${job.state}`,
-                        job.testId
-                    )
-            )
-        );
-
-
-    if (
-        tests.some(
-            job =>
-                job.testId === selected
-        )
-    ) {
-
-      $('dtn-tests').value =
-          selected;
-
-    }
-
-
-    await renderTest();
-
+    const report = await get('/dtn/tests/' + encodeURIComponent(job.testId) + '/report');
+    // 시험을 바꾼 뒤 늦게 도착한 이전 응답이 새 시험의 PVT를 덮어쓰지 않는다.
+    if (version !== renderVersion || selectedId !== job.testId) return;
+    setEpochs(report.receivedPvt, !changed);
+    reportKey = event;
+  } catch (error) {
+    if (version !== renderVersion) return;
+    setEpochs([]);
+    $('pvt-message').textContent = 'PVT 조회 실패 · ' + error.message;
+    log('PVT 조회 실패 · ' + error.message);
   }
-  catch (error) {
-
-    pill(
-        'dtn-server-status',
-        '서버 연결 실패',
-        'error'
-    );
-
-
-    log(
-        error.message,
-        'ERROR'
-    );
-
-  }
-  finally {
-
-    setTimeout(
-        poll,
-        2000
-    );
-
-  }
-
 }
 
+function renderAgents(agents) {
+  for (const role of ['SENDER', 'RECEIVER']) {
+    const agent = agents.find(item => item.role === role);
+    const online = !!agent && agent.state !== 'OFFLINE';
+    const text = role === 'SENDER' ? '송신 노드' : '수신 실행기';
+    pill('dtn-' + role.toLowerCase() + '-status', text + ' ' +
+      (online ? (agent.state === 'READY' ? '준비됨' : '처리 중') : '연결 안 됨'),
+      online ? (agent.state === 'READY' ? 'online' : 'warning') : 'error');
+  }
+}
 
-log(
-    'DTN Receiver 화면 시작'
-);
+async function poll(force = false) {
+  if (polling) return;
+  polling = true;
+  $('dtn-refresh').disabled = true;
+  try {
+    const [agents, nextTests, config] = await Promise.all([get('/agents'), get('/dtn/tests'), get('/dtn/config')]);
+    tests = nextTests;
+    pill('dtn-server-status', '서버 연결됨', 'online');
+    renderAgents(agents);
+    pill('receive-auth', config.receiveConfigured ? '수신 인증 설정됨' : '수신 인증 미설정',
+      config.receiveConfigured ? 'online' : 'warning');
+    $('receive-auth').title = '외부 어댑터는 LNIS_DTN_RECEIVE_TOKEN과 같은 Bearer 토큰을 사용해야 합니다. 관리 토큰과 별개입니다.';
+    const selected = $('dtn-tests').value;
+    $('dtn-tests').replaceChildren(...(tests.length ? tests.map(job =>
+      new Option(time(job.createdAt) + ' · ' + job.state + ' · ' + job.testId.slice(0, 8), job.testId))
+      : [new Option('등록된 시험 없음', '')]));
+    if (tests.some(job => job.testId === selected)) $('dtn-tests').value = selected;
+    await renderTest(force);
+    $('last-updated').textContent = '최근 확인 ' + new Date().toLocaleTimeString('ko-KR') + ' · 자동 갱신';
+  } catch (error) {
+    pill('dtn-server-status', '갱신 실패 · 재시도 중', 'error');
+    pill('dtn-sender-status', '송신 노드 확인 불가', 'warning');
+    pill('dtn-receiver-status', '수신 실행기 확인 불가', 'warning');
+    log('조회 실패 · ' + error.message);
+  } finally {
+    polling = false;
+    $('dtn-refresh').disabled = false;
+  }
+}
 
+async function initialize() {
+  $('receive-url').value = location.origin + api + '/dtn/receive';
+  try {
+    const response = await fetch(api + '/node', {cache: 'no-store'});
+    if (response.ok) {
+      const node = await response.json();
+      // 컨테이너 내부 IP가 아니라 외부에서 접근하도록 설정한 공개 주소를 표시한다.
+      if (node.baseUrl) $('receive-url').value = node.baseUrl.replace(/\/$/, '') + api + '/dtn/receive';
+    }
+  } catch { /* 중앙 서버 모드에서는 현재 브라우저 주소를 사용한다. */ }
+  await poll();
+  const repeat = async () => { await poll(); setTimeout(repeat, 2000); };
+  setTimeout(repeat, 2000);
+}
 
-poll();
+$('dtn-tests').onchange = () => renderTest();
+$('pvt-epoch').onchange = renderEpoch;
+$('dtn-refresh').onclick = () => poll(true);
+$('dtn-log-clear').onclick = () => { $('dtn-log').textContent = ''; };
+$('copy-receive-url').onclick = async () => {
+  try {
+    await navigator.clipboard.writeText($('receive-url').value);
+    $('receive-help').textContent = '수신 API 주소를 복사했습니다.';
+  } catch {
+    // 일반 LAN HTTP에서는 클립보드 API가 차단될 수 있으므로 수동 복사를 돕는다.
+    $('receive-url').focus();
+    $('receive-url').select();
+    $('receive-help').textContent = '선택된 주소를 Ctrl+C로 복사하세요.';
+  }
+};
+initialize();
