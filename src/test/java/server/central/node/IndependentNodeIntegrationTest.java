@@ -70,6 +70,20 @@ class IndependentNodeIntegrationTest {
                 ConfigurableApplicationContext sender = node("sender", senderPort, receiverPort)) {
             await(() -> ready(sender, "sender-1") && ready(sender, "receiver-1"), 20);
             ObjectMapper mapper = sender.getBean(ObjectMapper.class);
+            String settingsUrl = "http://127.0.0.1:" + senderPort + "/lnis/api/v1/node/connection";
+            byte[] addressBody = mapper.writeValueAsBytes(Map.of("ip", "127.0.0.1", "port", receiverPort));
+            HttpResponse<String> probe = http.send(HttpRequest.newBuilder(URI.create(settingsUrl + "/test"))
+                    .header("Content-Type", "application/json").POST(HttpRequest.BodyPublishers.ofByteArray(addressBody))
+                    .build(), HttpResponse.BodyHandlers.ofString());
+            assertEquals(200, probe.statusCode(), probe.body());
+            assertTrue(mapper.readTree(probe.body()).path("ready").asBoolean());
+            HttpResponse<String> saved = http.send(HttpRequest.newBuilder(URI.create(settingsUrl))
+                    .header("Content-Type", "application/json").PUT(HttpRequest.BodyPublishers.ofByteArray(addressBody))
+                    .build(), HttpResponse.BodyHandlers.ofString());
+            assertEquals(200, saved.statusCode(), saved.body());
+            assertFalse(saved.body().contains("test-node-management"));
+            assertEquals(receiverPort, mapper.readTree(saved.body()).path("port").asInt());
+            await(() -> ready(sender, "sender-1") && ready(sender, "receiver-1"), 15);
             InputBufferService inputs = sender.getBean(InputBufferService.class);
             byte[] source = NativePvtIntegrationTest.validSample();
             UUID input = inputs.create("node-test.graw", source.length, InputKind.GRAW_UPLOAD).inputId();
@@ -142,6 +156,11 @@ class IndependentNodeIntegrationTest {
                 assertNull(restored.get(test).getReferenceJson());
                 assertArrayEquals(delivered.get(), restored.payload(test, "received").getBody());
                 assertTrue(restarted.getBean(ActiveSessionLockRepository.class).current().isEmpty());
+            }
+            sender.close();
+            try (ConfigurableApplicationContext restarted = node("sender", senderPort, tcpPort())) {
+                // 환경 기본 주소를 바꿔 재시작해도 화면에서 H2에 저장한 주소가 우선한다.
+                assertEquals(receiverPort, restarted.getBean(NodeConnectionService.class).configuration().getPort());
             }
         } finally {
             adapter.stop(0);

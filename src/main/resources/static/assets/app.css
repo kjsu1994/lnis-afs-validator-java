@@ -524,3 +524,23 @@
         grid-template-columns: 1fr;
     }
 }
+.node-connection-form { display: flex; flex-wrap: wrap; gap: 12px; align-items: end; }
+.node-connection-form label { display: grid; gap: 4px; }
+.node-connection-form [data-peer-port] { max-width: 110px; }
+
+/* 수신 관리 설정과 어댑터 URL을 기존 카드 안에 밀도 있게 배치한다. */
+.connection-settings { margin-block: 8px; }
+.connection-settings .destination-row { display: flex; flex-wrap: wrap; align-items: end; gap: 8px 12px; }
+.connection-settings label { display: grid; gap: 4px; margin: 0; }
+.connection-settings [data-peer-ip] { width: 160px; max-width: 100%; }
+.connection-settings [data-peer-port] { width: 88px; }
+.connection-settings .destination-status { min-height: 38px; padding: 4px 8px; gap: 6px; }
+.connection-settings .destination-status > div { display: flex; align-items: center; gap: 6px; }
+.connection-settings .destination-status strong { margin: 0; white-space: nowrap; }
+.connection-settings .connection-actions { display: flex; flex-wrap: wrap; gap: 6px; }
+.connection-settings .connection-actions button { margin: 0; white-space: nowrap; }
+.connection-settings [data-connection-message] { display: block; margin-top: 4px; overflow-wrap: anywhere; }
+.connection-settings [data-connection-message]:empty { display: none; }
+.adapter-url-row { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 12px; margin-top: 8px; }
+.adapter-url-row > span { white-space: nowrap; }
+.adapter-url-row input { flex: 1 1 240px; min-width: 0; margin: 0; }

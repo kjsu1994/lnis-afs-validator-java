@@ -32,10 +32,20 @@ public class NodePeerClient {
 
     public NodeDto.StatusResponse status()
     {
-        NodeDto.StatusResponse status = exchange("/lnis/api/v1/node/peer/status", null,
+        return statusAt(nodeProperties.getPeerBaseUrl());
+    }
+
+    /** 연결 테스트는 후보 주소만 조회하며 실행 중 설정을 임시로 바꾸지 않는다. */
+    NodeDto.StatusResponse statusAt(java.net.URI address)
+    {
+        NodeDto.StatusResponse status = exchangeAt(address, "/lnis/api/v1/node/peer/status", null,
                 NodeDto.StatusResponse.class, MAX_STATUS_BYTES);
+        if (status == null) {
+            throw new IllegalStateException("수신 서비스의 상태 응답이 비어 있습니다.");
+        }
         if (status.getProtocolVersion() != NodeStatusService.PROTOCOL_VERSION
                 || !nodeProperties.getPeerAgentId().equals(status.getAgentId())
+                || status.getState() == null
                 || status.getRole() == null || status.getRole() == nodeProperties.getRole()) {
             throw new IllegalStateException("상대 노드의 ID, 역할 또는 관리 프로토콜이 일치하지 않습니다.");
         }
@@ -45,13 +55,18 @@ public class NodePeerClient {
     /** 호출 경로는 내부 코드만 지정한다. 리다이렉트와 자동 재시도를 허용하지 않는다. */
     public <T> T exchange(String path, Object body, Class<T> responseType, int maximumBytes)
     {
-        if (!nodeProperties.peerConfigured()) {
+        return exchangeAt(nodeProperties.getPeerBaseUrl(), path, body, responseType, maximumBytes);
+    }
+
+    private <T> T exchangeAt(java.net.URI address, String path, Object body, Class<T> responseType, int maximumBytes)
+    {
+        if (address == null || nodeProperties.getManagementToken().isBlank()) {
             throw new IllegalStateException("상대 노드 주소와 관리 토큰을 설정하세요.");
         }
         if (!path.startsWith("/lnis/api/v1/node/peer/")) {
             throw new IllegalArgumentException("관리 API 경로가 아닙니다.");
         }
-        HttpRequest.Builder builder = HttpRequest.newBuilder(nodeProperties.getPeerBaseUrl().resolve(path))
+        HttpRequest.Builder builder = HttpRequest.newBuilder(address.resolve(path))
                 .timeout(Duration.ofSeconds(5))
                 .header("Authorization", "Bearer " + nodeProperties.getManagementToken());
         try {

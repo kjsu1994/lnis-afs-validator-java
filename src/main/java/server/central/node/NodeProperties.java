@@ -9,7 +9,7 @@ import server.shared.model.LnisModels.AgentRole;
 import java.net.URI;
 import java.util.Locale;
 
-/** 노드 역할과 상대 주소는 시작 시 고정한다. 요청 본문이 통신 대상을 바꾸지 못하게 한다. */
+/** 역할과 인증 설정은 시작 시 고정하고, 상대 주소만 검증·저장 후 변경한다. */
 @Getter
 @Component
 @Profile("node")
@@ -18,7 +18,7 @@ public class NodeProperties {
     private final String agentId;
     private final String peerAgentId;
     private final URI baseUrl;
-    private final URI peerBaseUrl;
+    private volatile URI peerBaseUrl;
     private final String managementToken;
 
     public NodeProperties(Environment environment)
@@ -42,6 +42,16 @@ public class NodeProperties {
     public boolean peerConfigured()
     {
         return peerBaseUrl != null && !managementToken.isBlank();
+    }
+
+    /** 검증 및 영속 저장을 완료한 설정 서비스만 호출한다. 역할과 인증 토큰은 변경하지 않는다. */
+    void applyPeerAddress(URI address)
+    {
+        URI validated = parseBaseUrl(address.toString());
+        if (validated.equals(baseUrl)) {
+            throw new IllegalArgumentException("자기 자신을 수신 노드로 지정할 수 없습니다.");
+        }
+        peerBaseUrl = validated;
     }
 
     private static URI parseBaseUrl(String value)

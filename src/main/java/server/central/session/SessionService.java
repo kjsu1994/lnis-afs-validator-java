@@ -53,7 +53,7 @@ public class SessionService {
     }
 
     /** 요청 검증, 단일 시험 lock 획득, Receiver 준비 및 Sender 시작을 원자적인 흐름으로 수행한다. */
-    public TestSessionEntity create(CreateSessionRequest request)
+    public synchronized TestSessionEntity create(CreateSessionRequest request)
     {
         if (nodeProperties != null && (nodeProperties.getRole() != AgentRole.SENDER
                 || !nodeProperties.getAgentId().equals(request.senderAgentId())

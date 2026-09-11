@@ -307,75 +307,6 @@ function fillAgentSelect(
 
 
 
-function applyReceiverAddress() {
-
-    const receiverSelect =
-        $('dtn-receiver');
-
-
-    if (!receiverSelect)
-        return;
-
-
-    const receiver =
-        agentCache.find(
-            agent =>
-                agent.agentId
-                === receiverSelect.value
-        );
-
-
-    if (!receiver)
-        return;
-
-
-    const addresses =
-        receiver.ipv4Addresses
-            ?.filter(Boolean)
-        || [];
-
-
-    if (!addresses.length)
-        return;
-
-
-    const serverOctets =
-        location.hostname
-            .split('.');
-
-
-    const prefix =
-        serverOctets.length === 4
-            ? `${
-                serverOctets
-                    .slice(0, 3)
-                    .join('.')
-            }.`
-            : null;
-
-
-    const best =
-        addresses.find(
-            address =>
-                prefix
-                &&
-                address.startsWith(prefix)
-        )
-        || addresses[0];
-
-
-    const ipInput =
-        $('dtn-receiver-ip');
-
-
-    if (ipInput) {
-
-        ipInput.value =
-            best;
-
-    }
-
-}
 
 
 
@@ -464,7 +395,7 @@ async function refreshAgents() {
     );
 
 
-    applyReceiverAddress();
+    // 관리 주소는 서버에 저장된 설정만 사용한다. Agent 갱신으로 입력을 덮어쓰지 않는다.
 
 
     updateControls();
@@ -1104,36 +1035,16 @@ $('dtn-start').onclick =
  * ========================================================= */
 
 function buildSendUrl() {
-
-    const ip =
-        $('dtn-receiver-ip')
-            .value
-            .trim();
-
-
-    const port =
-        Number(
-            $('dtn-receiver-port')
-                .value
-        );
-
-
-    if (
-        !ip
-        ||
-        !port
-    ) {
-
+    // 어댑터 URL의 경로·쿼리·HTTPS를 그대로 유지한다. 관리 IP/Port와 혼용하지 않는다.
+    const value = $('dtn-send-url').value.trim();
+    try {
+        const url = new URL(value);
+        return ['http:', 'https:'].includes(url.protocol) && !url.username && !url.password
+            ? value
+            : null;
+    } catch {
         return null;
-
     }
-
-
-    /*
-     * 현재 Adapter endpoint 유지
-     */
-    return `http://${ip}:${port}/transfers`;
-
 }
 
 
@@ -1170,12 +1081,7 @@ function updateDestinationState() {
 
 
 
-$('dtn-receiver-ip').oninput =
-    updateControls;
-
-
-$('dtn-receiver-port').oninput =
-    updateControls;
+$('dtn-send-url').oninput = updateControls;
 
 
 
@@ -1670,51 +1576,8 @@ async function init() {
 
 
 
-        /*
-         * 기존 전체 URL 설정값이 있으면
-         * 사용자 화면에는 IP / Port로 분리하여 표시
-         */
-        if (
-            config.defaultSendUrl
-        ) {
-
-            try {
-
-                const url =
-                    new URL(
-                        config.defaultSendUrl
-                    );
-
-
-                $('dtn-receiver-ip')
-                    .value =
-                    url.hostname;
-
-
-                $('dtn-receiver-port')
-                    .value =
-                    url.port
-                    ||
-                    (
-                        url.protocol
-                        === 'https:'
-
-                            ? 443
-
-                            : 80
-                    );
-
-            }
-            catch {
-
-                /*
-                 * 설정값 파싱 실패 시
-                 * 입력 화면의 기본값을 유지한다.
-                 */
-
-            }
-
-        }
+        // DTN/HDTN 어댑터 주소는 수신 LNIS 관리 주소와 독립적이다.
+        $('dtn-send-url').value = config.defaultSendUrl || '';
 
         await refreshAgents();
 

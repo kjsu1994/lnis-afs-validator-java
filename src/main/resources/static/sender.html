@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>LNIS AFS Sender</title>
-  <link rel="stylesheet" href="/lnis/assets/app.css?v=20260902-test-suite-tabs">
+  <link rel="stylesheet" href="/lnis/assets/app.css?v=20260911-inline">
   <link rel="stylesheet" href="/lnis/assets/notice.css">
 </head>
 <body data-page="sender">
@@ -24,6 +24,7 @@
   </nav>
 </header>
 <main>
+<script type="module" src="/lnis/assets/node-connection.js?v=20260911-inline"></script>
   <section class="status-strip">
     <span id="server-status" class="pill warning">서버 연결 중</span>
     <span id="sender-status" class="pill">Sender OFFLINE</span>
@@ -101,6 +102,18 @@
 
     <section class="card">
       <h2>전송 설정</h2>
+      <!-- UDP 데이터 포트와 관리 REST 포트는 별개이므로 기존 UDP 입력란을 재사용하지 않는다. -->
+      <div data-node-connection class="connection-settings">
+        <div class="node-connection-form">
+          <label>수신측 IP <input data-peer-ip placeholder="192.168.0.20" maxlength="15" required></label>
+          <label>관리 Port <input data-peer-port type="number" min="1" max="65535" value="8088" required></label>
+          <div class="connection-actions">
+            <button type="button" data-connection-test hidden>연결 테스트</button>
+            <button type="button" data-connection-save hidden>저장·적용</button>
+          </div>
+        </div>
+        <small data-connection-message role="status" aria-live="polite"></small>
+      </div>
       <div class="form-grid">
         <label>
           Sender Agent

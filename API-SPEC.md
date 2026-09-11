@@ -803,6 +803,18 @@ IP는 실제 중앙 서버 주소에 맞춰 변경한다.
 
 ## 14. 독립 노드 관리 API
 
+### 화면에서 수신 노드 연결 설정
+
+독립 송신 노드의 AFS/DTN 화면에서 공통으로 사용한다. 관리 토큰은 서버 설정을 사용하며 요청·응답에 토큰 값을 넣지 않는다.
+
+DTN 화면은 기존 수신측 IP·Port 옆에 연결 테스트와 저장·적용을 배치한다. 이 값은 수신 LNIS 관리 주소이며, 바로 아래의 DTN/HDTN 전송 URL과 별개다. 전송 URL은 전체 주소(HTTPS·경로·쿼리 포함)를 그대로 시험 생성 요청의 sendUrl로 전달한다. 연결 상태는 저장된 수신 노드 기준이고, 후보 주소의 테스트 결과는 버튼 아래에 별도로 표시한다.
+
+- `GET /lnis/api/v1/node/connection`: 현재 `ip`, `port`, `scheme`, `baseUrl`, `peerAgentId`, `tokenConfigured`, `editable`, `busy` 반환.
+- `POST /lnis/api/v1/node/connection/test`: `{"ip":"192.168.1.73","port":8088}`. 서버가 후보 수신 노드에 인증된 GET 상태 요청을 보낸다. `connected`, `ready`, `elapsedMilliseconds`, `message`, 정상 조회 시 `node` 반환. 현재 주소는 변경하지 않는다.
+- `PUT /lnis/api/v1/node/connection`: 같은 본문으로 연결을 다시 확인하고 READY인 경우 H2에 저장·적용한다. AFS/DTN 시험 진행 중이거나 연결 검증 실패 시 기존 설정을 유지한다. `scheme`은 생략 시 `http`이며 기존 HTTPS 설정도 지원한다.
+
+화면 저장값은 환경 변수 `LNIS_NODE_PEER_URL`보다 우선하며 재시작 후 유지된다. IPv4/포트만 입력하며 URL 경로·호스트명·미지정/멀티캐스트/링크 로컬 주소는 거부한다. 잘못된 입력은 `400`, 시험 중 변경 등 상태 오류는 `409`다. 연결 테스트의 접속/인증 오류는 `200`과 `connected=false`로 표시한다. 이 검사는 관리 REST 연결 검사이며 UDP 또는 외부 DTN 전달을 검증하지 않는다.
+
 `node` 실행 모드에서만 활성화된다. 기존 `server`, `sender`, `receiver` 실행 계약은 유지한다.
 로컬 실행기, 원격 AFS 준비·취소·결과 조회 및 DTN 수신 DB 분리를 지원한다.
 Linux 독립 노드 Compose는 `deployment/node`에 있으며 기존 중앙 서버용 Compose와 분리한다.
