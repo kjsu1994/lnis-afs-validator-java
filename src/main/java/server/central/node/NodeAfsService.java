@@ -22,7 +22,7 @@ import server.shared.model.LnisModels.*;
 import java.time.Instant;
 import java.util.UUID;
 
-/** 관리 채널의 수신 준비/취소만 허용한다. 입력 청크와 실제 AFS 전송은 이 경로에 들어오지 않는다. */
+/** 관리 채널의 수신 준비·취소와 AFS frame batch 전달을 검증한다. */
 @Service
 @Profile("node")
 @RequiredArgsConstructor
@@ -71,7 +71,7 @@ public class NodeAfsService {
                     || terminal(previous.state())) {
                 throw new ResponseStatusException(HttpStatus.CONFLICT, "이미 처리된 시험 ID입니다.");
             }
-            // 동일 준비 요청의 재전송은 UDP 소켓을 다시 열지 않는다.
+            // 동일 준비 요청의 재전송은 Receiver 세션을 중복 생성하지 않는다.
             return sessionService.snapshot(id);
         }
         String requestJson = mapper.writeValueAsString(request);
@@ -81,7 +81,7 @@ public class NodeAfsService {
         Instant now = Instant.now();
         TestSessionEntity session = new TestSessionEntity(id, SessionState.WAITING_RECEIVER,
                 request.options().testType(), request.senderAgentId(), request.receiverAgentId(),
-                request.inputId(), 0, "원격 송신 노드의 UDP 수신 준비", Verdict.INCONCLUSIVE,
+                request.inputId(), 0, "원격 송신 노드의 AFS 프레임 수신 준비", Verdict.INCONCLUSIVE,
                 requestJson, now, now);
         try {
             sessions.save(session);
@@ -109,6 +109,26 @@ public class NodeAfsService {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND);
         }
         return result;
+    }
+
+    public synchronized void message(Envelope envelope)
+    {
+        if (properties.getRole() != AgentRole.RECEIVER || envelope == null
+                || envelope.protocolVersion() != AgentProtocol.PROTOCOL_VERSION
+                || envelope.sessionId() == null || envelope.role() != AgentRole.RECEIVER
+                || !properties.getAgentId().equals(envelope.agentId())
+                || (envelope.type() != MessageType.AFS_TRANSFER_START
+                    && envelope.type() != MessageType.AFS_TRANSFER_BATCH
+                    && envelope.type() != MessageType.AFS_TRANSFER_COMPLETE)) {
+            throw new IllegalArgumentException("허용하지 않는 AFS frame 전달 요청입니다.");
+        }
+        TestSessionEntity session = sessions.find(envelope.sessionId())
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND));
+        if (terminal(session.state()) || !session.senderAgentId().equals(properties.getPeerAgentId())
+                || !session.receiverAgentId().equals(properties.getAgentId())) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "수신 준비된 시험이 아닙니다.");
+        }
+        connections.send(properties.getAgentId(), envelope);
     }
 
     private static boolean terminal(SessionState state)

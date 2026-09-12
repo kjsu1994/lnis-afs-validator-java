@@ -39,11 +39,14 @@ class AgentMessageServiceTest {
 
   @Mock private FrameEvidenceService frameEvidence;
 
+  @Mock private AgentConnectionRegistry connectionRegistry;
+
   @Test
   void statusWithoutEventTypeIsReportedAsErrorInsteadOfThrowingNullPointerException() {
     ObjectMapper json = new ObjectMapper().findAndRegisterModules();
     AgentMessageService service =
-        new AgentMessageService(json, agents, inputs, sessions, events, lifecycle, frameEvidence);
+        new AgentMessageService(
+            json, agents, inputs, sessions, events, lifecycle, frameEvidence, connectionRegistry);
     UUID sessionId = UUID.randomUUID();
     Envelope malformedStatus =
         new Envelope(

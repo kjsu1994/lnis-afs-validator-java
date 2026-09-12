@@ -17,7 +17,7 @@ import server.shared.model.DtnModels;
 import server.shared.model.DtnModels.*;
 import server.shared.model.LnisModels.*;
 
-/** 기존 UDP 시험과 독립적으로 AFS 생성/복원을 재사용하는 DTN 계산 작업이다. */
+/** AFS 생성/복원기를 재사용하는 DTN 계산 작업이다. */
 public final class DtnProcessor {
   private final NativeAfsCodec afs;
   private final Path nativeDirectory;
@@ -33,7 +33,7 @@ public final class DtnProcessor {
     AgentResult result = new AgentResult();
     try (var pvt = new NativePvtCodec(nativeDirectory)) { result.setPvt(pvt.calculate(records)); }
     var frames = new AfsFrameBuilder(afs).prepare(records,
-        new TestOptions(TestType.TEST_A_NORMAL, 0, 0, 0, 0, 0, Map.of()), 1).frames();
+        new TestOptions(TestType.TEST_A_NORMAL, 0, 0, 0, Map.of()), 1).frames();
     Transfer transfer = new Transfer();
     transfer.setTestId(id);
     transfer.setSourceSha256(Hashing.hex(Hashing.sha256Digest().digest(source)));

@@ -150,8 +150,8 @@ function resultSummary(result, context = {}) {
     const counters = result?.counters || {};
     const testType = context.testType || counters.testType;
     const passed = result?.verdict === 'PASS';
-    const frameComplete = hasValue(counters.expectedLogicalFrames)
-        && counters.receivedLogicalFrames === counters.expectedLogicalFrames;
+    const frameComplete = hasValue(counters.expectedFrames)
+        && counters.transferredFrames === counters.expectedFrames;
     const sizeMatch = hasValue(integrity.sourceLength)
         && integrity.sourceLength === integrity.reconstructedLength;
     const recordMatch = hasValue(integrity.expectedRecords)
@@ -167,8 +167,8 @@ function resultSummary(result, context = {}) {
         const fullyDecoded = metricValue(result, 'FullyDecodedFrames');
         const recoveredSync = metricValue(result, 'RecoveredSyncFrames');
         const injected = Number(context.injectedFrameCount ?? counters.injectedFrameCount ?? 0);
-        const recoveryTarget = hasValue(counters.expectedLogicalFrames)
-            ? Math.max(0, counters.expectedLogicalFrames - injected)
+        const recoveryTarget = hasValue(counters.expectedFrames)
+            ? Math.max(0, counters.expectedFrames - injected)
             : undefined;
         const recoveredExpectedFrames = hasValue(recoveryTarget)
             && decoded === recoveryTarget
@@ -265,8 +265,8 @@ function integrityCards(result, { expectedPartial = false } = {}) {
 /** Test D의 목적에 맞춰 손상 프레임 제외 수와 재동기화 성공 수를 직접 비교한다. */
 function syncRecoveryCards(result, context = {}) {
     const counters = result?.counters || {};
-    const expected = counters.expectedLogicalFrames;
-    const received = counters.receivedLogicalFrames;
+    const expected = counters.expectedFrames;
+    const received = counters.transferredFrames;
     const injected = Number(context.injectedFrameCount ?? counters.injectedFrameCount ?? 0);
     const recoveryTarget = hasValue(expected) ? Math.max(0, expected - injected) : undefined;
     const decoded = metricValue(result, 'DecodedFrames');
@@ -316,17 +316,17 @@ function frameCards(result) {
     const counters = result?.counters || {};
     const processed = metricValue(result, 'DecodedFrames');
     const fullyDecoded = metricValue(result, 'FullyDecodedFrames');
-    const expected = counters.expectedLogicalFrames;
-    const received = counters.receivedLogicalFrames;
+    const expected = counters.expectedFrames;
+    const received = counters.transferredFrames;
     const receivedAll = hasValue(expected) && received === expected;
     const processedAll = hasValue(received) && processed === received;
     const fullyDecodedAll = hasValue(received) && fullyDecoded === received;
 
     return [
         hasValue(received) && hasValue(expected) ? card(
-            '논리 프레임 수신',
+            'AFS 프레임 전달',
             `${displayNumber(received)} / ${displayNumber(expected)}`,
-            '앞 숫자는 중복을 제거한 수신 프레임, 뒤 숫자는 Sender가 준비한 전체 프레임입니다.',
+            '앞 숫자는 기존 Agent 연결로 전달된 프레임, 뒤 숫자는 Sender가 준비한 전체 프레임입니다.',
             status(receivedAll, '모두 수신'),
             'frame',
         ) : null,
@@ -350,24 +350,16 @@ function frameCards(result) {
 function networkCards(result, context = {}) {
     const counters = result?.counters || {};
     const testType = context.testType || counters.testType;
-    const splitCountersAvailable = hasValue(counters.invalidDatagrams)
-        || hasValue(counters.decodeFailedFrames);
-    const invalidDatagrams = splitCountersAvailable
-        ? counters.invalidDatagrams
-        : counters.corruptDatagrams;
-    const decodeFailedFrames = splitCountersAvailable
-        ? counters.decodeFailedFrames
-        : undefined;
     return [
-        testType !== 'TEST_E_UDP_DROP' ? card(
+        card(
             '시험에서 주입한 오류',
             counters.injectedBitCount,
-            'Sender가 시험 조건에 따라 AFS 프레임 내부에 의도적으로 반전한 비트의 총합입니다. UDP 패킷 전송 실패 수가 아닙니다.',
+            'Sender가 시험 조건에 따라 AFS 프레임 내부에 의도적으로 반전한 비트의 총합입니다.',
             counters.injectedBitCount > 0
                 ? { tone: 'warning', text: '시험 조건' }
                 : status(true, '주입 없음'),
             'bit',
-        ) : null,
+        ),
         hasValue(counters.syncRejectedFrames)
             && (testType === 'TEST_D_SYNC_RECOVERY' || counters.syncRejectedFrames > 0) ? card(
             '동기 손상으로 제외',
@@ -379,56 +371,30 @@ function networkCards(result, context = {}) {
             'frame',
         ) : null,
         card(
-            '데이터 프레임 UDP 송신',
-            counters.sentDatagrams,
-            'AFS FRAME 패킷만 센 값입니다. 프레임당 반복 송신 횟수가 포함됩니다.',
-            status(undefined),
-            'datagram',
+            '생성한 AFS 프레임',
+            counters.expectedFrames,
+            'Sender가 원본 GRAW에서 생성했거나 Receiver가 받을 것으로 확인한 전체 AFS 프레임 수입니다.',
+            status(undefined), 'frame',
         ),
         card(
-            'Receiver 전체 UDP 수신',
-            counters.receivedDatagrams,
-            'FRAME뿐 아니라 SESSION_START 같은 시험 제어 패킷도 포함합니다. 따라서 송신 데이터그램보다 클 수 있습니다.',
-            status(undefined),
-            'datagram',
+            '연결로 전달한 AFS 프레임',
+            counters.transferredFrames,
+            '기존 Agent 관리 연결을 통해 전달을 완료한 AFS 프레임 수입니다.',
+            status(counters.transferredFrames === counters.expectedFrames, '모두 전달'), 'frame',
         ),
         card(
-            '중복으로 제외',
-            counters.duplicateDatagrams,
-            '반복 송신 또는 제어 패킷 중 이미 처리한 동일 패킷이라 제외한 수입니다. 중복은 오류가 아닙니다.',
-            status(undefined, '정상'),
-            'datagram',
-        ),
-        card(
-            'UDP 패킷 해석 실패',
-            invalidDatagrams,
-            '수신한 UDP 데이터그램 중 LNIS 패킷 구조나 패킷 CRC를 해석하지 못해 버린 수입니다. AFS 내부 오류 비트와는 별개입니다.',
-            status(invalidDatagrams === 0, '없음'),
-            'datagram',
+            'Receiver 처리 프레임',
+            counters.processedFrames,
+            'Receiver가 AFS 검증 대상으로 처리한 프레임 수입니다.',
+            status(undefined), 'frame',
         ),
         card(
             'AFS 복호화 실패',
-            decodeFailedFrames,
+            counters.decodeFailedFrames,
             'Receiver가 처리한 AFS 프레임 중 Decoder 예외 또는 SB2·SB3·SB4 중 하나 이상의 CRC 실패가 발생한 수입니다. 프레임별 실패 블록은 아래 6,000비트 비교에서 확인할 수 있습니다.',
-            status(decodeFailedFrames === 0, '없음'),
+            status(counters.decodeFailedFrames === 0, '없음'),
             'frame',
         ),
-        testType === 'TEST_E_UDP_DROP' || counters.simulatedDroppedDatagrams > 0 ? card(
-            '설정한 미전송 확률',
-            counters.configuredDropRatePercent,
-            '각 AFS FRAME UDP 복제본을 Sender가 보내지 않을 확률입니다. 복제본 수가 적으면 실제 비율은 설정값과 다를 수 있습니다.',
-            { tone: 'warning', text: '시험 조건' },
-            '%',
-        ) : null,
-        testType === 'TEST_E_UDP_DROP' || counters.simulatedDroppedDatagrams > 0 ? card(
-            'Sender가 실제로 미전송',
-            counters.simulatedDroppedDatagrams,
-            'Test E의 확률과 Seed로 결정되어 Sender가 실제로 보내지 않은 AFS FRAME 복제본 수입니다. UDP 전송 후 네트워크에서 유실된 수가 아닙니다.',
-            counters.simulatedDroppedDatagrams > 0
-                ? { tone: 'warning', text: '시험 조건' }
-                : status(true, '미전송 없음'),
-            'datagram',
-        ) : null,
         card(
             result?.role === 'SENDER' ? 'Sender 원본 GRAW' : 'Receiver 복원 GRAW',
             counters.rawBytes,
@@ -443,13 +409,10 @@ function networkCards(result, context = {}) {
 
 /** 시험 종류에 맞는 전송/오류 그룹 설명만 노출해 관련 없는 계층을 먼저 떠올리지 않게 한다. */
 function transmissionGroupDescription(testType) {
-    if (testType === 'TEST_E_UDP_DROP') {
-        return 'UDP 반복 송신과 Sender 미전송 복제본, UDP 해석 실패와 AFS 복호화 실패를 구분합니다.';
-    }
     if (['TEST_B_RANDOM_ERRORS', 'TEST_C_BURST_ERRORS', 'TEST_D_SYNC_RECOVERY'].includes(testType)) {
-        return 'AFS 주입 비트와 프레임 처리, UDP 해석 실패와 AFS 복호화 실패를 단위별로 구분합니다.';
+        return 'AFS 주입 비트와 프레임 전달·복호화 결과를 단위별로 구분합니다.';
     }
-    return 'UDP 데이터그램 송수신과 AFS 프레임 복호화 결과를 단위별로 구분합니다.';
+    return 'AFS 프레임 전달과 복호화 결과를 단위별로 구분합니다.';
 }
 
 function diagnosticCards(result) {

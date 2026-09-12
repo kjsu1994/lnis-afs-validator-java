@@ -42,7 +42,6 @@ import server.shared.model.LnisModels.AgentRole;
 import server.shared.model.LnisModels.SessionState;
 import server.shared.model.LnisModels.TestOptions;
 import server.shared.model.LnisModels.TestType;
-import server.shared.model.LnisModels.TransportSettings;
 
 /** 세션 시작의 부분 실패가 Agent, H2 상태와 활성 lock에 남지 않는지 검증한다. */
 @ExtendWith(MockitoExtension.class)
@@ -84,8 +83,7 @@ class SessionServiceTest {
             "receiver-1",
             inputId,
             new AfsSettings(1),
-            new TransportSettings("127.0.0.1", 45821, 45822, 3, 30, 1000, 1000),
-            new TestOptions(TestType.TEST_A_NORMAL, 1, 1, 10, 0, 1, Map.of()));
+            new TestOptions(TestType.TEST_A_NORMAL, 1, 1, 10, Map.of()));
     service =
         new SessionService(
             sessions,

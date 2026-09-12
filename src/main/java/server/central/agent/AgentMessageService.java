@@ -14,6 +14,7 @@ import server.central.input.InputBufferService;
 import server.central.realtime.EventService;
 import server.central.session.SessionRepository;
 import server.central.session.SessionService;
+import server.central.session.TestSessionEntity;
 import server.shared.model.AgentProtocol.*;
 import server.shared.model.LnisModels.*;
 
@@ -38,6 +39,7 @@ public class AgentMessageService {
     private final EventService eventService;
     private final SessionService sessionService;
     private final FrameEvidenceService frameEvidenceService;
+    private final AgentConnectionRegistry connectionRegistry;
     private DtnService dtnService;
 
     /** 기존 생성자 계약을 유지하며 DTN 경로만 별도로 주입한다. */
@@ -53,6 +55,8 @@ public class AgentMessageService {
         // 연결 정보(HELLO/HEARTBEAT), 입력, 진행 이벤트, 최종 결과를 각 도메인 서비스로 분배한다.
         // WebSocket Handler는 인증과 역직렬화만 담당하고 업무 상태 변경은 이 계층에서 시작된다.
         switch (envelope.type()) {
+            case AFS_TRANSFER_START, AFS_TRANSFER_BATCH, AFS_TRANSFER_COMPLETE ->
+                    forwardAfsTransfer(envelope);
             case DTN_DATA -> dtnService.agentData(envelope);
             case COMMAND_ACK -> {
                 if (dtnService != null && !envelope.payload().path("accepted").asBoolean()) {
@@ -125,6 +129,22 @@ public class AgentMessageService {
                             envelope.payload());
             default -> {}
         }
+    }
+
+    /** Sender가 만든 AFS frame batch를 세션에 등록된 Receiver의 기존 연결로 전달한다. */
+    private void forwardAfsTransfer(Envelope envelope)
+    {
+        TestSessionEntity session = sessionRepository.find(envelope.sessionId())
+                .orElseThrow(() -> new IllegalArgumentException("Session not found: " + envelope.sessionId()));
+        if (!session.senderAgentId().equals(envelope.agentId())
+                || envelope.role() != AgentRole.SENDER
+                || !session.senderAgentId().equals(envelope.payload().path("senderAgentId").asText())
+                || !session.receiverAgentId().equals(envelope.payload().path("receiverAgentId").asText())) {
+            throw new IllegalArgumentException("AFS transfer의 세션 참여자가 일치하지 않습니다.");
+        }
+        Envelope forwarded = Envelope.of(envelope.type(), session.receiverAgentId(),
+                AgentRole.RECEIVER, envelope.sessionId(), envelope.payload());
+        connectionRegistry.send(session.receiverAgentId(), forwarded);
     }
 
     /** 최초 접속 정보를 Agent 조회용 JPA 엔티티로 만들고 READY 이벤트를 방송한다. */

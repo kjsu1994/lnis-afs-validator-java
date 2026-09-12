@@ -12,15 +12,15 @@ import java.util.function.Consumer;
 import server.agent.codec.NativeAfsCodec;
 import server.agent.config.AgentConfig;
 import server.agent.gnss.SerialCaptureService;
-import server.agent.transport.UdpSessionService;
+import server.agent.transport.AfsSessionService;
 import server.shared.model.AgentProtocol.*;
 import server.shared.model.LnisModels.AgentState;
 
 /**
- * 서버 명령을 GNSS 수집 또는 Sender/Receiver UDP 작업으로 분배하는 Agent 핵심 런타임이다.
+ * 서버 명령을 GNSS 수집 또는 Sender/Receiver AFS 작업으로 분배하는 Agent 핵심 런타임이다.
  *
- * <p>WebSocket transport와 장치/시험 구현을 분리하는 application 계층이다. 세션별 GRAW 청크를 메모리에 조립하고 역할 검증 후 비동기 UDP
- * 작업을 시작한다. 작업 완료 callback에서 RoleResult를 서버로 보내고 Agent 상태를 READY로 복원한다.
+ * <p>WebSocket transport와 장치/시험 구현을 분리한다. 세션별 GRAW를 조립한 뒤 AFS frame을 관리 채널로 전달하고,
+ * 작업 완료 callback에서 RoleResult를 서버로 보내 Agent 상태를 READY로 복원한다.
  */
 public final class AgentRuntime implements AutoCloseable {
   private final AgentConfig config;
@@ -28,7 +28,7 @@ public final class AgentRuntime implements AutoCloseable {
   private final SerialCaptureService capture = new SerialCaptureService();
   private final ObjectMapper json = new ObjectMapper().findAndRegisterModules();
   private final AtomicReference<AgentState> state = new AtomicReference<>(AgentState.READY);
-  private final UdpSessionService udp;
+  private final AfsSessionService afs;
   private final server.agent.dtn.DtnWorker dtn;
   private final Map<UUID, ByteArrayOutputStream> sessionInputs = new ConcurrentHashMap<>();
   private volatile Consumer<Envelope> outbound = ignored -> {};
@@ -36,7 +36,7 @@ public final class AgentRuntime implements AutoCloseable {
   public AgentRuntime(AgentConfig config, NativeAfsCodec codec) {
     this.config = config;
     this.codec = codec;
-    this.udp = new UdpSessionService(codec);
+    this.afs = new AfsSessionService(codec);
     this.dtn = new server.agent.dtn.DtnWorker(
         new server.agent.dtn.DtnProcessor(codec, config.nativeDirectory()),
         json, config.role(), state, (id, payload) -> send(MessageType.DTN_DATA, id, payload));
@@ -76,6 +76,21 @@ public final class AgentRuntime implements AutoCloseable {
             "InputReady",
             "Input transfer completed",
             Map.of("bytes", bytes));
+        return;
+      }
+      if (envelope.type() == MessageType.AFS_TRANSFER_START) {
+        afs.receiveStart(envelope.sessionId(),
+            json.treeToValue(envelope.payload(), AfsTransferStart.class));
+        return;
+      }
+      if (envelope.type() == MessageType.AFS_TRANSFER_BATCH) {
+        afs.receiveBatch(envelope.sessionId(),
+            json.treeToValue(envelope.payload(), AfsTransferBatch.class));
+        return;
+      }
+      if (envelope.type() == MessageType.AFS_TRANSFER_COMPLETE) {
+        afs.receiveComplete(envelope.sessionId(),
+            json.treeToValue(envelope.payload(), AfsTransferComplete.class));
         return;
       }
       if (envelope.type() != MessageType.COMMAND) {
@@ -132,20 +147,20 @@ public final class AgentRuntime implements AutoCloseable {
 
   private void cancel(UUID sessionId) {
     capture.stop();
-    udp.cancel();
+    afs.cancel();
     sessionInputs.remove(sessionId);
     state.set(AgentState.READY);
     status(sessionId, EventType.SESSION_STATUS, 0, "Cancelled", "Operation cancelled", Map.of());
   }
 
-  /** Receiver 역할을 확인하고 data port 수신 작업을 가상 thread에서 시작한다. */
+  /** Receiver 역할을 확인하고 관리 채널의 AFS frame 수신 상태를 준비한다. */
   private void startReceiver(UUID sessionId, JsonNode args) throws Exception {
     if (config.role() != server.shared.model.LnisModels.AgentRole.RECEIVER) {
-      throw new IllegalStateException("Only RECEIVER can arm UDP reception");
+      throw new IllegalStateException("Only RECEIVER can arm AFS reception");
     }
     state.set(AgentState.BUSY);
-    var command = json.treeToValue(args, UdpSessionService.SessionCommand.class);
-    udp.receive(
+    var command = json.treeToValue(args, AfsSessionService.SessionCommand.class);
+    afs.arm(
         sessionId,
         command,
         (type, payload) -> event(sessionId, type, payload),
@@ -153,27 +168,38 @@ public final class AgentRuntime implements AutoCloseable {
         result -> completeRole(sessionId, result));
   }
 
-  /** 전달 완료된 GRAW 입력을 꺼내 Sender UDP 송신 작업을 시작한다. */
+  /** 전달 완료된 GRAW 입력을 꺼내 AFS frame 생성 및 관리 채널 전송을 시작한다. */
   private void startSender(UUID sessionId, JsonNode args) throws Exception {
     if (config.role() != server.shared.model.LnisModels.AgentRole.SENDER) {
-      throw new IllegalStateException("Only SENDER can start UDP transmission");
+      throw new IllegalStateException("Only SENDER can start AFS transmission");
     }
     ByteArrayOutputStream input = sessionInputs.remove(sessionId);
     if (input == null || input.size() == 0) {
       throw new IllegalStateException("No GRAW input was transferred");
     }
     state.set(AgentState.BUSY);
-    var command = json.treeToValue(args, UdpSessionService.SessionCommand.class);
-    udp.send(
+    var command = json.treeToValue(args, AfsSessionService.SessionCommand.class);
+    afs.send(
         sessionId,
         command,
         input.toByteArray(),
         (type, payload) -> event(sessionId, type, payload),
         evidence -> frameEvidence(sessionId, evidence),
-        result -> completeRole(sessionId, result));
+        result -> completeRole(sessionId, result),
+        new AfsSessionService.TransferSink() {
+          @Override public void start(AfsTransferStart start) {
+            send(MessageType.AFS_TRANSFER_START, sessionId, json.valueToTree(start));
+          }
+          @Override public void batch(AfsTransferBatch batch) {
+            send(MessageType.AFS_TRANSFER_BATCH, sessionId, json.valueToTree(batch));
+          }
+          @Override public void complete(AfsTransferComplete complete) {
+            send(MessageType.AFS_TRANSFER_COMPLETE, sessionId, json.valueToTree(complete));
+          }
+        });
   }
 
-  /** AFS 원문은 UDP 결과에 넣지 않고 전용 WebSocket 메시지로 중앙 서버에 보낸다. */
+  /** AFS 원문 증거는 전용 메시지로 중앙 서버에 보낸다. */
   private void frameEvidence(UUID sessionId, FrameEvidenceMessage evidence) {
     send(MessageType.FRAME_EVIDENCE, sessionId, json.valueToTree(evidence));
   }
@@ -275,7 +301,7 @@ public final class AgentRuntime implements AutoCloseable {
   @Override
   public void close() {
     capture.close();
-    udp.close();
+    afs.close();
     codec.close();
   }
 }

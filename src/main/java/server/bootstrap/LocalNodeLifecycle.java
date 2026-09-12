@@ -53,7 +53,7 @@ public class LocalNodeLifecycle implements ApplicationListener<ApplicationReadyE
             connectionRegistry.registerEndpoint(agentConfig.agentId(), endpoint);
             Hello hello = new Hello("1.0.0", agentRuntime.codecAbiVersion(),
                     System.getProperty("os.name"), System.getProperty("os.arch"),
-                    Map.of("com", agentConfig.role() == AgentRole.SENDER, "udp", true,
+                    Map.of("com", agentConfig.role() == AgentRole.SENDER, "afsTransfer", true,
                             "local", true), localIpv4Addresses());
             receive(Envelope.of(MessageType.HELLO, agentConfig.agentId(), agentConfig.role(),
                     null, objectMapper.valueToTree(hello)));

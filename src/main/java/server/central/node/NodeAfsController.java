@@ -40,6 +40,19 @@ public class NodeAfsController {
         return new ResponseEntity<>(service.command(envelope), HttpStatus.OK);
     }
 
+    /** 인증된 Sender 노드가 보낸 AFS start/batch/complete 메시지를 로컬 Receiver에 전달한다. */
+    @PostMapping("/messages")
+    public ResponseEntity<java.util.Map<String, Boolean>> message(HttpServletRequest request) throws Exception
+    {
+        authentication.authenticate(request.getHeader("Authorization"));
+        byte[] body = request.getInputStream().readNBytes(131073);
+        if (body.length > 131072) {
+            throw new ResponseStatusException(HttpStatus.PAYLOAD_TOO_LARGE);
+        }
+        service.message(mapper.readValue(body, Envelope.class));
+        return ResponseEntity.ok(java.util.Map.of("accepted", true));
+    }
+
     @GetMapping("/sessions/{id}")
     public ResponseEntity<SessionSnapshot> result(@PathVariable UUID id,
             @RequestHeader(value = "Authorization", required = false) String authorization)

@@ -17,7 +17,7 @@ import java.util.UUID;
  */
 public final class AgentProtocol {
   /** 현재 서버/Agent wire protocol version이다. */
-  public static final int PROTOCOL_VERSION = 2;
+  public static final int PROTOCOL_VERSION = 3;
 
   private AgentProtocol() {}
 
@@ -32,6 +32,9 @@ public final class AgentProtocol {
     PORT_LIST,
     INPUT_CHUNK,
     INPUT_COMPLETE,
+    AFS_TRANSFER_START,
+    AFS_TRANSFER_BATCH,
+    AFS_TRANSFER_COMPLETE,
     FRAME_EVIDENCE,
     ROLE_RESULT,
     DTN_DATA,
@@ -59,6 +62,89 @@ public final class AgentProtocol {
     SESSION_STATUS,
     RESULT,
     ERROR
+  }
+
+  /** Sender가 Receiver에 전달할 AFS 시험 manifest다. */
+  @lombok.Value
+  @lombok.AllArgsConstructor
+  @lombok.Builder
+  @lombok.extern.jackson.Jacksonized
+  @lombok.experimental.Accessors(fluent = true)
+  @com.fasterxml.jackson.annotation.JsonAutoDetect(
+      fieldVisibility = com.fasterxml.jackson.annotation.JsonAutoDetect.Visibility.ANY)
+  public static class AfsTransferStart {
+    String senderAgentId;
+    String receiverAgentId;
+    long sourceLength;
+    String sourceSha256;
+    int recordCount;
+    int frameCount;
+    int prn;
+    TestType testType;
+    int errorCount;
+    int errorSeed;
+    int syncDamageInterval;
+    int injectedFrameCount;
+  }
+
+  /** 관리 채널의 한 batch에 포함되는 단일 AFS 프레임이다. */
+  @lombok.Value
+  @lombok.Builder
+  @lombok.extern.jackson.Jacksonized
+  @lombok.experimental.Accessors(fluent = true)
+  @com.fasterxml.jackson.annotation.JsonAutoDetect(
+      fieldVisibility = com.fasterxml.jackson.annotation.JsonAutoDetect.Visibility.ANY)
+  public static class AfsTransferFrame {
+    int index;
+    int prn;
+    int week;
+    int intervalOfWeek;
+    int timeOfInterval;
+    byte[] payload;
+
+    public AfsTransferFrame(int index, int prn, int week, int intervalOfWeek,
+        int timeOfInterval, byte[] payload) {
+      this.index = index;
+      this.prn = prn;
+      this.week = week;
+      this.intervalOfWeek = intervalOfWeek;
+      this.timeOfInterval = timeOfInterval;
+      this.payload = payload == null ? new byte[0] : payload.clone();
+    }
+  }
+
+  /** WebSocket과 노드 관리 HTTP의 크기 제한 안에서 전달하는 AFS 프레임 묶음이다. */
+  @lombok.Value
+  @lombok.Builder
+  @lombok.extern.jackson.Jacksonized
+  @lombok.experimental.Accessors(fluent = true)
+  @com.fasterxml.jackson.annotation.JsonAutoDetect(
+      fieldVisibility = com.fasterxml.jackson.annotation.JsonAutoDetect.Visibility.ANY)
+  public static class AfsTransferBatch {
+    String senderAgentId;
+    String receiverAgentId;
+    List<AfsTransferFrame> frames;
+
+    public AfsTransferBatch(String senderAgentId, String receiverAgentId,
+        List<AfsTransferFrame> frames) {
+      this.senderAgentId = senderAgentId;
+      this.receiverAgentId = receiverAgentId;
+      this.frames = frames == null ? List.of() : List.copyOf(frames);
+    }
+  }
+
+  /** Sender가 선언한 모든 AFS frame batch의 전달 완료 경계다. */
+  @lombok.Value
+  @lombok.AllArgsConstructor
+  @lombok.Builder
+  @lombok.extern.jackson.Jacksonized
+  @lombok.experimental.Accessors(fluent = true)
+  @com.fasterxml.jackson.annotation.JsonAutoDetect(
+      fieldVisibility = com.fasterxml.jackson.annotation.JsonAutoDetect.Visibility.ANY)
+  public static class AfsTransferComplete {
+    String senderAgentId;
+    String receiverAgentId;
+    int frameCount;
   }
 
   /**
@@ -271,10 +357,10 @@ public final class AgentProtocol {
     /** Sender가 GRAW를 정상 인코딩한 오류 주입 전 750 byte 기준 프레임이다. */
     byte[] referenceFrame;
 
-    /** 시험 오류를 주입한 뒤 Sender가 실제 UDP로 보낸 750 byte 프레임이다. */
+    /** 시험 오류를 주입한 뒤 Sender가 실제로 전달한 750 byte 프레임이다. */
     byte[] transmittedFrame;
 
-    /** Receiver가 UDP 패킷 검사를 통과시켜 채택한 750 byte 프레임이다. */
+    /** Receiver가 전송 검사를 통과시켜 채택한 750 byte 프레임이다. */
     byte[] receivedFrame;
 
     /** Receiver 복호 결과를 동일 TOI로 다시 인코딩한 진단용 750 byte 프레임이다. */
@@ -324,9 +410,9 @@ public final class AgentProtocol {
         int frameIndex,
         /** Sender가 GRAW를 정상 인코딩한 오류 주입 전 750 byte 기준 프레임이다. */
         byte[] referenceFrame,
-        /** 시험 오류를 주입한 뒤 Sender가 실제 UDP로 보낸 750 byte 프레임이다. */
+        /** 시험 오류를 주입한 뒤 Sender가 실제로 전달한 750 byte 프레임이다. */
         byte[] transmittedFrame,
-        /** Receiver가 UDP 패킷 검사를 통과시켜 채택한 750 byte 프레임이다. */
+        /** Receiver가 전송 검사를 통과시켜 채택한 750 byte 프레임이다. */
         byte[] receivedFrame,
         /** Receiver 복호 결과를 동일 TOI로 다시 인코딩한 진단용 750 byte 프레임이다. */
         byte[] reencodedFrame,

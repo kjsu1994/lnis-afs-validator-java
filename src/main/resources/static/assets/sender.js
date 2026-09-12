@@ -54,36 +54,6 @@ function addEmptyOption(select, roleName) {
     select.add(option);
 }
 
-/** 선택한 Receiver Agent의 LAN 주소를 UDP 목적지에 자동 반영한다. */
-function applyReceiverAddress() {
-    const input = $('broadcast-address');
-    const receiver = agentCache.find(
-        (agent) => agent.agentId === $('receiver-agent').value
-            && agent.role === 'RECEIVER',
-    );
-    const addresses = receiver?.ipv4Addresses?.filter(
-        (value) => typeof value === 'string' && value.trim(),
-    ) || [];
-    const serverOctets = location.hostname.split('.');
-    const serverPrefix = serverOctets.length === 4
-        ? `${serverOctets.slice(0, 3).join('.')}.`
-        : '';
-    const address = addresses.find(
-        (value) => serverPrefix && value.startsWith(serverPrefix),
-    ) || addresses[0];
-    const current = input.value.trim();
-    const previousAutomatic = input.dataset.automaticAddress || '';
-    const mayReplace = !current
-        || current === '127.0.0.1'
-        || current.toLowerCase() === 'localhost'
-        || current === previousAutomatic;
-
-    if (address && mayReplace) {
-        input.value = address;
-        input.dataset.automaticAddress = address;
-    }
-}
-
 /** 팝업을 사용하지 않고 현재 작업 문맥을 유지한 채 결과를 안내한다. */
 function showNotice(level, title, message) {
     const notice = $('page-notice');
@@ -186,7 +156,6 @@ async function refreshAgents() {
         }
     }
 
-    applyReceiverAddress();
     paintAgents();
     updateControls();
 }
@@ -269,7 +238,6 @@ $('capture-agent').onchange = () => {
 
 $('com-port').onchange = updateControls;
 $('receiver-agent').onchange = () => {
-    applyReceiverAddress();
     updateControls();
 };
 
@@ -376,26 +344,16 @@ function conditions() {
         document.querySelectorAll('.conditional.error,.conditional.sync')
             .forEach((item) => item.classList.remove('hidden'));
     }
-    if (type === 'TEST_E_UDP_DROP') {
-        document.querySelectorAll('.conditional.drop')
-            .forEach((item) => item.classList.remove('hidden'));
-    }
 }
 
 $('test-type').onchange = conditions;
 conditions();
 
 /** 서버 요청 전에 시험별 허용 범위를 일반 사용자가 이해할 수 있는 문장으로 검증한다. */
-function validateTestSettings(options, transport) {
+function validateTestSettings(options) {
     const afsPrn = Number($('afs-prn').value);
     if (!Number.isInteger(afsPrn) || afsPrn < 1 || afsPrn > 8) {
         return 'SB2 LANS Ephemeris PRN은 1~8 범위에서 선택하세요.';
-    }
-    if (transport.repeatCount < 1 || transport.repeatCount > 20) {
-        return 'UDP 반복 송신 횟수는 1~20 범위로 입력하세요.';
-    }
-    if (transport.resultTimeoutSeconds < 1) {
-        return '결과 대기 시간은 1초 이상으로 입력하세요.';
     }
     if (['TEST_B_RANDOM_ERRORS', 'TEST_C_BURST_ERRORS'].includes(options.testType)
         && (options.errorCount < 1 || options.errorCount > 5880)) {
@@ -407,10 +365,6 @@ function validateTestSettings(options, transport) {
     }
     if (options.testType === 'TEST_D_SYNC_RECOVERY' && options.syncDamageInterval < 1) {
         return 'Test D의 동기 손상 간격은 1 frame 이상으로 입력하세요.';
-    }
-    if (options.testType === 'TEST_E_UDP_DROP'
-        && (options.dropRatePercent < 0 || options.dropRatePercent > 100)) {
-        return 'Test E의 UDP 복제본 미전송 확률은 0~100% 범위로 입력하세요.';
     }
     return null;
 }
@@ -431,26 +385,15 @@ $('test-start').onclick = async () => {
             afs: {
                 prn: Number($('afs-prn').value),
             },
-            transport: {
-                broadcastAddress: $('broadcast-address').value,
-                dataPort: Number($('data-port').value),
-                resultPort: Number($('result-port').value),
-                repeatCount: Number($('repeat-count').value),
-                resultTimeoutSeconds: Number($('result-timeout').value),
-                endGraceMilliseconds: 1000,
-                probeIntervalMilliseconds: 1000,
-            },
             options: {
                 testType: $('test-type').value,
                 errorCount: Number($('error-count').value),
                 errorSeed: Number($('error-seed').value),
                 syncDamageInterval: Number($('sync-interval').value),
-                dropRatePercent: Number($('drop-rate').value),
-                dropSeed: Number($('drop-seed').value),
                 thresholds: {},
             },
         };
-        const validationMessage = validateTestSettings(body.options, body.transport);
+        const validationMessage = validateTestSettings(body.options);
         if (validationMessage) {
             showNotice('warning', '시험 조건 확인', validationMessage);
             return;

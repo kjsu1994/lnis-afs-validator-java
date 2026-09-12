@@ -17,9 +17,9 @@ public final class LnisModels {
 
   /** Agent 프로세스가 수행하는 고정 역할이다. */
   public enum AgentRole {
-    /** GRAW를 AFS 프레임으로 만들고 UDP로 전송한다. */
+    /** GRAW를 AFS 프레임으로 만들어 신뢰성 있는 관리 채널로 전달한다. */
     SENDER,
-    /** UDP 프레임을 받아 AFS를 복호화하고 GRAW를 복원한다. */
+    /** 전달받은 AFS 프레임을 복호화하고 GRAW를 복원한다. */
     RECEIVER
   }
 
@@ -37,7 +37,7 @@ public final class LnisModels {
     ERROR
   }
 
-  /** WPF Validator와 대응되는 Test A~E 시험 종류다. */
+  /** AFS Frame 검증에 사용하는 Test A~D 시험 종류다. */
   public enum TestType {
     /** 오류를 주입하지 않고 정상 송수신과 원본 복원을 검증한다. */
     TEST_A_NORMAL,
@@ -46,16 +46,14 @@ public final class LnisModels {
     /** 데이터 영역에서 연속된 비트 구간을 반전해 Burst 오류 복구를 검증한다. */
     TEST_C_BURST_ERRORS,
     /** 동기 영역을 훼손하고 다음 정상 동기 프레임 탐색 여부를 검증한다. */
-    TEST_D_SYNC_RECOVERY,
-    /** Sender가 일부 UDP 복제본을 의도적으로 보내지 않아 Drop 내성을 검증한다. */
-    TEST_E_UDP_DROP
+    TEST_D_SYNC_RECOVERY
   }
 
   /** 시험 생성부터 종료까지 중앙 서버가 관리하는 상태값이다. */
   public enum SessionState {
     /** 세션 레코드가 생성됐지만 Agent 명령을 아직 시작하지 않은 상태다. */
     CREATED,
-    /** Receiver가 UDP 수신 준비를 완료하기를 기다리는 상태다. */
+    /** Receiver가 AFS 프레임 수신 준비를 완료하기를 기다리는 상태다. */
     WAITING_RECEIVER,
     /** Sender와 Receiver가 시험 데이터를 송수신하는 상태다. */
     TRANSMITTING,
@@ -125,72 +123,6 @@ public final class LnisModels {
     boolean minimum;
   }
 
-  /**
-   * Sender/Receiver UDP 통신 설정이다.
-   *
-   * <p>숫자 필드가 0이면 기존 WPF 동작과 동일한 기본값을 적용한다. 값의 허용 범위와 두 포트의 중복 여부는 실제 세션을 생성하는 서버 service가 검증한다.
-   */
-  @lombok.Value
-  @lombok.Builder
-  @lombok.extern.jackson.Jacksonized
-  @lombok.experimental.Accessors(fluent = true)
-  @com.fasterxml.jackson.annotation.JsonAutoDetect(
-      fieldVisibility = com.fasterxml.jackson.annotation.JsonAutoDetect.Visibility.ANY)
-  public static class TransportSettings {
-    /** Sender가 FRAME 데이터그램을 보낼 IPv4 주소다. 로컬 시험에서는 {@code 127.0.0.1}이다. */
-    String broadcastAddress;
-
-    /** AFS FRAME과 SESSION 제어 패킷을 Receiver가 수신할 UDP 포트다. */
-    int dataPort;
-
-    /** Receiver가 최종 압축 결과를 Sender로 돌려보낼 UDP 포트다. */
-    int resultPort;
-
-    /** 손실 내성을 위해 동일 논리 패킷을 반복 송신하는 총 횟수다. */
-    int repeatCount;
-
-    /** 다음 패킷 또는 Receiver 결과를 기다리는 최대 시간이며 단위는 second다. */
-    int resultTimeoutSeconds;
-
-    /** SESSION_END 이후 늦게 도착한 반복 패킷까지 받을 유예 시간이며 단위는 millisecond다. */
-    int endGraceMilliseconds;
-
-    /** 네트워크 Probe를 사용하는 경우 시도 간격이며 단위는 millisecond다. */
-    int probeIntervalMilliseconds;
-
-    public TransportSettings(
-        /** Sender가 FRAME 데이터그램을 보낼 IPv4 주소다. 로컬 시험에서는 {@code 127.0.0.1}이다. */
-        String broadcastAddress,
-        /** AFS FRAME과 SESSION 제어 패킷을 Receiver가 수신할 UDP 포트다. */
-        int dataPort,
-        /** Receiver가 최종 압축 결과를 Sender로 돌려보낼 UDP 포트다. */
-        int resultPort,
-        /** 손실 내성을 위해 동일 논리 패킷을 반복 송신하는 총 횟수다. */
-        int repeatCount,
-        /** 다음 패킷 또는 Receiver 결과를 기다리는 최대 시간이며 단위는 second다. */
-        int resultTimeoutSeconds,
-        /** SESSION_END 이후 늦게 도착한 반복 패킷까지 받을 유예 시간이며 단위는 millisecond다. */
-        int endGraceMilliseconds,
-        /** 네트워크 Probe를 사용하는 경우 시도 간격이며 단위는 millisecond다. */
-        int probeIntervalMilliseconds) {
-      broadcastAddress = blankToDefault(broadcastAddress, "255.255.255.255");
-      if (dataPort == 0) dataPort = 45821;
-      if (resultPort == 0) resultPort = 45822;
-      if (repeatCount == 0) repeatCount = 3;
-      if (resultTimeoutSeconds == 0) resultTimeoutSeconds = 30;
-      if (endGraceMilliseconds == 0) endGraceMilliseconds = 1000;
-      if (probeIntervalMilliseconds == 0) probeIntervalMilliseconds = 1000;
-
-      this.broadcastAddress = broadcastAddress;
-      this.dataPort = dataPort;
-      this.resultPort = resultPort;
-      this.repeatCount = repeatCount;
-      this.resultTimeoutSeconds = resultTimeoutSeconds;
-      this.endGraceMilliseconds = endGraceMilliseconds;
-      this.probeIntervalMilliseconds = probeIntervalMilliseconds;
-    }
-  }
-
   /** AFS 프레임 payload 생성에 적용할 설정이다. */
   @lombok.Value
   @lombok.Builder
@@ -246,7 +178,7 @@ public final class LnisModels {
   }
 
   /**
-   * Test A~E에 공통으로 전달되는 오류 주입 및 판정 옵션이다.
+   * Test A~D에 공통으로 전달되는 오류 주입 및 판정 옵션이다.
    *
    * <p>seed 값은 시험 재현성에 사용되므로 동일 입력과 seed 조합에서 오류 위치가 바뀌면 안 된다.
    */
@@ -257,7 +189,7 @@ public final class LnisModels {
   @com.fasterxml.jackson.annotation.JsonAutoDetect(
       fieldVisibility = com.fasterxml.jackson.annotation.JsonAutoDetect.Visibility.ANY)
   public static class TestOptions {
-    /** 실행할 Test A~E 유형이며 {@code null}이면 Test A를 사용한다. */
+    /** 실행할 Test A~D 유형이며 {@code null}이면 Test A를 사용한다. */
     TestType testType;
 
     /** Test B/C/D에서 프레임 하나당 의도적으로 반전할 비트 개수다. */
@@ -269,17 +201,11 @@ public final class LnisModels {
     /** Test D에서 동기 영역 손상 위치를 계산할 간격 설정이다. */
     int syncDamageInterval;
 
-    /** Test E에서 각 UDP 복제본을 미전송할 설정 확률이며 단위는 percent다. */
-    double dropRatePercent;
-
-    /** Test E의 Drop 결정을 반복 재현하기 위한 의사 난수 Seed다. */
-    int dropSeed;
-
     /** 지표 이름을 키로 사용하는 선택적 사용자 판정 임계값이다. */
     Map<String, MetricThreshold> thresholds;
 
     public TestOptions(
-        /** 실행할 Test A~E 유형이며 {@code null}이면 Test A를 사용한다. */
+        /** 실행할 Test A~D 유형이며 {@code null}이면 Test A를 사용한다. */
         TestType testType,
         /** Test B/C/D에서 프레임 하나당 의도적으로 반전할 비트 개수다. */
         int errorCount,
@@ -287,25 +213,18 @@ public final class LnisModels {
         int errorSeed,
         /** Test D에서 동기 영역 손상 위치를 계산할 간격 설정이다. */
         int syncDamageInterval,
-        /** Test E에서 각 UDP 복제본을 미전송할 설정 확률이며 단위는 percent다. */
-        double dropRatePercent,
-        /** Test E의 Drop 결정을 반복 재현하기 위한 의사 난수 Seed다. */
-        int dropSeed,
         /** 지표 이름을 키로 사용하는 선택적 사용자 판정 임계값이다. */
         Map<String, MetricThreshold> thresholds) {
       testType = testType == null ? TestType.TEST_A_NORMAL : testType;
       if (errorCount == 0) errorCount = 1;
       if (errorSeed == 0) errorSeed = 1;
       if (syncDamageInterval == 0) syncDamageInterval = 10;
-      if (dropSeed == 0) dropSeed = 1;
       thresholds = thresholds == null ? Map.of() : Map.copyOf(thresholds);
 
       this.testType = testType;
       this.errorCount = errorCount;
       this.errorSeed = errorSeed;
       this.syncDamageInterval = syncDamageInterval;
-      this.dropRatePercent = dropRatePercent;
-      this.dropSeed = dropSeed;
       this.thresholds = thresholds;
     }
   }
@@ -412,62 +331,24 @@ public final class LnisModels {
     String detail;
   }
 
-  /**
-   * 논리 frame, 실제 datagram, 중복/손상/Drop 및 전송 시간 카운터다.
-   *
-   * <p>{@code corruptDatagrams}는 구버전 JSON 호환을 위해 유지하는 합계 필드다. 새 화면과 산출물에서는 UDP 계층의 {@code
-   * invalidDatagrams}, AFS 계층의 {@code decodeFailedFrames}, 시험에서 의도한 {@code injectedBitCount}와
-   * {@code syncRejectedFrames}를 각각 사용해야 단위가 섞이지 않는다.
-   */
+  /** AFS 프레임 생성·전달·복호화와 오류 주입 결과 카운터다. */
   @lombok.Value
   @lombok.Builder
   @lombok.extern.jackson.Jacksonized
   @lombok.experimental.Accessors(fluent = true)
   @com.fasterxml.jackson.annotation.JsonAutoDetect(
       fieldVisibility = com.fasterxml.jackson.annotation.JsonAutoDetect.Visibility.ANY)
-  public static class NetworkCounters {
-    /** Sender가 원본 GRAW로부터 생성한 중복 제거 기준 논리 AFS 프레임 수다. */
-    long expectedLogicalFrames;
-
-    /** Receiver가 동일 sequence 중복을 제거하고 채택한 논리 AFS 프레임 수다. */
-    long receivedLogicalFrames;
-
-    /** Sender가 준비한 FRAME 데이터그램 송신 횟수이며 반복 송신분을 포함한다. */
-    long sentDatagrams;
-
-    /** Receiver가 받은 FRAME·SESSION_START 등 모든 시험 UDP 데이터그램 수다. */
-    long receivedDatagrams;
-
-    /** 같은 kind와 sequence가 이미 처리되어 제외된 반복 데이터그램 수다. */
-    long duplicateDatagrams;
-
-    /** 호환성을 위해 유지하는 UDP 해석 실패 수이며 신규 화면에서는 {@code invalidDatagrams}를 사용한다. */
-    long corruptDatagrams;
-
-    /** 네트워크 Probe 요청을 송신한 횟수다. */
-    long probeAttempts;
-
-    /** 상대 Agent에서 정상 응답한 Probe 횟수다. */
-    long probeResponses;
-
-    /** 이 역할이 처리하거나 복원한 원시 데이터 크기이며 단위는 byte다. */
+  public static class AfsCounters {
+    /** Sender가 원본 GRAW로부터 생성한 AFS 프레임 수다. */
+    long expectedFrames;
+    /** 신뢰성 있는 관리 채널로 전달을 완료한 AFS 프레임 수다. */
+    long transferredFrames;
+    /** Receiver가 복호화 대상으로 처리한 AFS 프레임 수다. */
+    long processedFrames;
+    /** Sender 원본 또는 Receiver 복원 데이터 크기이며 단위는 byte다. */
     long rawBytes;
-
-    /** 역할별 송수신 작업 시작부터 결과 생성까지 걸린 시간이다. */
-    Duration transferDuration;
-
-    /** Probe로 계산한 개별 단방향 지연 추정값 목록이며 단위는 millisecond다. */
-    List<Double> oneWayLatencyMilliseconds;
-
-    /** Test E 설정에 따라 Sender가 실제로 보내지 않은 UDP 복제본 수다. */
-    long simulatedDroppedDatagrams;
-
-    /** Test E에 설정한 의도적 미전송 확률이며 단위는 percent다. */
-    double configuredDropRatePercent;
-
-    /** LNIS 패킷 구조 또는 패킷 CRC를 해석하지 못해 폐기한 UDP 데이터그램 수다. */
-    long invalidDatagrams;
-
+    /** 역할별 AFS 작업 시작부터 결과 생성까지 걸린 시간이다. */
+    Duration processingDuration;
     /** Decoder 예외 또는 SB2·SB3·SB4 중 하나 이상의 CRC 실패가 발생한 AFS 프레임 수다. */
     long decodeFailedFrames;
 
@@ -477,59 +358,24 @@ public final class LnisModels {
     /** Test D에서 동기 패턴 손상으로 정상 프레임 후보에서 제외한 프레임 수다. */
     long syncRejectedFrames;
 
-    public NetworkCounters(
-        /** Sender가 원본 GRAW로부터 생성한 중복 제거 기준 논리 AFS 프레임 수다. */
-        long expectedLogicalFrames,
-        /** Receiver가 동일 sequence 중복을 제거하고 채택한 논리 AFS 프레임 수다. */
-        long receivedLogicalFrames,
-        /** Sender가 준비한 FRAME 데이터그램 송신 횟수이며 반복 송신분을 포함한다. */
-        long sentDatagrams,
-        /** Receiver가 받은 FRAME·SESSION_START 등 모든 시험 UDP 데이터그램 수다. */
-        long receivedDatagrams,
-        /** 같은 kind와 sequence가 이미 처리되어 제외된 반복 데이터그램 수다. */
-        long duplicateDatagrams,
-        /** 호환성을 위해 유지하는 UDP 해석 실패 수이며 신규 화면에서는 {@code invalidDatagrams}를 사용한다. */
-        long corruptDatagrams,
-        /** 네트워크 Probe 요청을 송신한 횟수다. */
-        long probeAttempts,
-        /** 상대 Agent에서 정상 응답한 Probe 횟수다. */
-        long probeResponses,
-        /** 이 역할이 처리하거나 복원한 원시 데이터 크기이며 단위는 byte다. */
+    public AfsCounters(
+        long expectedFrames,
+        long transferredFrames,
+        long processedFrames,
         long rawBytes,
-        /** 역할별 송수신 작업 시작부터 결과 생성까지 걸린 시간이다. */
-        Duration transferDuration,
-        /** Probe로 계산한 개별 단방향 지연 추정값 목록이며 단위는 millisecond다. */
-        List<Double> oneWayLatencyMilliseconds,
-        /** Test E 설정에 따라 Sender가 실제로 보내지 않은 UDP 복제본 수다. */
-        long simulatedDroppedDatagrams,
-        /** Test E에 설정한 의도적 미전송 확률이며 단위는 percent다. */
-        double configuredDropRatePercent,
-        /** LNIS 패킷 구조 또는 패킷 CRC를 해석하지 못해 폐기한 UDP 데이터그램 수다. */
-        long invalidDatagrams,
+        Duration processingDuration,
         /** Decoder 예외 또는 SB2·SB3·SB4 중 하나 이상의 CRC 실패가 발생한 AFS 프레임 수다. */
         long decodeFailedFrames,
         /** Test B/C/D가 AFS 프레임 내부에 의도적으로 반전한 비트의 전체 합계다. */
         long injectedBitCount,
         /** Test D에서 동기 패턴 손상으로 정상 프레임 후보에서 제외한 프레임 수다. */
         long syncRejectedFrames) {
-      transferDuration = transferDuration == null ? Duration.ZERO : transferDuration;
-      oneWayLatencyMilliseconds =
-          oneWayLatencyMilliseconds == null ? List.of() : List.copyOf(oneWayLatencyMilliseconds);
-
-      this.expectedLogicalFrames = expectedLogicalFrames;
-      this.receivedLogicalFrames = receivedLogicalFrames;
-      this.sentDatagrams = sentDatagrams;
-      this.receivedDatagrams = receivedDatagrams;
-      this.duplicateDatagrams = duplicateDatagrams;
-      this.corruptDatagrams = corruptDatagrams;
-      this.probeAttempts = probeAttempts;
-      this.probeResponses = probeResponses;
+      processingDuration = processingDuration == null ? Duration.ZERO : processingDuration;
+      this.expectedFrames = expectedFrames;
+      this.transferredFrames = transferredFrames;
+      this.processedFrames = processedFrames;
       this.rawBytes = rawBytes;
-      this.transferDuration = transferDuration;
-      this.oneWayLatencyMilliseconds = oneWayLatencyMilliseconds;
-      this.simulatedDroppedDatagrams = simulatedDroppedDatagrams;
-      this.configuredDropRatePercent = configuredDropRatePercent;
-      this.invalidDatagrams = invalidDatagrams;
+      this.processingDuration = processingDuration;
       this.decodeFailedFrames = decodeFailedFrames;
       this.injectedBitCount = injectedBitCount;
       this.syncRejectedFrames = syncRejectedFrames;
@@ -584,8 +430,8 @@ public final class LnisModels {
     /** CRC 정상 프레임 수와 Decoder 처리량 등의 측정 지표 목록이다. */
     List<Metric> metrics;
 
-    /** 논리 프레임, UDP, Drop 및 오류 주입 누적 카운터다. */
-    NetworkCounters counters;
+    /** AFS 프레임 전달·복호화 및 오류 주입 누적 카운터다. */
+    AfsCounters counters;
 
     /** 시험 중 수집한 Agent 프로세스 자원 사용량 표본 목록이다. */
     List<ResourceSample> samples;
@@ -608,8 +454,8 @@ public final class LnisModels {
         IntegrityResult integrity,
         /** CRC 정상 프레임 수와 Decoder 처리량 등의 측정 지표 목록이다. */
         List<Metric> metrics,
-        /** 논리 프레임, UDP, Drop 및 오류 주입 누적 카운터다. */
-        NetworkCounters counters,
+        /** AFS 프레임 전달·복호화 및 오류 주입 누적 카운터다. */
+        AfsCounters counters,
         /** 시험 중 수집한 Agent 프로세스 자원 사용량 표본 목록이다. */
         List<ResourceSample> samples,
         /** FAIL 또는 내부 오류의 대표 설명이며 정상 결과에서는 {@code null}이다. */
@@ -645,7 +491,7 @@ public final class LnisModels {
     /** 서버가 관리하는 현재 세션 실행 상태다. */
     SessionState state;
 
-    /** 세션 생성 시 선택한 Test A~E 유형이다. */
+    /** 세션 생성 시 선택한 Test A~D 유형이다. */
     TestType testType;
 
     /** 프레임 생성·송신을 담당한 Agent ID다. */

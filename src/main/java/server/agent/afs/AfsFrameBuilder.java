@@ -80,7 +80,7 @@ public final class AfsFrameBuilder {
     /** 시험 오류를 넣기 전 비교 기준 프레임 목록이다. */
     List<Frame> referenceFrames;
 
-    /** 시험 오류를 적용해 실제 UDP로 전송할 프레임 목록이다. */
+    /** 시험 오류를 적용해 실제로 전송할 프레임 목록이다. */
     List<Frame> frames;
 
     /** 오류가 하나 이상 주입된 논리 프레임 개수다. 주입 비트 총합과는 다르다. */
@@ -95,7 +95,7 @@ public final class AfsFrameBuilder {
     public Prepared(
         /** 시험 오류를 넣기 전 비교 기준 프레임 목록이다. */
         List<Frame> referenceFrames,
-        /** 시험 오류를 적용해 실제 UDP로 전송할 프레임 목록이다. */
+        /** 시험 오류를 적용해 실제로 전송할 프레임 목록이다. */
         List<Frame> frames,
         /** 오류가 하나 이상 주입된 논리 프레임 개수다. 주입 비트 총합과는 다르다. */
         int injectedFrameCount,

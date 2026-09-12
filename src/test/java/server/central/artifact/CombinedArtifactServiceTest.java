@@ -60,9 +60,8 @@ class CombinedArtifactServiceTest {
             MetricStatus.PASS,
             null,
             null);
-    NetworkCounters counters =
-        new NetworkCounters(
-            4, 4, 12, 16, 10, 0, 1, 1, 464, Duration.ofMillis(20), List.of(1.25), 0, 0, 0, 0, 0, 0);
+    AfsCounters counters =
+        new AfsCounters(4, 4, 4, 464, Duration.ofMillis(20), 0, 0, 0);
     return new RoleResult(
         1,
         sessionId,

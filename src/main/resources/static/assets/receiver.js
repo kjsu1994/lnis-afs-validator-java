@@ -35,9 +35,6 @@ function mergeResultContext(details) {
             'errorSeed',
             'syncDamageInterval',
             'injectedFrameCount',
-            'dropRatePercent',
-            'dropSeed',
-            'plannedDroppedDatagrams',
         ].includes(key);
         if (!positiveCondition || Number(value) > 0 || merged[key] === undefined) {
             merged[key] = value;
@@ -58,9 +55,6 @@ function hasUsableTestCondition(details) {
         return Number(details.errorCount) > 0
             && Number(details.syncDamageInterval) > 0
             && Number(details.injectedFrameCount) > 0;
-    }
-    if (details.testType === 'TEST_E_UDP_DROP') {
-        return Number(details.dropRatePercent) > 0;
     }
     return false;
 }
@@ -111,7 +105,7 @@ statusSocket(
         }
 
         if (event.sessionId && activeSession && event.sessionId !== activeSession) {
-            // 새 세션의 조건에 이전 시험의 오류 수·Drop 비율이 섞이지 않도록 문맥을 초기화한다.
+            // 새 세션의 조건에 이전 시험의 오류 수가 섞이지 않도록 문맥을 초기화한다.
             resultContext = {};
         }
         if (event.sessionId) {

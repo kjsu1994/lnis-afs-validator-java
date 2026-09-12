@@ -79,7 +79,7 @@ class NodeFailureTest {
         doAnswer(call -> { stored.set(call.getArgument(0)); return null; }).when(repository).save(any());
         when(connections.online("receiver-1")).thenReturn(true);
         when(locks.tryAcquire(any())).thenReturn(true);
-        doThrow(new IllegalStateException("UDP bind failed")).when(connections).send(eq("receiver-1"), any());
+        doThrow(new IllegalStateException("AFS receiver arm failed")).when(connections).send(eq("receiver-1"), any());
         NodeAfsService service = new NodeAfsService(properties, connections, repository, locks, sessions, mapper);
         UUID id = UUID.randomUUID();
         assertThrows(IllegalStateException.class, () -> service.command(arm(id)));
@@ -116,8 +116,7 @@ class NodeFailureTest {
     private Envelope arm(UUID id)
     {
         CreateSessionRequest request = new CreateSessionRequest("sender-1", "receiver-1", UUID.randomUUID(),
-                new AfsSettings(1), new TransportSettings("127.0.0.1", 45821, 45822, 2, 10, 200, 200),
-                new TestOptions(TestType.TEST_A_NORMAL, 1, 1, 10, 0, 1, Map.of()));
+                new AfsSettings(1), new TestOptions(TestType.TEST_A_NORMAL, 1, 1, 10, Map.of()));
         return Envelope.of(MessageType.COMMAND, "receiver-1", AgentRole.RECEIVER, id,
                 mapper.valueToTree(new Command(CommandType.ARM_RECEIVER, mapper.valueToTree(request))));
     }

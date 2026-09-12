@@ -24,7 +24,7 @@ import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
 
-/** 상대 실행기를 목록에 노출하고 AFS 수신 결과를 가져온다. 실제 시험 데이터의 우회 전송은 금지한다. */
+/** 상대 실행기를 목록에 노출하고 AFS frame을 관리 HTTP로 전달하며 수신 결과를 가져온다. */
 @Component
 @Profile("node")
 @RequiredArgsConstructor
@@ -105,9 +105,19 @@ public class NodePeerConnection implements CommandEndpoint {
     @Override
     public void send(Envelope message)
     {
-        if (properties.getRole() != AgentRole.SENDER || message.type() != MessageType.COMMAND
+        if (properties.getRole() != AgentRole.SENDER
                 || !properties.getPeerAgentId().equals(message.agentId())) {
-            throw new IllegalArgumentException("원격 입력/송신 실행은 허용하지 않습니다. 해당 PC의 화면을 사용하세요.");
+            throw new IllegalArgumentException("허용하지 않는 원격 AFS 요청입니다.");
+        }
+        if (message.type() == MessageType.AFS_TRANSFER_START
+                || message.type() == MessageType.AFS_TRANSFER_BATCH
+                || message.type() == MessageType.AFS_TRANSFER_COMPLETE) {
+            client.exchange("/lnis/api/v1/node/peer/afs/messages", message,
+                    java.util.Map.class, 1024);
+            return;
+        }
+        if (message.type() != MessageType.COMMAND) {
+            throw new IllegalArgumentException("원격 실행기에 전달할 수 없는 메시지입니다.");
         }
         Command command = mapper.convertValue(message.payload(), Command.class);
         if (command.command() != CommandType.ARM_RECEIVER && command.command() != CommandType.CANCEL_SESSION) {

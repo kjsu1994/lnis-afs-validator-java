@@ -14,10 +14,6 @@ const prepared = formatEventLog({
             sourceBytes: 4096,
             recordCount: 8,
             totalFrames: 4,
-            destinationAddress: '127.0.0.1',
-            dataPort: 45821,
-            resultPort: 45822,
-            repeatCount: 3,
             errorCount: 2,
             errorSeed: 7,
             injectedFrameCount: 4,
@@ -35,19 +31,12 @@ const transmitting = formatEventLog({
         percent: 57,
         stage: 'Transmitting',
         counters: {
-            frameNumber: 2,
+            transferredFrames: 2,
             totalFrames: 4,
-            sentCopies: 2,
-            repeatCount: 3,
-            droppedCopyIndexes: [1],
-            injectionMode: 'RANDOM_BIT_ERROR',
-            injectedBitPositions: [421, 1530],
         },
     },
 });
-assert.match(transmitting, /프레임 2\/4/);
-assert.match(transmitting, /Sender 미전송 복제본 #2/);
-assert.match(transmitting, /AFS frame bit 위치 \[421, 1530\]/);
+assert.match(transmitting, /AFS 프레임 2\/4 전달/);
 
 const receiving = formatEventLog({
     type: 'RX_STATUS',
@@ -56,19 +45,13 @@ const receiving = formatEventLog({
         percent: 45,
         stage: 'Receiving',
         counters: {
-            frameIndex: 1,
             receivedFrames: 2,
             expectedFrames: 4,
-            receivedDatagrams: 7,
-            duplicateDatagrams: 4,
-            corruptDatagrams: 0,
-            invalidDatagrams: 0,
         },
     },
 });
 assert.match(receiving, /RX 45%/);
 assert.match(receiving, /누적 2\/4 frames/);
-assert.match(receiving, /중복 4, UDP 해석 실패 0/);
 
 const result = formatEventLog({
     type: 'RESULT',
@@ -78,17 +61,12 @@ const result = formatEventLog({
         role: 'RECEIVER',
         verdict: 'PASS',
         counters: {
-            expectedLogicalFrames: 4,
-            receivedLogicalFrames: 4,
-            sentDatagrams: 12,
-            receivedDatagrams: 12,
-            duplicateDatagrams: 8,
-            corruptDatagrams: 0,
-            invalidDatagrams: 0,
+            expectedFrames: 4,
+            transferredFrames: 4,
+            processedFrames: 4,
             decodeFailedFrames: 0,
             injectedBitCount: 4,
             syncRejectedFrames: 0,
-            simulatedDroppedDatagrams: 0,
         },
         integrity: {
             success: true,
@@ -116,8 +94,7 @@ const result = formatEventLog({
     },
 });
 assert.match(result, /RECEIVER 최종 판정 PASS/);
-assert.match(result, /프레임 4\/4/);
-assert.match(result, /UDP 해석 실패 0 · AFS 복호화 실패 0/);
+assert.match(result, /AFS 프레임 생성 4 · 전달 4 · 처리 4 · 복호화 실패 0/);
 assert.match(result, /시험 주입 오류 4 bit/);
 assert.match(result, /SHA-256 일치/);
 assert.match(result, /Decoder 처리 프레임 4 frame \(정상\)/);

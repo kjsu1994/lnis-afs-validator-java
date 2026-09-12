@@ -20,7 +20,6 @@ import server.shared.model.LnisModels.*;
 
 import java.net.InetSocketAddress;
 import java.net.ServerSocket;
-import java.net.DatagramSocket;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
@@ -34,7 +33,7 @@ import java.util.function.BooleanSupplier;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-/** 별도 Spring 컨텍스트와 파일 H2, 실제 HTTP/UDP 및 네이티브 실행기로 독립 노드를 검증한다. */
+/** 별도 Spring 컨텍스트와 파일 H2, 실제 HTTP 및 네이티브 실행기로 독립 노드를 검증한다. */
 class IndependentNodeIntegrationTest {
     @TempDir
     Path directory;
@@ -124,14 +123,8 @@ class IndependentNodeIntegrationTest {
             SessionService txSessions = sender.getBean(SessionService.class);
             for (TestType type : TestType.values()) {
                 await(() -> ready(sender, "sender-1") && ready(sender, "receiver-1"), 15);
-                int dataPort = udpPort();
-                int resultPort = udpPort();
-                while (resultPort == dataPort) {
-                    resultPort = udpPort();
-                }
                 CreateSessionRequest request = new CreateSessionRequest("sender-1", "receiver-1", input,
-                        new AfsSettings(1), new TransportSettings("127.0.0.1", dataPort, resultPort, 2, 10, 200, 200),
-                        new TestOptions(type, 1, 1, 10, type == TestType.TEST_E_UDP_DROP ? 100 : 0, 1, Map.of()));
+                        new AfsSettings(1), new TestOptions(type, 1, 1, 10, Map.of()));
                 UUID session = txSessions.create(request).sessionId();
                 await(() -> txSessions.snapshot(session).rxResult() != null, 25);
                 await(() -> sender.getBean(ActiveSessionLockRepository.class).current().isEmpty(), 10);
@@ -142,8 +135,6 @@ class IndependentNodeIntegrationTest {
                 assertTrue(receiver.getBean(ActiveSessionLockRepository.class).current().isEmpty());
                 if (type == TestType.TEST_A_NORMAL) {
                     assertEquals(Verdict.PASS, result.verdict());
-                } else if (type == TestType.TEST_E_UDP_DROP) {
-                    assertTrue(result.txResult().counters().simulatedDroppedDatagrams() > 0);
                 } else {
                     assertTrue(result.txResult().counters().injectedBitCount() > 0);
                 }
@@ -205,10 +196,4 @@ class IndependentNodeIntegrationTest {
         }
     }
 
-    private static int udpPort() throws Exception
-    {
-        try (DatagramSocket socket = new DatagramSocket(0)) {
-            return socket.getLocalPort();
-        }
-    }
 }

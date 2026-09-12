@@ -14,17 +14,12 @@ const result = {
         reconstructedRecords: 4,
     },
     counters: {
-        expectedLogicalFrames: 4,
-        receivedLogicalFrames: 4,
-        sentDatagrams: 12,
-        receivedDatagrams: 16,
-        duplicateDatagrams: 10,
-        corruptDatagrams: 0,
-        invalidDatagrams: 0,
+        expectedFrames: 4,
+        transferredFrames: 4,
+        processedFrames: 4,
         decodeFailedFrames: 0,
         injectedBitCount: 0,
         syncRejectedFrames: 0,
-        simulatedDroppedDatagrams: 0,
         rawBytes: 464,
     },
     metrics: [
@@ -51,7 +46,7 @@ assert.equal(
     '일치',
 );
 assert.equal(
-    allMetrics.find((metric) => metric.name === '논리 프레임 수신')?.value,
+    allMetrics.find((metric) => metric.name === 'AFS 프레임 전달')?.value,
     '4 / 4 frame',
 );
 assert.equal(
@@ -62,13 +57,9 @@ assert.equal(
     allMetrics.find((metric) => metric.name === 'CRC까지 통과한 완전 복호')?.value,
     '4 / 4 frame',
 );
-assert.match(
-    allMetrics.find((metric) => metric.name === 'Receiver 전체 UDP 수신')?.description,
-    /제어 패킷도 포함/,
-);
 assert.equal(
-    allMetrics.find((metric) => metric.name === 'UDP 패킷 해석 실패')?.value,
-    '0 datagram',
+    allMetrics.find((metric) => metric.name === '연결로 전달한 AFS 프레임')?.value,
+    '4 frame',
 );
 assert.equal(
     allMetrics.find((metric) => metric.name === 'AFS 복호화 실패')?.value,
@@ -150,39 +141,6 @@ assert.equal(
 assert.equal(
     syncMetrics.find((metric) => metric.name === '동기 손상으로 제외')?.value,
     '1 frame',
-);
-assert.equal(
-    syncMetrics.some((metric) => metric.name === 'Sender가 실제로 미전송'),
-    false,
-);
-
-const dropResult = {
-    ...result,
-    counters: {
-        ...result.counters,
-        testType: 'TEST_E_UDP_DROP',
-        configuredDropRatePercent: 30,
-        simulatedDroppedDatagrams: 3,
-    },
-};
-const dropMetrics = buildResultPresentation(dropResult)
-    .groups
-    .flatMap((group) => group.metrics);
-assert.equal(
-    dropMetrics.find((metric) => metric.name === '설정한 미전송 확률')?.value,
-    '30%',
-);
-assert.equal(
-    dropMetrics.find((metric) => metric.name === 'Sender가 실제로 미전송')?.value,
-    '3 datagram',
-);
-assert.equal(
-    dropMetrics.some((metric) => metric.name === '동기 손상으로 제외'),
-    false,
-);
-assert.equal(
-    dropMetrics.some((metric) => metric.name === '시험에서 주입한 오류'),
-    false,
 );
 
 console.log('result-presentation smoke test passed');

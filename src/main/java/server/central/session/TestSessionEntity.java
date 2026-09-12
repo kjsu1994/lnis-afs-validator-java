@@ -39,7 +39,7 @@ public class TestSessionEntity {
     @Enumerated(EnumType.STRING)
     SessionState state;
 
-    /** 이 세션에 적용한 Test A~E 시험 유형이다. */
+    /** 이 세션에 적용한 Test A~D 시험 유형이다. */
     @Enumerated(EnumType.STRING)
     TestType testType;
 

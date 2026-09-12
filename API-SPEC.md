@@ -301,22 +301,11 @@ Content-Type: application/json
   "receiverAgentId": "receiver-1",
   "inputId": "4c0694f1-ce13-4a03-90d1-94288775f7bd",
   "afs": {"prn": 1},
-  "transport": {
-    "broadcastAddress": "192.168.1.255",
-    "dataPort": 45821,
-    "resultPort": 45822,
-    "repeatCount": 3,
-    "resultTimeoutSeconds": 30,
-    "endGraceMilliseconds": 1000,
-    "probeIntervalMilliseconds": 1000
-  },
   "options": {
     "testType": "TEST_A_NORMAL",
     "errorCount": 1,
     "errorSeed": 1,
     "syncDamageInterval": 10,
-    "dropRatePercent": 0,
-    "dropSeed": 1,
     "thresholds": {}
   }
 }
@@ -328,30 +317,21 @@ Content-Type: application/json
 - `TEST_B_RANDOM_ERRORS`: 임의 비트 오류
 - `TEST_C_BURST_ERRORS`: 연속 비트 오류
 - `TEST_D_SYNC_RECOVERY`: 동기 손상 후 재동기
-- `TEST_E_UDP_DROP`: UDP 복제본 Drop
 
 검증 조건:
 
 - 입력은 `complete=true`
 - Agent가 존재하고 Sender/Receiver 역할이 일치
 - 동시에 하나의 활성 시험만 허용
-- 두 포트는 1~65,535이며 서로 달라야 함
-- `repeatCount`: 1~20
 - `afs.prn`: 1~8
 - Test B/C `errorCount`: 1~5,880
 - Test D `errorCount`: 1~68, `syncDamageInterval`: 1 이상
-- Test E `dropRatePercent`: 0~100
 
 | 0 또는 생략 시 기본값 | 값 |
 |---|---|
-| `broadcastAddress` | `255.255.255.255` |
-| `dataPort`, `resultPort` | `45821`, `45822` |
-| `repeatCount` | `3` |
-| `resultTimeoutSeconds` | `30` |
-| `endGraceMilliseconds`, `probeIntervalMilliseconds` | `1000` |
 | `afs.prn` | `1` |
 | `testType` | `TEST_A_NORMAL` |
-| `errorCount`, `errorSeed`, `dropSeed` | `1` |
+| `errorCount`, `errorSeed` | `1` |
 | `syncDamageInterval` | `10` |
 
 처리 순서:
@@ -815,7 +795,7 @@ DTN 화면은 기존 수신측 IP·Port 옆에 연결 테스트와 저장·적�
 - `POST /lnis/api/v1/node/connection/test`: `{"ip":"192.168.1.73","port":8088}`. 서버가 후보 수신 노드에 인증된 GET 상태 요청을 보낸다. `connected`, `ready`, `elapsedMilliseconds`, `message`, 정상 조회 시 `node` 반환. 현재 주소는 변경하지 않는다.
 - `PUT /lnis/api/v1/node/connection`: 같은 본문으로 연결을 다시 확인하고 READY인 경우 H2에 저장·적용한다. AFS/DTN 시험 진행 중이거나 연결 검증 실패 시 기존 설정을 유지한다. `scheme`은 생략 시 `http`이며 기존 HTTPS 설정도 지원한다.
 
-화면 저장값은 환경 변수 `LNIS_NODE_PEER_URL`보다 우선하며 재시작 후 유지된다. IPv4/포트만 입력하며 URL 경로·호스트명·미지정/멀티캐스트/링크 로컬 주소는 거부한다. 잘못된 입력은 `400`, 시험 중 변경 등 상태 오류는 `409`다. 연결 테스트의 접속/인증 오류는 `200`과 `connected=false`로 표시한다. 이 검사는 관리 REST 연결 검사이며 UDP 또는 외부 DTN 전달을 검증하지 않는다.
+화면 저장값은 환경 변수 `LNIS_NODE_PEER_URL`보다 우선하며 재시작 후 유지된다. IPv4/포트만 입력하며 URL 경로·호스트명·미지정/멀티캐스트/링크 로컬 주소는 거부한다. 잘못된 입력은 `400`, 시험 중 변경 등 상태 오류는 `409`다. 연결 테스트의 접속/인증 오류는 `200`과 `connected=false`로 표시한다. 이 검사는 관리 REST 연결 검사이며 외부 DTN 전달은 검증하지 않는다.
 
 `node` 실행 모드에서만 활성화된다. 기존 `server`, `sender`, `receiver` 실행 계약은 유지한다.
 로컬 실행기, 원격 AFS 준비·취소·결과 조회 및 DTN 수신 DB 분리를 지원한다.
@@ -863,14 +843,14 @@ Linux 독립 노드 Compose는 `deployment/node`에 있으며 기존 중앙 서�
 
 아래 모든 API는 `Authorization: Bearer <관리 토큰>`이 필요하다. 송신/수신 ID는 시작 시 지정한 상대와 일치해야 한다.
 
-- `POST /lnis/api/v1/node/peer/afs/commands`: 기존 Agent protocol v2 `COMMAND` envelope 사용. 수신 노드의 `ARM_RECEIVER`, `CANCEL_SESSION`만 허용한다. 최대 32 KiB. 응답 `200`은 SessionSnapshot이다.
-- ARM 인수는 기존 CreateSessionRequest와 같지만 입력 파일을 전송하지 않는다. 수신 PC의 DB/활성 잠금 저장 후 로컬 UDP 수신기를 준비한다.
-- 같은 시험 ID와 동일 설정의 ARM 재호출은 소켓을 재실행하지 않는다. 다른 설정 또는 종료된 시험 ID는 `409`.
+- `POST /lnis/api/v1/node/peer/afs/commands`: 기존 Agent protocol v3 `COMMAND` envelope 사용. 수신 노드의 `ARM_RECEIVER`, `CANCEL_SESSION`만 허용한다. 최대 32 KiB. 응답 `200`은 SessionSnapshot이다.
+- ARM 인수는 기존 CreateSessionRequest와 같지만 입력 파일을 전송하지 않는다. 수신 PC의 DB/활성 잠금 저장 후 로컬 AFS 수신 세션을 준비한다.
+- 같은 시험 ID와 동일 설정의 ARM 재호출은 수신 세션을 중복 생성하지 않는다. 다른 설정 또는 종료된 시험 ID는 `409`.
 - 존재하지 않는 시험 취소는 `404`, 종료된 시험 취소는 기존 결과를 반환한다. 부분 준비 실패는 취소·DB 상태 기록·잠금 해제를 수행한다.
 - `GET /lnis/api/v1/node/peer/afs/sessions/{id}`: 수신 SessionSnapshot. 수신 PC에서 먼저 자체 결과를 완료하고 송신 PC가 TX/RX 종합 판정을 수행한다.
 - `GET /lnis/api/v1/node/peer/afs/sessions/{id}/evidence?after=-1`: `frameIndex > after`인 Receiver 프레임 증거를 오름차순 최대 32건 반환한다. 빈 배열이면 끝이다. AFS 분석 증거 전용이며 DTN 본문은 제공하지 않는다.
 
-입력 청크, START_SENDER, DTN_PROCESS는 관리 채널에서 거부한다. AFS 실제 시험 데이터는 기존 UDP로 전송한다.
+입력 청크, START_SENDER, DTN_PROCESS는 노드 관리 채널에서 거부한다. AFS 프레임은 `AFS_TRANSFER_START`, `AFS_TRANSFER_BATCH`, `AFS_TRANSFER_COMPLETE` envelope로 기존 인증된 관리 연결을 통해 전송한다.
 
 ### 14.4 DTN 사전 등록
 

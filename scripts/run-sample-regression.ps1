@@ -5,8 +5,7 @@
         'TEST_A_NORMAL',
         'TEST_B_RANDOM_ERRORS',
         'TEST_C_BURST_ERRORS',
-        'TEST_D_SYNC_RECOVERY',
-        'TEST_E_UDP_DROP'
+        'TEST_D_SYNC_RECOVERY'
     )
 )
 
@@ -93,22 +92,12 @@ function Start-TestSession {
         receiverAgentId = 'receiver-1'
         # PowerShell 자동 변수 $input과 충돌하지 않도록 입력 객체는 InputBuffer라는 이름을 사용한다.
         inputId = $InputBuffer.inputId
-        transport = @{
-            broadcastAddress = '127.0.0.1'
-            dataPort = 45821
-            resultPort = 45822
-            repeatCount = $Definition.RepeatCount
-            resultTimeoutSeconds = 30
-            endGraceMilliseconds = 1000
-            probeIntervalMilliseconds = 1000
-        }
+        afs = @{ prn = 1 }
         options = @{
             testType = $Definition.Type
             errorCount = $Definition.ErrorCount
             errorSeed = 1
             syncDamageInterval = 10
-            dropRatePercent = $Definition.DropRate
-            dropSeed = 1
             thresholds = @{}
         }
     } | ConvertTo-Json -Depth 8
@@ -149,10 +138,9 @@ function Test-SessionResult {
     Assert-Condition ($Session.verdict -eq 'PASS') "$($Definition.Type) 최종 판정이 $($Session.verdict)입니다."
     Assert-Condition ($Session.txResult.verdict -eq 'PASS') "$($Definition.Type) Sender 판정이 PASS가 아닙니다."
     Assert-Condition ($Session.rxResult.verdict -eq 'PASS') "$($Definition.Type) Receiver 판정이 PASS가 아닙니다."
-    Assert-Condition ($Session.rxResult.counters.expectedLogicalFrames -eq 4) "$($Definition.Type) 예상 프레임이 4개가 아닙니다."
-    Assert-Condition ($Session.rxResult.counters.receivedLogicalFrames -eq 4) "$($Definition.Type) 논리 프레임 4개를 모두 받지 못했습니다."
-    Assert-Condition ($Session.rxResult.counters.corruptDatagrams -eq 0) "$($Definition.Type)에 손상 데이터그램이 있습니다."
-    Assert-Condition ($Session.rxResult.counters.invalidDatagrams -eq 0) "$($Definition.Type)에 UDP 패킷 해석 실패가 있습니다."
+    Assert-Condition ($Session.rxResult.counters.expectedFrames -eq 4) "$($Definition.Type) 예상 프레임이 4개가 아닙니다."
+    Assert-Condition ($Session.rxResult.counters.transferredFrames -eq 4) "$($Definition.Type) AFS 프레임 4개를 모두 받지 못했습니다."
+    Assert-Condition ($Session.rxResult.counters.processedFrames -eq 4) "$($Definition.Type) AFS 프레임 4개를 모두 처리하지 못했습니다."
     Assert-Condition ($Session.rxResult.counters.decodeFailedFrames -eq 0) "$($Definition.Type)에 AFS 복호화 실패 프레임이 있습니다."
 
     $decoded = Get-MetricValue $Session.rxResult 'DecodedFrames'
@@ -175,9 +163,6 @@ function Test-SessionResult {
         Assert-Condition ($Session.rxResult.integrity.reconstructedRecords -eq 4) "$($Definition.Type) 복원 레코드가 4개가 아닙니다."
     }
 
-    if ($Definition.Type -eq 'TEST_E_UDP_DROP') {
-        Assert-Condition ($Session.rxResult.counters.simulatedDroppedDatagrams -gt 0) 'Test E에서 실제 Drop이 한 건도 발생하지 않았습니다.'
-    }
     if ($Definition.Type -in @('TEST_B_RANDOM_ERRORS', 'TEST_C_BURST_ERRORS')) {
         Assert-Condition ($Session.rxResult.counters.injectedBitCount -eq 4) "$($Definition.Type) 주입 오류가 총 4 bit가 아닙니다."
     }
@@ -238,11 +223,10 @@ Assert-Condition (Test-Path -LiteralPath $SamplePath -PathType Leaf) "샘플 파
 Wait-AgentsReady
 $uploadedInput = Upload-Sample
 $allDefinitions = @(
-    [pscustomobject]@{ Type = 'TEST_A_NORMAL'; ErrorCount = 1; DropRate = 0; RepeatCount = 3 },
-    [pscustomobject]@{ Type = 'TEST_B_RANDOM_ERRORS'; ErrorCount = 1; DropRate = 0; RepeatCount = 3 },
-    [pscustomobject]@{ Type = 'TEST_C_BURST_ERRORS'; ErrorCount = 1; DropRate = 0; RepeatCount = 3 },
-    [pscustomobject]@{ Type = 'TEST_D_SYNC_RECOVERY'; ErrorCount = 1; DropRate = 0; RepeatCount = 3 },
-    [pscustomobject]@{ Type = 'TEST_E_UDP_DROP'; ErrorCount = 1; DropRate = 30; RepeatCount = 5 }
+    [pscustomobject]@{ Type = 'TEST_A_NORMAL'; ErrorCount = 1 },
+    [pscustomobject]@{ Type = 'TEST_B_RANDOM_ERRORS'; ErrorCount = 1 },
+    [pscustomobject]@{ Type = 'TEST_C_BURST_ERRORS'; ErrorCount = 1 },
+    [pscustomobject]@{ Type = 'TEST_D_SYNC_RECOVERY'; ErrorCount = 1 }
 )
 $definitions = @($allDefinitions | Where-Object { $TestTypes -contains $_.Type })
 Assert-Condition ($definitions.Count -gt 0) '실행할 유효한 TestTypes가 없습니다.'
@@ -256,14 +240,12 @@ $summary = foreach ($definition in $definitions) {
         Test = $definition.Type
         SessionId = $session.sessionId
         Verdict = $session.verdict
-        Frames = "$($session.rxResult.counters.receivedLogicalFrames)/$($session.rxResult.counters.expectedLogicalFrames)"
+        Frames = "$($session.rxResult.counters.processedFrames)/$($session.rxResult.counters.expectedFrames)"
         Decoded = Get-MetricValue $session.rxResult 'DecodedFrames'
         Records = "$($integrity.reconstructedRecords)/$($integrity.expectedRecords)"
         Bytes = "$($integrity.reconstructedLength)/$($integrity.sourceLength)"
         Sha256Match = $integrity.success
-        PlannedDrop = $session.rxResult.counters.simulatedDroppedDatagrams
         InjectedBits = $session.rxResult.counters.injectedBitCount
-        InvalidUdp = $session.rxResult.counters.invalidDatagrams
         DecodeFailed = $session.rxResult.counters.decodeFailedFrames
         SyncRejected = $session.rxResult.counters.syncRejectedFrames
     }

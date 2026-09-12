@@ -3,7 +3,6 @@ const TEST_NAMES = {
     TEST_B_RANDOM_ERRORS: 'Test B 임의 비트 오류',
     TEST_C_BURST_ERRORS: 'Test C 연속 비트 오류',
     TEST_D_SYNC_RECOVERY: 'Test D 손상 프레임 제외 후 재동기',
-    TEST_E_UDP_DROP: 'Test E UDP 복제본 손실',
 };
 
 const SESSION_STATES = {
@@ -69,19 +68,7 @@ export function describeTestType(testType) {
     return TEST_NAMES[testType] || testType || '시험 종류 미확인';
 }
 
-function compactList(values, convert = (value) => value) {
-    if (!Array.isArray(values) || values.length === 0) {
-        return '없음';
-    }
-
-    const limit = 40;
-    const visible = values.slice(0, limit).map(convert).join(', ');
-    return values.length > limit
-        ? `${visible} 외 ${values.length - limit}개`
-        : visible;
-}
-
-/** Test A~E 설정을 시험 목적에 맞는 일반 사용자용 설명으로 변환한다. */
+/** Test A~D 설정을 시험 목적에 맞는 일반 사용자용 설명으로 변환한다. */
 export function describeTestCondition(details) {
     switch (details.testType) {
         case 'TEST_A_NORMAL':
@@ -96,9 +83,6 @@ export function describeTestCondition(details) {
             return `0번 프레임부터 ${number(details.syncDamageInterval)}프레임마다 68심볼 SP의 bit `
                 + `${number(details.errorCount)}개 손상 후 해당 프레임 제외·다음 연속 정상 SP 재획득 `
                 + `(총 ${number(details.injectedFrameCount)}프레임 제외)`;
-        case 'TEST_E_UDP_DROP':
-            return `각 UDP 복제본 미전송 확률 ${number(details.dropRatePercent)}%`
-                + ` (Seed ${number(details.dropSeed)}, 예정 ${number(details.plannedDroppedDatagrams)}개)`;
         default:
             return '시험 조건 정보 없음';
     }
@@ -132,30 +116,13 @@ function formatPrepared(details) {
     return [
         `TX 준비 ${percent(details)} · ${describeTestType(details.testType)}`,
         `원본 ${bytes(details.sourceBytes)}, GRAW ${number(details.recordCount)} records, AFS ${number(details.totalFrames)} frames`,
-        `목적지 ${details.destinationAddress}:${details.dataPort}, 결과 포트 ${details.resultPort}, 프레임당 ${number(details.repeatCount)}회 송신`,
         `시험 조건: ${describeTestCondition(details)}`,
     ].join('\n    ');
 }
 
 function formatTransmitting(details) {
-    const dropped = Array.isArray(details.droppedCopyIndexes)
-        ? details.droppedCopyIndexes
-        : [];
-    const parts = [
-        `TX ${percent(details)} · 프레임 ${number(details.frameNumber)}/${number(details.totalFrames)}`,
-        `복제본 ${number(details.sentCopies)}/${number(details.repeatCount)}개 실제 송신`,
-    ];
-
-    if (dropped.length > 0) {
-        parts.push(`Sender 미전송 복제본 #${compactList(dropped, (copy) => number(copy) + 1)}`);
-    }
-    if (Array.isArray(details.injectedBitPositions)) {
-        parts.push(
-            `${details.injectionMode} 주입 · AFS frame bit 위치 [`
-            + `${compactList(details.injectedBitPositions)}]`,
-        );
-    }
-    return parts.join(' · ');
+    return `TX ${percent(details)} · AFS 프레임 `
+        + `${number(details.transferredFrames)}/${number(details.totalFrames)} 전달`;
 }
 
 function formatTxStatus(event, details) {
@@ -178,19 +145,13 @@ function formatRxStatus(event, details) {
             `시험 조건: ${describeTestCondition(details)}`,
         ].join('\n    ');
     }
-    if (details.receivedFrames !== undefined && details.frameIndex !== undefined) {
-        const invalidDatagrams = details.invalidDatagrams ?? details.corruptDatagrams;
-        return `RX ${percent(details)} · 프레임 #${number(details.frameIndex)} 수신`
-            + ` · 누적 ${number(details.receivedFrames)}/${number(details.expectedFrames)} frames`
-            + ` · datagram ${number(details.receivedDatagrams)}개`
-            + ` (중복 ${number(details.duplicateDatagrams)}, UDP 해석 실패 ${number(invalidDatagrams)})`;
+    if (details.receivedFrames !== undefined) {
+        return `RX ${percent(details)} · AFS 프레임 수신`
+            + ` · 누적 ${number(details.receivedFrames)}/${number(details.expectedFrames)} frames`;
     }
     if (details.stage === 'Evaluating') {
-        const invalidDatagrams = details.invalidDatagrams ?? details.corruptDatagrams;
         return `RX ${percent(details)} · 프레임 재조립 및 복호화 중`
-            + ` · ${number(details.receivedFrames)}/${number(details.expectedFrames)} frames`
-            + ` · datagram ${number(details.receivedDatagrams)}개`
-            + ` (중복 ${number(details.duplicateDatagrams)}, UDP 해석 실패 ${number(invalidDatagrams)})`;
+            + ` · ${number(details.receivedFrames)}/${number(details.expectedFrames)} frames`;
     }
     if (details.stage === 'Verifying') {
         if (testType === 'TEST_D_SYNC_RECOVERY' && !details.integritySuccess) {
@@ -226,21 +187,12 @@ function formatResult(event, result) {
     const role = result.role || event.role || 'UNKNOWN';
     const counters = isObject(result.counters) ? result.counters : {};
     const integrity = isObject(result.integrity) ? result.integrity : {};
-    const splitCountersAvailable = counters.invalidDatagrams !== undefined
-        || counters.decodeFailedFrames !== undefined;
-    const invalidDatagrams = splitCountersAvailable
-        ? number(counters.invalidDatagrams)
-        : number(counters.corruptDatagrams);
-    const decodeFailedFrames = splitCountersAvailable
-        ? number(counters.decodeFailedFrames)
-        : undefined;
     const lines = [
         `RESULT · ${role} 최종 판정 ${result.verdict || '미확인'}`,
-        `프레임 ${number(counters.receivedLogicalFrames)}/${number(counters.expectedLogicalFrames)}`
-            + ` · datagram 송신 ${number(counters.sentDatagrams)}, 수신 ${number(counters.receivedDatagrams)}`
-            + ` · 중복 ${number(counters.duplicateDatagrams)}, UDP 해석 실패 ${invalidDatagrams}`
-            + (decodeFailedFrames === undefined ? '' : ` · AFS 복호화 실패 ${decodeFailedFrames}`)
-            + ` · Sender 미전송 ${number(counters.simulatedDroppedDatagrams)} datagram`,
+        `AFS 프레임 생성 ${number(counters.expectedFrames)}`
+            + ` · 전달 ${number(counters.transferredFrames)}`
+            + ` · 처리 ${number(counters.processedFrames)}`
+            + ` · 복호화 실패 ${number(counters.decodeFailedFrames)}`,
     ];
 
     if (counters.injectedBitCount > 0

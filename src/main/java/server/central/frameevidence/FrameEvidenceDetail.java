@@ -25,10 +25,10 @@ public class FrameEvidenceDetail {
     /** 오류를 넣기 전 Sender 기준 AFSFrame이며 750 byte, 즉 6,000 bit다. */
     byte[] referenceFrame;
 
-    /** 시험 오류를 주입한 뒤 Sender가 UDP에 실어 보낸 750 byte 프레임이다. */
+    /** 시험 오류를 주입한 뒤 Sender가 전달한 750 byte 프레임이다. */
     byte[] transmittedFrame;
 
-    /** UDP 패킷 검사를 통과해 Receiver가 채택한 750 byte 프레임이다. */
+    /** 전송 검사를 통과해 Receiver가 채택한 750 byte 프레임이다. */
     byte[] receivedFrame;
 
     /** Receiver 복호 결과를 동일한 TOI로 다시 인코딩한 진단용 750 byte 프레임이다. */

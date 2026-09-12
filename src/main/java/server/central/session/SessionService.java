@@ -87,7 +87,7 @@ public class SessionService {
             sessionRepository.save(session);
             sessionStored = true;
 
-            // 3. Sender가 즉시 UDP를 보내 유실되는 일을 막기 위해 Receiver 소켓을 먼저 준비시킨다.
+            // 3. Sender가 즉시 전송을 시작하지 않도록 Receiver를 먼저 준비시킨다.
             agentCommandService.command(
                     request.receiverAgentId(), id, CommandType.ARM_RECEIVER, request);
 
@@ -102,7 +102,7 @@ public class SessionService {
             }
             agentCommandService.inputComplete(request.senderAgentId(), id);
 
-            // 5. 입력 전달이 끝난 후에만 실제 AFS 인코딩과 UDP 송신을 시작한다.
+            // 5. 입력 전달이 끝난 후에만 AFS 인코딩과 프레임 전송을 시작한다.
             agentCommandService.command(
                     request.senderAgentId(), id, CommandType.START_SENDER, request);
             eventService.publish(EventType.SESSION_STATUS, null, null, id, session);
@@ -273,14 +273,8 @@ public class SessionService {
                             (inputBufferService.get(session.inputId()).receivedSize() + 1_048_575)
                                     / 1_048_576);
             long transferAllowanceSeconds = Math.min(600, Math.max(15, inputMegabytes * 2));
-            // END 뒤 늦게 도착한 반복 datagram을 받는 grace와 결과 대기 시간을 모두 포함한다.
-            long graceSeconds =
-                    Math.max(1, (request.transport().endGraceMilliseconds() + 999L) / 1000L);
-            long totalSeconds =
-                    request.transport().resultTimeoutSeconds()
-                            + graceSeconds
-                            + transferAllowanceSeconds;
-            return Duration.ofSeconds(Math.max(60, totalSeconds));
+            // 최소 1분을 보장하되 입력 크기에 비례한 전송 여유를 둔다.
+            return Duration.ofSeconds(Math.max(60, transferAllowanceSeconds));
         } catch (Exception error) {
             log.warn(
                     "Unable to calculate session timeout for {}; using fallback",
@@ -410,21 +404,9 @@ public class SessionService {
     /** 원격 수신 준비에서도 입력 파일 없이 동일한 시험 설정 검증을 재사용한다. */
     public static void validateSettings(CreateSessionRequest request)
     {
-        if (request == null || request.transport() == null || request.afs() == null
+        if (request == null || request.afs() == null
                 || request.options() == null || request.options().testType() == null) {
             throw new IllegalArgumentException("시험 설정 필수 항목이 없습니다.");
-        }
-        TransportSettings t = request.transport();
-        if (t.dataPort() < 1
-                || t.dataPort() > 65535
-                || t.resultPort() < 1
-                || t.resultPort() > 65535
-                || t.dataPort() == t.resultPort()) {
-            throw new IllegalArgumentException(
-                    "Data and result ports must be different values from 1 to 65535");
-        }
-        if (t.repeatCount() < 1 || t.repeatCount() > 20) {
-            throw new IllegalArgumentException("Repeat count must be 1 to 20");
         }
         if (request.afs().prn() < 1 || request.afs().prn() > 8) {
             throw new IllegalArgumentException("AFS PRN must be 1 to 8");
@@ -439,10 +421,6 @@ public class SessionService {
                 && (o.errorCount() < 1 || o.errorCount() > 68 || o.syncDamageInterval() < 1)) {
             throw new IllegalArgumentException(
                     "Test D error count must be 1 to 68 and interval must be positive");
-        }
-        if (o.testType() == TestType.TEST_E_UDP_DROP
-                && (o.dropRatePercent() < 0 || o.dropRatePercent() > 100)) {
-            throw new IllegalArgumentException("Drop rate must be 0 to 100");
         }
     }
 }

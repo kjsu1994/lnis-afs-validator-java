@@ -9,7 +9,7 @@ import server.shared.codec.Hashing;
 /**
  * GRAW 레코드와 AFS SB3/SB4용 fragment 사이의 binary 변환을 담당한다.
  *
- * <p>각 fragment에 record sequence, fragment index/count, 원본 길이와 CRC32를 포함해 UDP 순서 변경과 중복 수신 후에도 원래
+ * <p>각 fragment에 record sequence, fragment index/count, 원본 길이와 CRC32를 포함해 전송 순서 검증 후 원래
  * record를 검증할 수 있게 한다. SB payload 크기를 넘는 레코드는 여러 fragment로 나눈다.
  */
 public final class AfsRawFragmentCodec {

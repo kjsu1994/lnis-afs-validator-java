@@ -88,9 +88,7 @@ public class DtnController {
                         + receiverMode
                         + " 설정 완료"
         );
-        return ResponseEntity.ok(
-                response
-        );
+        return ResponseEntity.ok(response);
     }
 
     private String normalizeAdapterMode(

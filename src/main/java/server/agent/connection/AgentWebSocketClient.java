@@ -1,9 +1,7 @@
 package server.agent.connection;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import java.net.DatagramSocket;
 import java.net.Inet4Address;
-import java.net.InetAddress;
 import java.net.NetworkInterface;
 import java.net.URI;
 import java.net.http.HttpClient;
@@ -137,7 +135,7 @@ public final class AgentWebSocketClient implements WebSocket.Listener, AutoClose
             1,
             System.getProperty("os.name"),
             System.getProperty("os.arch"),
-            Map.of("com", config.role().name().equals("SENDER"), "udp", true),
+            Map.of("com", config.role().name().equals("SENDER"), "afsTransfer", true),
             localIpv4Addresses(serverUri.get()));
     send(
         Envelope.of(
@@ -174,7 +172,6 @@ public final class AgentWebSocketClient implements WebSocket.Listener, AutoClose
 
   static List<String> localIpv4Addresses(URI server) {
     LinkedHashSet<String> addresses = new LinkedHashSet<>();
-    preferredRouteAddress(server).ifPresent(addresses::add);
     try {
       NetworkInterface.networkInterfaces()
           .filter(
@@ -199,22 +196,6 @@ public final class AgentWebSocketClient implements WebSocket.Listener, AutoClose
       // Keep the preferred route address when interface enumeration fails.
     }
     return List.copyOf(addresses);
-  }
-
-  private static Optional<String> preferredRouteAddress(URI server) {
-    try (DatagramSocket socket = new DatagramSocket()) {
-      InetAddress target = InetAddress.getByName(server.getHost());
-      socket.connect(target, discoveryPort(server));
-      InetAddress local = socket.getLocalAddress();
-      if (local instanceof Inet4Address
-          && !local.isAnyLocalAddress()
-          && !local.isLoopbackAddress()) {
-        return Optional.of(local.getHostAddress());
-      }
-    } catch (Exception ignored) {
-      // Interface enumeration below supplies fallback addresses.
-    }
-    return Optional.empty();
   }
 
   private void heartbeat() {

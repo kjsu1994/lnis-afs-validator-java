@@ -11,7 +11,6 @@ import org.junit.jupiter.api.Test;
 import server.shared.model.AgentProtocol.FrameEvidenceMessage;
 import server.shared.model.AgentProtocol.Hello;
 import server.shared.model.LnisModels.AfsSettings;
-import server.shared.model.LnisModels.TransportSettings;
 
 /** record를 Lombok 불변 클래스로 바꾼 뒤에도 기존 생성·JSON·방어적 복사 계약을 검증한다. */
 class LombokModelCompatibilityTest {
@@ -33,12 +32,6 @@ class LombokModelCompatibilityTest {
 
   @Test
   void constructorsKeepExistingDefaultsAndValidation() throws Exception {
-    TransportSettings transport = json.readValue("{}", TransportSettings.class);
-
-    assertEquals("255.255.255.255", transport.broadcastAddress());
-    assertEquals(45821, transport.dataPort());
-    assertEquals(45822, transport.resultPort());
-    assertEquals(3, transport.repeatCount());
     assertEquals(1, new AfsSettings(null).prn());
     assertThrows(IllegalArgumentException.class, () -> new AfsSettings(9));
   }

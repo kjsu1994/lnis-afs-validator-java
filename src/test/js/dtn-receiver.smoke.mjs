@@ -5,7 +5,7 @@ import vm from 'node:vm';
 // 수신 화면의 실제 스크립트를 실행한다. 운영 DB에 시험 자료를 넣지 않는 DOM/API 대역이다.
 const html = readFileSync(new URL('../../main/resources/static/dtn-receiver.html', import.meta.url), 'utf8');
 const source = readFileSync(new URL('../../main/resources/static/assets/dtn-receiver.js', import.meta.url), 'utf8')
-  .replace(/^import .*;\n/, '').replace(/initialize\(\);\s*$/, 'globalThis.ready = initialize();');
+  .replace(/^import .*;\r?\n/, '').replace(/initialize\(\);\s*$/, 'globalThis.ready = initialize();');
 const elements = new Map([...html.matchAll(/id="([^"]+)"/g)].map(([, id]) => [id, {
   value: '', textContent: '', hidden: false, disabled: false,
   replaceChildren(...options) { this.options = options; this.value = options[0]?.value ?? ''; },

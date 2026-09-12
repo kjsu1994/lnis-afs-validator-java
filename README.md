@@ -19,7 +19,7 @@ EVK-F9T COM 수집 종료 후 전송 버튼으로 시험하며 현재 PVT 어댑
 PVT DLL의 원본 사용 범위와 빌드는 [native/PVT-INTEGRATION.md](native/PVT-INTEGRATION.md)에 기록합니다.
 이 기능을 사용하려면 중앙 서버와 양쪽 Agent를 같은 새 배포본으로 갱신해야 합니다.
 
-기존 .NET 8 WPF 기반 **LNIS AFS Validator**의 GRAW 수집, AFS 부호화/복호화, UDP 송수신 및 Test A~E 시험 로직을 다음 구성으로 이전한 프로젝트입니다.
+기존 .NET 8 WPF 기반 **LNIS AFS Validator**의 GRAW 수집, AFS 부호화/복호화 및 Test A~D 시험 로직을 다음 구성으로 이전한 프로젝트입니다.
 
 - 중앙 백엔드: Java 21, Spring Boot REST API 및 WebSocket
 - 프론트엔드: HTML, CSS, Vanilla JavaScript
@@ -70,19 +70,17 @@ Spring Boot 하나가 정적 화면, REST API 및 WebSocket을 모두 제공합�
           ├─ GRAW 파일 (`/app/data/files/inputs`)
           ├─ WebSocket ─ Sender Windows Agent ─ COM/u-blox
           └─ WebSocket ─ Receiver Windows Agent
-
-Sender Windows Agent ═════ UDP 45821/45822 ═════ Receiver Windows Agent
 ```
 
-Sender와 Receiver 사이의 실제 시험 프레임은 중앙 서버를 경유하지 않고 UDP로 직접 전송됩니다. 중앙 서버는 명령, 진행 상태, 입력 전달 및 결과 보관을 담당합니다.
+Sender가 생성한 AFS 프레임은 기존 Agent WebSocket 연결로 Receiver에 전달됩니다. 독립 노드 구성에서는 기존 인증된 관리 HTTP 연결을 사용합니다.
 
 ## 2. 프로젝트 디렉터리
 
 | 경로 | 설명 |
 |---|---|
-| `src/main/java/server/shared` | 서버/Agent 공유 계약, LGRW/LAFS wire 형식, CRC32, 결정론적 Drop 로직 |
+| `src/main/java/server/shared` | 서버/Agent 공유 계약, GRAW 및 AFS 전송 모델 |
 | `src/main/java/server/central` | Controller/DTO/Entity/Service/Repository 및 H2/JPA 연동 |
-| `src/main/java/server/agent` | Windows COM/u-blox, JNA 네이티브 코덱, UDP Sender/Receiver |
+| `src/main/java/server/agent` | Windows COM/u-blox, JNA 네이티브 코덱, AFS Sender/Receiver |
 | `src/main/resources/static` | Sender/Receiver HTML, JavaScript, CSS |
 | `native` | `LnisAfsCodec.dll`, C ABI 헤더/소스 및 고지 파일 |
 | `config` | Sender/Receiver Agent 설정 예제 |
@@ -100,11 +98,11 @@ agent   ──┘
 ```
 
 - Spring Boot, H2/JPA, COM 포트, JNA 같은 실행 환경 의존성을 포함하지 않습니다.
-- WebSocket envelope, 세션/결과 모델, canonical GRAW와 UDP binary 규격만 제공합니다.
+- WebSocket envelope, 세션/결과 모델과 canonical GRAW 규격을 제공합니다.
 - protocol 변경 시 서버와 Agent가 함께 컴파일되므로 양쪽 규격 불일치를 조기에 발견할 수 있습니다.
 - ArchUnit 테스트가 shared의 독립성과 central/agent 구현 간 상호 참조 금지를 검사합니다.
 
-현재 Agent WebSocket protocol은 **v2**입니다. v2에서는 세션별 AFS PRN 설정과 Receiver의
+현재 Agent WebSocket protocol은 **v3**입니다. v3에서는 기존 연결을 통한 AFS 프레임 전송이 추가되었습니다. 세션별 AFS PRN 설정과 Receiver의
 SB2 ephemeris 증거가 추가되었습니다. protocol version이 다른 Server와 Agent는 함께 사용할 수
 없으므로 중앙 서버, Sender Agent, Receiver Agent를 반드시 같은 소스 빌드로 배포해야 합니다.
 
@@ -134,7 +132,7 @@ server.agent
 ├─ codec        # JNA 네이티브 AFS/PVT 코덱
 ├─ afs          # AFS frame 생성, 오류 주입, fragment 복원
 ├─ dtn          # DTN 데이터 처리와 PVT 계산 작업
-└─ transport    # Sender/Receiver UDP 시험
+└─ transport    # Sender/Receiver AFS 세션 조정
 ```
 
 각 Java 클래스에는 책임을 설명하는 한글 주석을 두고, 복수의 처리문을 한 줄에 압축하지 않는 형식을 사용합니다.
@@ -173,20 +171,12 @@ Gradle로 직접 빌드할 경우 Java 21이 필요합니다. Docker Compose만 
 - Windows x64
 - Java 21 x64
 - 중앙 서버의 TCP `8088`에 접근 가능
-- Sender와 Receiver 간 UDP 통신 가능
-- 기본 UDP 포트:
-  - 데이터: `45821`
-  - 결과: `45822`
 - GNSS 수집 PC에는 사용 가능한 COM 포트 및 u-blox 수신기
 
 ### 3.3 네트워크/방화벽
 
 - 중앙 서버 인바운드: TCP `8088`
-- Receiver 인바운드: UDP 데이터 포트 `45821`
-- Sender 인바운드: UDP 결과 포트 `45822`
 - Agent 아웃바운드: 중앙 서버 TCP `8088`
-
-브로드캐스트가 차단되는 네트워크에서는 화면의 목적지 주소에 Receiver PC의 IPv4 주소를 입력해 유니캐스트로 시험하는 것이 좋습니다.
 
 ## 4. 중앙 서버 실행
 
@@ -453,9 +443,7 @@ COM 연결 실패 시 다른 GNSS 도구가 같은 포트를 점유하고 있지
 
 - Sender/Receiver Agent가 모두 `READY`
 - GRAW 업로드 또는 GNSS 수집이 완료됨
-- Receiver 방화벽에서 UDP 데이터 포트 허용
-- Sender 방화벽에서 UDP 결과 포트 허용
-- 목적지 주소가 네트워크 환경과 일치
+- Sender와 Receiver가 기존 관리 연결로 서로 연결됨
 - 한 번에 하나의 Sender/Receiver 시험만 실행
 
 ### 8.2 화면 실행 순서
@@ -464,14 +452,14 @@ COM 연결 실패 시 다른 GNSS 도구가 같은 포트를 점유하고 있지
 2. Sender 화면 `/lnis/afstest/sender`에서 입력 GRAW를 준비합니다.
 3. Sender Agent와 Receiver Agent를 선택합니다.
 4. 시험 종류와 SB2 LANS Ephemeris PRN(1~8), 오류 조건을 입력합니다.
-5. 목적지 주소 및 UDP 포트를 확인합니다.
+5. Receiver 관리 연결 상태를 확인합니다.
 6. `시험 시작`을 누릅니다.
 7. 양쪽 화면에서 TX/RX 진행률과 이벤트 로그를 확인합니다.
 8. 완료 후 통합 Excel 또는 JSON 다운로드 버튼을 누릅니다.
 
 중앙 서버는 Receiver를 먼저 대기 상태로 만든 다음 Sender 송신을 시작합니다.
 
-### 8.3 Test A~E
+### 8.3 Test A~D
 
 | 시험 ID | 화면 의미 | 주요 옵션 |
 |---|---|---|
@@ -479,25 +467,17 @@ COM 연결 실패 시 다른 GNSS 도구가 같은 포트를 점유하고 있지
 | `TEST_B_RANDOM_ERRORS` | Seed 기반 임의 비트 오류 | `errorCount`, `errorSeed` |
 | `TEST_C_BURST_ERRORS` | 연속 비트 오류 | `errorCount`, `errorSeed` |
 | `TEST_D_SYNC_RECOVERY` | SP 손상 프레임 제외 후 다음 연속 정상 SP 재획득 확인 | `errorCount`, `errorSeed`, `syncDamageInterval` |
-| `TEST_E_UDP_DROP` | 결정론적으로 UDP 복제본을 미전송하는 손실 모의시험 | `dropRatePercent`, `dropSeed` |
 
-동일 입력과 동일 Seed를 사용하면 오류 위치와 UDP 복제본 미전송 위치를 재현할 수 있습니다.
+동일 입력과 동일 Seed를 사용하면 오류 위치를 재현할 수 있습니다.
 
 ### 8.4 전송 기본값
 
 | 설정 | 기본값 | 설명 |
 |---|---:|---|
-| 목적지 주소 | `127.0.0.1` | 동일 PC 시험은 loopback, 분리 PC 시험은 Receiver IPv4 |
-| 데이터 포트 | `45821` | Sender에서 Receiver로 AFS 데이터 전송 |
-| 결과 포트 | `45822` | Receiver에서 Sender로 결과 반환 |
-| 반복 송신 | `3` | 각 논리 프레임의 datagram 중복 전송 수 |
-| 결과 제한 시간 | `30초` | Sender가 Receiver 결과를 기다리는 시간 |
-| 종료 유예 | `1000ms` | SESSION_END 후 지연 패킷 수신 유예 |
-| Probe 간격 | `1000ms` | 프로토콜 설정값 |
 | SB2 LANS Ephemeris PRN | `1` | 기본 almanac의 PRN 1~8 중 세션당 하나 선택 |
 
 AFS Custom Message Type 기본값은 `63`입니다. 기존 고정 PRN `8`은 제거됐으며 선택한
-PRN이 SESSION_START, FRAME, SESSION_END, RESULT packet에 일관되게 기록됩니다.
+PRN이 AFS 전송 시작, 프레임, 완료 메시지에 일관되게 기록됩니다.
 
 ### 8.5 세션 상태
 
@@ -525,7 +505,7 @@ SB2의 1,176개 정보 비트는 LANS-AFS-SIM commit
 내장 ephemeris 값은 원본 `default_almanac.txt`에서 가져온다.
 
 AFS ITOW는 GPS 주 시작 후의 **1,200초 구간 번호**다. u-blox 메시지에서 사용하는
-GPS 주 내 millisecond 단위 iTOW와 이름만 비슷하고 단위와 의미가 다르다. 기존 Java/UDP 필드
+GPS 주 내 millisecond 단위 iTOW와 이름만 비슷하고 단위와 의미가 다르다. 기존 Java 필드
 `intervalOfWeek`는 wire 호환을 위해 유지하며 결과 JSON에서는 `afsItow`로 명시한다.
 
 #### Test D의 오픈소스 근거와 범위
@@ -548,14 +528,14 @@ Test D는 다른 시험과 PASS 기준이 다릅니다. 동기 패턴을 손상�
 계속해야 합니다. 따라서 Test D에서 다음 조건을 모두 만족하면 전체 GRAW SHA-256이 달라도
 PASS입니다.
 
-1. Sender가 준비한 UDP 논리 프레임이 Receiver까지 모두 도착합니다.
+1. Sender가 준비한 AFS 프레임이 Receiver까지 모두 전달됩니다.
 2. 의도적으로 동기를 손상한 프레임 수가 시험 조건과 같습니다.
 3. `연속 정상 SP 재획득 프레임 = 전체 프레임 - 동기 손상 프레임`입니다.
 4. `Decoder 처리 프레임 = 전체 프레임 - 동기 손상 프레임`입니다.
 5. `SB2·SB3·SB4 CRC 완전 복호 프레임 = 전체 프레임 - 동기 손상 프레임`입니다.
 
 예를 들어 `dummy-capture.graw`는 464 byte, 4 record이고 이 입력에서는 record 한 개가
-116 byte입니다. 첫 프레임 한 개의 동기를 손상하면 Receiver는 UDP 논리 프레임 4개를 모두
+116 byte입니다. 첫 프레임 한 개의 동기를 손상하면 Receiver는 AFS 프레임 4개를 모두
 받지만 손상 프레임은 버립니다. 따라서 `3/4 record`, `348/464 byte`, SHA-256 불일치가 되며,
 나머지 `3/3 frame`을 재동기화하고 복호화했다면 정상 PASS입니다. 화면은 이 경우를 빨간
 실패가 아니라 `예상 결과`와 `부분 복원`으로 표시합니다.
@@ -586,16 +566,14 @@ Agent 진행 이벤트의 `percent`와 중앙 서버 세션 이벤트의 `progre
 이벤트 로그는 단순한 영문 단계명 대신 다음 상세 정보를 한글로 표시합니다.
 
 - 공통: 세션 상태, 시험 종류, 현재 진행률과 최종 판정
-- 송신 준비: 원본 byte 수, GRAW record 수, AFS frame 수, 목적지 IP·포트와 반복 횟수
+- 송신 준비: 원본 byte 수, GRAW record 수와 AFS frame 수
 - Test B/C: 손상된 프레임 번호, Random/Burst 구분과 실제 AFS frame bit 위치
 - Test D: 동기 손상 프레임 번호, 동기 영역의 실제 bit 위치와 복구 프레임 수
-- Test E: 프레임별 실제 송신 복제본 수와 Sender가 의도적으로 보내지 않은 복제본 번호
-- 수신: 현재/예상 frame 수, 수신 datagram 수, 중복 및 손상 datagram 수
+- 수신: 현재/예상 AFS frame 수
 - 검증: 원본/복원 byte와 record 수, SHA-256 일치 여부
 - 최종 결과: TX/RX 판정, 네트워크 카운터와 복호화·CRC·오류 정정 측정값
 
-결과 카드에도 예상/수신 프레임, 송수신·중복, UDP 해석 실패, AFS 복호화 실패,
-주입 비트와 Sender 미전송 데이터그램, 처리 byte,
+결과 카드에도 예상/전달/처리 프레임, AFS 복호화 실패, 주입 비트와 처리 byte,
 원본/복원 크기와 record 수 및 SHA-256 비교 결과가 각각 표시됩니다. 화면 로그가 너무
 커지지 않도록 한 프레임에서 오류 위치가 40개를 넘으면 앞의 40개와 나머지 개수를 표시하지만,
 Agent 이벤트에는 해당 프레임의 전체 위치 목록이 구조화된 값으로 전달됩니다.
@@ -606,30 +584,22 @@ Agent 이벤트에는 해당 프레임의 전체 위치 목록이 구조화된 �
 |---|---|---|
 | 시험에서 주입한 오류 | bit | Test B/C/D 조건에 따라 Sender가 AFS 프레임 내부에서 반전한 비트 총합 |
 | 동기 손상으로 제외 | frame | Test D에서 손상된 동기를 정상 동기로 오인하지 않고 제외한 AFS 프레임 수 |
-| UDP 패킷 해석 실패 | datagram | LNIS UDP 패킷 구조 또는 패킷 CRC를 해석하지 못해 폐기한 데이터그램 수 |
 | AFS 복호화 실패 | frame | 동기를 찾았지만 디코더 예외 또는 SB3/SB4 CRC 실패로 재조립하지 못한 프레임 수 |
 
 예를 들어 Test D에서 `1 bit`를 주입하고 해당 동기 프레임을 정상적으로 제외했다면
-`시험에서 주입한 오류 1 bit`, `동기 손상으로 제외 1 frame`, `UDP 패킷 해석 실패
-0 datagram`, `AFS 복호화 실패 0 frame`이 정상입니다. 이전의 `손상 패킷` 표현은 서로 다른
-단위가 섞여 오해를 만들기 때문에 화면에서 사용하지 않습니다. JSON의 `corruptDatagrams`는
-기존 결과 소비자와의 호환을 위해서만 유지하며 새 화면은 분리된 카운터를 사용합니다.
+`시험에서 주입한 오류 1 bit`, `동기 손상으로 제외 1 frame`, `AFS 복호화 실패 0 frame`이 정상입니다.
 
 결과 화면은 단순 수치 나열 대신 다음 순서로 표시합니다.
 
 1. 시험 결과 해석: PASS/FAIL 이유와 프레임·크기·레코드·SHA-256 핵심 확인표
 2. 원본 복원 결과: 복원값/원본값을 한 카드에서 직접 비교
 3. 프레임 처리 결과: 수신값/예상값과 복호화값/수신값을 직접 비교
-4. 전송 및 오류 처리 현황: 주입 비트, 동기 제외 frame, UDP 해석 실패 datagram과 AFS 복호화 실패 frame을 구분
+4. 전송 및 오류 처리 현황: 전달 frame, 주입 비트, 동기 제외 frame과 AFS 복호화 실패 frame을 구분
 5. 전문 진단 지표: SB2/SB3/SB4 CRC 및 LDPC 내부 값은 접힌 영역에서 필요할 때 확인
 
 `CorrectedSymbols` 원시 값은 화면에서 `LDPC 내부 판정 변경량`으로 표시합니다. 이 값은
 LDPC 디코더가 초기 판정에서 변경한 누적 비트 수이며 천공·소거 처리의 영향도 받을 수
 있으므로, 사용자가 주입한 오류 개수나 실제 채널 오류 개수로 해석하면 안 됩니다.
-
-`sentDatagrams`는 실제 AFS FRAME UDP 패킷만 세지만 `receivedDatagrams`는 Receiver가 받은
-SESSION_START 같은 제어 패킷도 포함합니다. 따라서 정상 시험에서도 수신 데이터그램 수가
-송신 데이터그램 수보다 클 수 있으며, 화면 설명에도 이 집계 범위 차이를 명시합니다.
 
 상세 로그 포맷 회귀 테스트는 다음 명령으로 실행합니다.
 
@@ -643,10 +613,10 @@ node src\test\js\event-log.smoke.mjs
 node src\test\js\result-presentation.smoke.mjs
 ```
 
-### 8.7 sample-data 실제 A~E 회귀시험
+### 8.7 sample-data 실제 A~D 회귀시험
 
 `SamplePath`로 지정한 GRAW를 REST API로 실제 업로드하고 로컬 Sender/Receiver Agent와
-UDP 통신을 사용해 A~E를 순서대로 실행하는 스크립트를 제공합니다.
+기존 Agent 연결을 사용해 A~D를 순서대로 실행하는 스크립트를 제공합니다.
 중앙 서버와 두 Agent가 실행된 상태에서 다음 명령을 사용합니다.
 
 ```powershell
@@ -658,24 +628,20 @@ Set-Location 'O:\3.ing\LNIS\LnisServer'
 
 ```powershell
 .\scripts\run-sample-regression.ps1 -TestTypes 'TEST_D_SYNC_RECOVERY'
-.\scripts\run-sample-regression.ps1 -TestTypes 'TEST_A_NORMAL','TEST_E_UDP_DROP'
+.\scripts\run-sample-regression.ps1 -TestTypes 'TEST_A_NORMAL','TEST_B_RANDOM_ERRORS'
 ```
 
 스크립트는 단순히 HTTP 200이나 최종 PASS만 검사하지 않습니다.
 
-- 공통: 세션 `COMPLETED`, TX/RX/최종 `PASS`, 논리 프레임 `4/4`, 손상 datagram `0`
+- 공통: 세션 `COMPLETED`, TX/RX/최종 `PASS`, AFS 프레임 `4/4`
 - Test A/B/C: 복호화 `4/4`, record `4/4`, byte `464/464`, SHA-256 일치
 - Test D: 복호화·재동기 `3/3`, record `3/4`, byte `348/464`, SHA-256 불일치가 예상 결과인지 확인
-- Test E: Sender가 실제로 미전송한 복제본이 1건 이상이면서도 `4/4`, `464/464`, SHA-256 일치인지 확인
 - 프레임 증거: 4개 프레임의 Sender/Receiver 증거 병합, 단계별 750 byte 원문, 송신/수신 차이 0,
   복호화 후 재인코딩과 기준 프레임 일치 여부를 확인
 - Test D 프레임 증거: 동기 손상 프레임은 `intentionalSyncRejection=true`이고 재인코딩 자료가 없으며,
   나머지 3개 프레임은 기준 대비 0 bit인지 확인
 
-2026-08-23 로컬 loopback 실측에서는 A/B/C/E가 모두 `4/4 record`, `464/464 byte`,
-SHA-256 일치로 PASS했습니다. Test D는 설계대로 `3/4 record`, `348/464 byte`, SHA-256
-불일치이면서 재동기·복호화 `3/3`으로 PASS했습니다. Test E는 반복 송신 5회, 복제본
-미전송 확률 30%, Seed 1 조건에서 3개 복제본을 실제로 보내지 않았지만 원본을 완전히 복원했습니다.
+회귀시험은 A/B/C의 전체 복원과 Test D의 의도된 부분 복원·재동기 조건을 함께 검증합니다.
 
 ## 9. 결과 파일
 
@@ -708,8 +674,8 @@ Excel 또는 JSON byte stream으로 생성합니다. 현재 구현은 `reconstru
 화면은 다음 네 단계를 같은 좌표로 보여줍니다.
 
 1. **기준 AFSFrame**: GRAW를 정상 인코딩했으며 아직 시험 오류를 넣지 않은 기준값
-2. **실제 송신 AFSFrame**: Test B/C/D 오류를 주입한 뒤 Sender가 실제 UDP에 넣은 값
-3. **Receiver 수신 AFSFrame**: UDP 구조와 CRC32 검사를 통과해 Receiver가 채택한 값
+2. **실제 송신 AFSFrame**: Test B/C/D 오류를 주입한 뒤 Sender가 기존 연결로 전달한 값
+3. **Receiver 수신 AFSFrame**: 전송 구조 검사를 통과해 Receiver가 채택한 값
 4. **복호화 후 재인코딩 검증**: Receiver가 복호화한 SB2/SB3/SB4를 같은 TOI로 다시 인코딩한 값
 
 지도 위에 마우스를 올리면 같은 심볼 좌표가 네 지도에서 함께 강조되고, 해당 위치의 단계별
@@ -888,29 +854,18 @@ POST /lnis/api/v1/sessions
   "afs": {
     "prn": 1
   },
-  "transport": {
-    "broadcastAddress": "192.168.0.21",
-    "dataPort": 45821,
-    "resultPort": 45822,
-    "repeatCount": 3,
-    "resultTimeoutSeconds": 30,
-    "endGraceMilliseconds": 1000,
-    "probeIntervalMilliseconds": 1000
-  },
   "options": {
     "testType": "TEST_A_NORMAL",
     "errorCount": 1,
     "errorSeed": 1,
     "syncDamageInterval": 10,
-    "dropRatePercent": 0,
-    "dropSeed": 1,
     "thresholds": {}
   }
 }
 ```
 
 `afs` 또는 `afs.prn`을 생략하면 PRN `1`을 사용합니다. 허용 범위는 `1~8`이며 범위를
-벗어나면 세션을 생성하지 않습니다. 이 PRN은 단일 UDP 시험 스트림 전체에 적용됩니다.
+벗어나면 세션을 생성하지 않습니다. 이 PRN은 단일 AFS 시험 스트림 전체에 적용됩니다.
 `intervalOfWeek`가 API/packet에 나타나는 경우 그 값은 u-blox iTOW(ms)가 아니라 GPS 주 내
 1,200초 구간 번호인 AFS ITOW입니다.
 
@@ -1055,18 +1010,10 @@ Sender Agent, COM 포트, baud rate 또는 프로토콜 입력을 확인합니�
 
 ### 13.4 Receiver가 데이터를 받지 못함
 
-- 목적지 주소를 Receiver PC의 실제 IPv4로 지정해 유니캐스트 시험
-- Receiver 방화벽 UDP `45821` 허용
-- Sender 방화벽 UDP `45822` 허용
-- 두 PC가 동일 라우팅 구간에 있고 UDP가 차단되지 않는지 확인
-- 다른 프로그램이 동일 UDP 포트를 사용 중인지 확인
-- Sender/Receiver의 data/result port 설정이 같은지 확인
-
-포트 사용 확인 예시:
-
-```powershell
-Get-NetUDPEndpoint | Where-Object LocalPort -In 45821,45822
-```
+- Sender 화면의 Receiver 관리 IP와 TCP 포트가 실제 수신 노드를 가리키는지 확인
+- 양쪽 관리 토큰이 같은지 확인
+- Receiver 방화벽에서 관리 TCP 포트를 허용했는지 확인
+- 양쪽 Agent 또는 독립 노드 상태가 `READY`인지 확인
 
 ### 13.5 H2 파일 접근 오류
 
@@ -1108,18 +1055,17 @@ REST API에는 현재 별도의 브라우저 사용자 로그인 기능이 없�
 - H2 데이터와 GRAW 파일은 기본 24시간 보존 후 정리하며, 보존 기간은 환경 변수로 변경 가능
 - 결과는 JSON/CSV로만 제공하며 복원 GRAW 파일은 제공하지 않음
 - Agent는 포함된 Java 21 런타임과 단일 JAR 명령으로 실행
-- COM/u-blox 및 실제 두 PC 간 UDP 동작은 현장 장비와 네트워크에서 최종 인수 시험 필요
+- COM/u-blox 및 실제 두 PC 간 AFS 전송은 현장 장비와 네트워크에서 최종 인수 시험 필요
 - 최대 1GB 입력은 호스트 디스크 여유 공간뿐 아니라 브라우저, Agent JVM heap, 네트워크 시간 및 시험 지속 시간을 포함한 부하 시험 필요
 
 권장 현장 인수 순서:
 
 1. 작은 sample GRAW로 Test A 유니캐스트 시험
-2. Broadcast 시험
-3. Test B~E 기능 시험
-4. 실제 GNSS COM 수집 시험
-5. 장시간/대용량 입력 시험
-6. 사용하는 프로세스 관리 도구의 자동 재시작 및 PC 재부팅 시험
-7. 결과 CSV/JSON 보존 및 추적성 확인
+2. Test B~D 기능 시험
+3. 실제 GNSS COM 수집 시험
+4. 장시간/대용량 입력 시험
+5. 사용하는 프로세스 관리 도구의 자동 재시작 및 PC 재부팅 시험
+6. 결과 CSV/JSON 보존 및 추적성 확인
 
 ## 16. 빠른 시작 요약
 
@@ -1146,6 +1092,6 @@ Agent PC:
 2. `http://<server>:8088/lnis/afstest/sender` 열기
 3. 두 Agent가 `READY`인지 확인
 4. GRAW 업로드 또는 GNSS 수집
-5. Receiver IP와 UDP 포트 설정
+5. Receiver 관리 연결 설정
 6. Test A부터 실행
 7. 완료 후 TX/RX JSON 및 CSV 다운로드

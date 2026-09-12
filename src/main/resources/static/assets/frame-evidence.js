@@ -111,7 +111,7 @@ function comparisonCards(summary) {
         ['오류 주입 결과', number(summary.referenceToTransmittedDifferences),
             '기준 프레임과 실제 송신 프레임의 차이입니다. Test B/C/D에서는 설정한 오류가 이 단계에 나타납니다.'],
         ['전송 중 추가 변화', number(summary.transmittedToReceivedDifferences),
-            '실제 송신 프레임과 Receiver가 채택한 프레임의 차이입니다. 0이면 UDP로 받은 AFS 원문이 같습니다.'],
+            '실제 송신 프레임과 Receiver가 채택한 프레임의 차이입니다. 0이면 전달된 AFS 원문이 같습니다.'],
         ['최종 복구 차이', number(summary.referenceToReencodedDifferences),
             '기준 프레임과 복호화 후 재인코딩 검증 프레임의 차이입니다. 0이면 6,000비트 기준으로 복구됐습니다.'],
     ];
@@ -203,7 +203,7 @@ async function renderSelectedFrame(container, sessionId, frameIndex) {
         },
         {
             title: '2. 실제 송신 AFSFrame',
-            description: '시험 오류를 주입한 뒤 Sender가 UDP에 실어 보낸 실제 6,000비트입니다. 빨강은 기준과 달라진 위치입니다.',
+            description: '시험 오류를 주입한 뒤 Sender가 전달한 실제 6,000비트입니다. 빨강은 기준과 달라진 위치입니다.',
             bytes: decodeFrame(detail.transmittedFrame),
             hash: summary.transmittedSha256,
             differences: new Set(detail.referenceToTransmittedPositions || []),
@@ -211,7 +211,7 @@ async function renderSelectedFrame(container, sessionId, frameIndex) {
         },
         {
             title: '3. Receiver 수신 AFSFrame',
-            description: 'UDP 구조와 CRC 검사를 통과해 Receiver가 채택한 실제 6,000비트입니다. 빨강은 송신 프레임과 달라진 위치입니다.',
+            description: '전송 구조 검사를 통과해 Receiver가 채택한 실제 6,000비트입니다. 빨강은 송신 프레임과 달라진 위치입니다.',
             bytes: decodeFrame(detail.receivedFrame),
             hash: summary.receivedSha256,
             differences: new Set(detail.transmittedToReceivedPositions || []),

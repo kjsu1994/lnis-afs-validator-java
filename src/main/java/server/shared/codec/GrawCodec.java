@@ -251,8 +251,8 @@ public final class GrawCodec {
         .put((byte) 0)
         .putShort((short) HEADER_LENGTH)
         .putInt(payload.length);
-    AfsPacketCodec.putDotNetGuid(out, envelope.testId);
-    AfsPacketCodec.putDotNetGuid(out, envelope.messageId);
+    putGuid(out, envelope.testId);
+    putGuid(out, envelope.messageId);
     long micros =
         Math.addExact(
             Math.multiplyExact(envelope.capturedAt.getEpochSecond(), 1_000_000),
@@ -280,8 +280,8 @@ public final class GrawCodec {
         || length > 1024 * 1024
         || record.length != HEADER_LENGTH + length + 4)
       throw new IllegalArgumentException("Unsupported GRAW header");
-    UUID testId = AfsPacketCodec.getDotNetGuid(in);
-    UUID messageId = AfsPacketCodec.getDotNetGuid(in);
+    UUID testId = getGuid(in);
+    UUID messageId = getGuid(in);
     long sequence = in.getLong();
     long micros = in.getLong();
     long expected =
@@ -295,6 +295,14 @@ public final class GrawCodec {
         Instant.ofEpochSecond(
             Math.floorDiv(micros, 1_000_000), Math.floorMod(micros, 1_000_000) * 1000);
     return new Envelope(testId, messageId, sequence, capturedAt, decodePayload(type, payload));
+  }
+
+  private static void putGuid(ByteBuffer out, UUID uuid) {
+    out.putLong(uuid.getMostSignificantBits()).putLong(uuid.getLeastSignificantBits());
+  }
+
+  private static UUID getGuid(ByteBuffer in) {
+    return new UUID(in.getLong(), in.getLong());
   }
 
   /**

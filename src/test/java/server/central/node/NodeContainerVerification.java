@@ -80,16 +80,13 @@ public final class NodeContainerVerification {
             for (TestType type : TestType.values()) {
                 Thread.sleep(3500);
                 CreateSessionRequest request = new CreateSessionRequest("sender-1", "receiver-1", input,
-                        new AfsSettings(1), new TransportSettings(URI.create(receiver).getHost(), 45821, 45822, 2, 10, 200, 200),
-                        new TestOptions(type, 1, 1, 10, type == TestType.TEST_E_UDP_DROP ? 100 : 0, 1, Map.of()));
+                        new AfsSettings(1), new TestOptions(type, 1, 1, 10, Map.of()));
                 String session = json("POST", sender + "/lnis/api/v1/sessions", request).path("sessionId").asText();
                 JsonNode afs = waitComplete(sender + "/lnis/api/v1/sessions/" + session);
                 assertTrue(afs.path("rxResult").isObject(), afs.toString());
                 assertTrue(afs.path("txResult").isObject(), afs.toString());
                 if (type == TestType.TEST_A_NORMAL) {
                     assertEquals("PASS", afs.path("verdict").asText());
-                } else if (type == TestType.TEST_E_UDP_DROP) {
-                    assertTrue(afs.path("txResult").path("counters").path("simulatedDroppedDatagrams").asLong() > 0);
                 } else {
                     assertTrue(afs.path("txResult").path("counters").path("injectedBitCount").asLong() > 0);
                 }
