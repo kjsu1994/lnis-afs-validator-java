@@ -326,37 +326,208 @@
 
 
 /* =========================================================
- * 입력 상태
+ * GNSS 에포크 원본 관측값
  * ========================================================= */
 
-.data-summary {
-    margin-top: 16px;
-
-    padding: 12px;
-
-    border: 1px solid var(--line);
-
-    border-radius: 9px;
-
-    background: #f8faf9;
+.epoch-observation-card {
+    margin-bottom: 18px;
+    padding: 26px;
+    overflow: hidden;
 }
 
+.epoch-observation-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 24px;
+    margin-bottom: 18px;
+}
 
-.data-summary span,
-.data-summary strong {
+.section-kicker {
+    display: block;
+    margin-bottom: 4px;
+    color: var(--teal);
+    font-size: 10px;
+    font-weight: 800;
+    letter-spacing: .14em;
+}
+
+.epoch-observation-header h2 {
+    margin-bottom: 5px;
+    font-size: 20px;
+}
+
+.epoch-observation-header p {
+    margin: 0;
+    color: var(--muted);
+    font-size: 13px;
+}
+
+.epoch-input-status {
+    min-width: 150px;
+    padding: 10px 14px;
+    border: 1px solid #cfe0e1;
+    border-radius: 10px;
+    background: #f2f8f7;
+    text-align: right;
+}
+
+.epoch-input-status span,
+.epoch-input-status strong {
     display: block;
 }
 
-
-.data-summary span {
-    font-size: 11px;
-
+.epoch-input-status span {
     color: var(--muted);
+    font-size: 10px;
+    font-weight: 700;
 }
 
+.epoch-input-status strong {
+    margin-top: 2px;
+    color: var(--navy);
+    font-size: 15px;
+}
 
-.data-summary strong {
-    margin-top: 4px;
+.epoch-summary-grid {
+    display: grid;
+    grid-template-columns: minmax(190px, 1.6fr) repeat(5, minmax(120px, 1fr));
+    gap: 8px;
+    margin-bottom: 14px;
+}
+
+.epoch-summary-item {
+    min-width: 0;
+    padding: 11px 13px;
+    border: 1px solid var(--line);
+    border-radius: 9px;
+    background: #fbfcfc;
+}
+
+.epoch-summary-item.accent {
+    border-color: #b9ddd8;
+    background: #eef8f6;
+}
+
+.epoch-summary-item span,
+.epoch-summary-item strong,
+.epoch-summary-item small {
+    display: block;
+}
+
+.epoch-summary-item span {
+    color: var(--muted);
+    font-size: 10px;
+    font-weight: 700;
+}
+
+.epoch-summary-item strong {
+    margin-top: 3px;
+    overflow: hidden;
+    color: var(--ink);
+    font-size: 15px;
+    font-variant-numeric: tabular-nums;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.epoch-summary-item small {
+    margin-top: 1px;
+    font-size: 9px;
+}
+
+.epoch-table-viewport {
+    max-height: 390px;
+    overflow: auto;
+    border: 1px solid #ccdadd;
+    border-radius: 10px;
+    background: #fff;
+}
+
+.epoch-table-viewport:focus-visible {
+    outline: 2px solid rgba(0, 163, 154, .3);
+    outline-offset: 2px;
+}
+
+.epoch-observation-table {
+    width: 100%;
+    min-width: 1120px;
+    border-collapse: separate;
+    border-spacing: 0;
+    font-size: 12px;
+    font-variant-numeric: tabular-nums;
+}
+
+.epoch-observation-table caption {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+}
+
+.epoch-observation-table th {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    padding: 10px 12px;
+    border-bottom: 1px solid #c7d6da;
+    background: #eef4f4;
+    color: #3b5661;
+    text-align: left;
+    white-space: nowrap;
+}
+
+.epoch-observation-table th small {
+    display: block;
+    color: #78909a;
+    font-size: 9px;
+    font-weight: 600;
+}
+
+.epoch-observation-table td {
+    padding: 10px 12px;
+    border-bottom: 1px solid #e6edef;
+    text-align: right;
+    white-space: nowrap;
+}
+
+.epoch-observation-table th:nth-child(-n+3),
+.epoch-observation-table td:nth-child(-n+3),
+.epoch-observation-table th:last-child,
+.epoch-observation-table td:last-child {
+    text-align: left;
+}
+
+.epoch-observation-table tbody tr:last-child td {
+    border-bottom: 0;
+}
+
+.epoch-observation-table tbody tr:not(.epoch-empty-row):hover {
+    background: #f3f9f8;
+}
+
+.epoch-observation-table .epoch-empty-row td {
+    height: 170px;
+    color: var(--muted);
+    text-align: center;
+    white-space: normal;
+}
+
+.epoch-empty-row strong,
+.epoch-empty-row span {
+    display: block;
+}
+
+.epoch-empty-row strong {
+    color: #45616c;
+    font-size: 14px;
+}
+
+.epoch-empty-row span {
+    margin-top: 5px;
+    font-size: 12px;
 }
 
 
@@ -533,5 +704,29 @@
         width: 100%;
 
         margin-top: 15px;
+    }
+
+    .epoch-summary-grid {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+}
+
+@media(max-width: 600px) {
+    .epoch-observation-card {
+        padding: 18px;
+    }
+
+    .epoch-observation-header {
+        display: block;
+    }
+
+    .epoch-input-status {
+        width: 100%;
+        margin-top: 14px;
+        text-align: left;
+    }
+
+    .epoch-summary-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
     }
 }

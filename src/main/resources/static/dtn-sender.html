@@ -15,7 +15,7 @@
         href="/lnis/assets/dtn-payload.css">
 
   <link rel="stylesheet"
-        href="/lnis/assets/dtn-ui.css">
+        href="/lnis/assets/dtn-ui.css?v=20260912-epoch-table">
 </head>
 
 
@@ -439,20 +439,6 @@
 
       </div>
 
-
-
-      <div class="data-summary">
-
-        <span>
-          입력 상태
-        </span>
-
-        <strong id="dtn-input-state">
-          데이터 없음
-        </strong>
-
-      </div>
-
     </section>
 
 
@@ -633,6 +619,85 @@
     </section>
 
   </div>
+
+
+  <!-- =====================================================
+       GNSS 에포크 원본 관측값
+       수집 API 연결 전에는 빈 상태를 표시하고 이후 동일한 ID에 실제 값을 채운다.
+       ===================================================== -->
+  <section class="card epoch-observation-card" aria-labelledby="epoch-observation-title">
+
+    <div class="epoch-observation-header">
+      <div>
+        <span class="section-kicker">GNSS RAW OBSERVATION</span>
+        <h2 id="epoch-observation-title">GNSS 에포크 원본 관측값</h2>
+        <p>선택한 한 시점의 RAWX 관측 데이터를 위성·신호별 숫자로 표시합니다.</p>
+      </div>
+
+      <div class="epoch-input-status" aria-live="polite">
+        <span>입력 상태</span>
+        <strong id="dtn-input-state">데이터 없음</strong>
+      </div>
+    </div>
+
+    <div class="epoch-summary-grid" aria-label="GNSS 에포크 요약">
+      <div class="epoch-summary-item">
+        <span>수집 시각</span>
+        <strong id="dtn-epoch-captured-at">-</strong>
+      </div>
+      <div class="epoch-summary-item">
+        <span>GPS Week</span>
+        <strong id="dtn-epoch-week">-</strong>
+      </div>
+      <div class="epoch-summary-item">
+        <span>TOW</span>
+        <strong id="dtn-epoch-tow">-</strong>
+        <small>seconds</small>
+      </div>
+      <div class="epoch-summary-item">
+        <span>Leap Seconds</span>
+        <strong id="dtn-epoch-leap-seconds">-</strong>
+      </div>
+      <div class="epoch-summary-item">
+        <span>Receiver Status</span>
+        <strong id="dtn-epoch-receiver-status">-</strong>
+      </div>
+      <div class="epoch-summary-item accent">
+        <span>관측 신호</span>
+        <strong id="dtn-epoch-observation-count">0</strong>
+        <small>signals</small>
+      </div>
+    </div>
+
+    <div class="epoch-table-viewport" tabindex="0" aria-label="GNSS 위성별 원본 관측값 표">
+      <table class="epoch-observation-table">
+        <caption>UBX-RXM-RAWX에서 해석한 위성·신호별 원본 측정값</caption>
+        <thead>
+          <tr>
+            <th scope="col">GNSS</th>
+            <th scope="col">SV</th>
+            <th scope="col">Signal</th>
+            <th scope="col">Pseudorange <small>m</small></th>
+            <th scope="col">Carrier Phase <small>cycle</small></th>
+            <th scope="col">Doppler <small>Hz</small></th>
+            <th scope="col">C/N0 <small>dB-Hz</small></th>
+            <th scope="col">Lock <small>ms</small></th>
+            <th scope="col">표준편차 <small>PR / CP / DO</small></th>
+            <th scope="col">Tracking</th>
+          </tr>
+        </thead>
+        <tbody id="dtn-epoch-observations">
+          <tr class="epoch-empty-row">
+            <td colspan="10">
+              <strong>수집된 GNSS 에포크가 없습니다.</strong>
+              <span>COM 포트를 선택해 GNSS 데이터를 수집하거나 capture.graw 파일을 적용하세요.</span>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+  </section>
 
 
 
